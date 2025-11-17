@@ -1,3 +1,6 @@
 # Ignore Dwarf Fortress game folder
 df_53_03_win/
 
+# Ignore API configuration
+config_api.json
+
