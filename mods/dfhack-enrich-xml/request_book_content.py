@@ -1,0 +1,2 @@
+print("oiii")
+input()
