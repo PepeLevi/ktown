@@ -53,7 +53,8 @@ class DFNameEditor:
         self.root.geometry("1600x1000")
         self.root.minsize(1200, 700)  # Tamaño mínimo
         
-        self.base_path = Path("df_53_03_win/data/vanilla")
+        # Auto-detect version based on directory structure
+        self.base_path = self.detect_base_path()
         self.name_entries: List[NameEntry] = []
         self.text_entries: List[TextEntry] = []  # Entradas de texto/frases
         self.entry_dict: Dict[int, NameEntry] = {}  # Mapeo ID -> Entry para el árbol
@@ -61,6 +62,25 @@ class DFNameEditor:
         
         self.create_ui()
         
+    def detect_base_path(self):
+        """Detect the base path based on version (0.47 vs 0.53)"""
+        # Try 0.53 structure first
+        path_53 = Path("df_53_03_win/data/vanilla")
+        if path_53.exists():
+            return path_53
+        
+        # Try 0.47 structure
+        path_47 = Path("Dwarf Fortress 0.47.05/raw")
+        if path_47.exists():
+            return path_47
+        
+        # Default to 0.53 structure
+        return Path("df_53_03_win/data/vanilla")
+    
+    def is_version_47(self):
+        """Check if we're using version 0.47 structure"""
+        return "0.47" in str(self.base_path) or "raw" in str(self.base_path)
+    
     def create_ui(self):
         # Frame superior
         control_frame = ttk.Frame(self.root, padding="10")
@@ -438,10 +458,14 @@ class DFNameEditor:
             messagebox.showerror("Error", f"Error guardando configuración: {e}")
     
     def select_base_path(self):
-        path = filedialog.askdirectory(title="Seleccionar df_53_03_win/data/vanilla")
+        if self.is_version_47():
+            path = filedialog.askdirectory(title="Seleccionar Dwarf Fortress 0.47.05/raw")
+        else:
+            path = filedialog.askdirectory(title="Seleccionar df_53_03_win/data/vanilla")
         if path:
             self.base_path = Path(path)
-            self.status_label.config(text=f"Directorio: {self.base_path}")
+            version_info = "0.47" if self.is_version_47() else "0.53"
+            self.status_label.config(text=f"Directorio: {self.base_path} (Version {version_info})")
     
     def load_files(self):
         if not self.base_path.exists():
@@ -457,76 +481,143 @@ class DFNameEditor:
         self.status_label.config(text="Cargando archivos...")
         self.root.update()
         
-        # TODOS los archivos de criaturas
-        creature_files = [
-            "vanilla_creatures/objects/creature_standard.txt",
-            "vanilla_creatures/objects/creature_large_tropical.txt",
-            "vanilla_creatures/objects/creature_large_temperate.txt",
-            "vanilla_creatures/objects/creature_large_mountain.txt",
-            "vanilla_creatures/objects/creature_large_ocean.txt",
-            "vanilla_creatures/objects/creature_large_riverlake.txt",
-            "vanilla_creatures/objects/creature_large_tundra.txt",
-            "vanilla_creatures/objects/creature_domestic.txt",
-            "vanilla_creatures/objects/creature_fanciful.txt",
-            "vanilla_creatures/objects/creature_birds.txt",
-            "vanilla_creatures/objects/creature_birds_new.txt",
-            "vanilla_creatures/objects/creature_reptiles.txt",
-            "vanilla_creatures/objects/creature_amphibians.txt",
-            "vanilla_creatures/objects/creature_insects.txt",
-            "vanilla_creatures/objects/creature_small_mammals.txt",
-            "vanilla_creatures/objects/creature_small_mammal_new.txt",
-            "vanilla_creatures/objects/creature_subterranean.txt",
-            "vanilla_creatures/objects/creature_tropical_new.txt",
-            "vanilla_creatures/objects/creature_temperate_new.txt",
-            "vanilla_creatures/objects/creature_desert_new.txt",
-            "vanilla_creatures/objects/creature_mountain_new.txt",
-            "vanilla_creatures/objects/creature_ocean_new.txt",
-            "vanilla_creatures/objects/creature_riverlakepool_new.txt",
-            "vanilla_creatures/objects/creature_tundra_taiga_new.txt",
-            "vanilla_creatures/objects/creature_next_underground.txt",
-            "vanilla_creatures/objects/creature_other.txt",
-            "vanilla_creatures/objects/creature_bug_slug_new.txt",
-            "vanilla_creatures/objects/creature_annelids.txt",
-            "vanilla_creatures/objects/creature_small_ocean.txt",
-            "vanilla_creatures/objects/creature_small_riverlake.txt",
-            "vanilla_creatures/objects/creature_equipment.txt",
-        ]
-        
-        # Items
-        item_files = [
-            "vanilla_items/objects/item_tool.txt",
-            "vanilla_items/objects/item_weapon.txt",
-            "vanilla_items/objects/item_armor.txt",
-            "vanilla_items/objects/item_food.txt",
-            "vanilla_items/objects/item_ammo.txt",
-            "vanilla_items/objects/item_shield.txt",
-            "vanilla_items/objects/item_helm.txt",
-            "vanilla_items/objects/item_gloves.txt",
-            "vanilla_items/objects/item_pants.txt",
-            "vanilla_items/objects/item_shoes.txt",
-            "vanilla_items/objects/item_toy.txt",
-            "vanilla_items/objects/item_trapcomp.txt",
-            "vanilla_items/objects/item_siegeammo.txt",
-        ]
-        
-        # Materiales
-        material_files = [
-            "vanilla_materials/objects/inorganic_stone_layer.txt",
-            "vanilla_materials/objects/inorganic_stone_mineral.txt",
-            "vanilla_materials/objects/inorganic_stone_soil.txt",
-            "vanilla_materials/objects/inorganic_stone_gem.txt",
-            "vanilla_materials/objects/inorganic_metal.txt",
-            "vanilla_materials/objects/inorganic_other.txt",
-        ]
-        
-        # Plantas
-        plant_files = [
-            "vanilla_plants/objects/plant_standard.txt",
-            "vanilla_plants/objects/plant_grasses.txt",
-            "vanilla_plants/objects/plant_new_trees.txt",
-            "vanilla_plants/objects/plant_crops.txt",
-            "vanilla_plants/objects/plant_garden.txt",
-        ]
+        # Get file paths based on version
+        if self.is_version_47():
+            # Version 0.47 structure: raw/objects/
+            creature_files = [
+                "objects/creature_standard.txt",
+                "objects/creature_large_tropical.txt",
+                "objects/creature_large_temperate.txt",
+                "objects/creature_large_mountain.txt",
+                "objects/creature_large_ocean.txt",
+                "objects/creature_large_riverlake.txt",
+                "objects/creature_large_tundra.txt",
+                "objects/creature_domestic.txt",
+                "objects/creature_fanciful.txt",
+                "objects/creature_birds.txt",
+                "objects/creature_birds_new.txt",
+                "objects/creature_reptiles.txt",
+                "objects/creature_amphibians.txt",
+                "objects/creature_insects.txt",
+                "objects/creature_small_mammals.txt",
+                "objects/creature_small_mammal_new.txt",
+                "objects/creature_subterranean.txt",
+                "objects/creature_tropical_new.txt",
+                "objects/creature_temperate_new.txt",
+                "objects/creature_desert_new.txt",
+                "objects/creature_mountain_new.txt",
+                "objects/creature_ocean_new.txt",
+                "objects/creature_riverlakepool_new.txt",
+                "objects/creature_tundra_taiga_new.txt",
+                "objects/creature_next_underground.txt",
+                "objects/creature_other.txt",
+                "objects/creature_bug_slug_new.txt",
+                "objects/creature_annelids.txt",
+                "objects/creature_small_ocean.txt",
+                "objects/creature_small_riverlake.txt",
+                "objects/creature_equipment.txt",
+            ]
+            
+            item_files = [
+                "objects/item_tool.txt",
+                "objects/item_weapon.txt",
+                "objects/item_armor.txt",
+                "objects/item_food.txt",
+                "objects/item_ammo.txt",
+                "objects/item_shield.txt",
+                "objects/item_helm.txt",
+                "objects/item_gloves.txt",
+                "objects/item_pants.txt",
+                "objects/item_shoes.txt",
+                "objects/item_toy.txt",
+                "objects/item_trapcomp.txt",
+                "objects/item_siegeammo.txt",
+            ]
+            
+            material_files = [
+                "objects/inorganic_stone_layer.txt",
+                "objects/inorganic_stone_mineral.txt",
+                "objects/inorganic_stone_soil.txt",
+                "objects/inorganic_stone_gem.txt",
+                "objects/inorganic_metal.txt",
+                "objects/inorganic_other.txt",
+            ]
+            
+            plant_files = [
+                "objects/plant_standard.txt",
+                "objects/plant_grasses.txt",
+                "objects/plant_new_trees.txt",
+                "objects/plant_crops.txt",
+                "objects/plant_garden.txt",
+            ]
+        else:
+            # Version 0.53 structure: data/vanilla/vanilla_*/objects/
+            creature_files = [
+                "vanilla_creatures/objects/creature_standard.txt",
+                "vanilla_creatures/objects/creature_large_tropical.txt",
+                "vanilla_creatures/objects/creature_large_temperate.txt",
+                "vanilla_creatures/objects/creature_large_mountain.txt",
+                "vanilla_creatures/objects/creature_large_ocean.txt",
+                "vanilla_creatures/objects/creature_large_riverlake.txt",
+                "vanilla_creatures/objects/creature_large_tundra.txt",
+                "vanilla_creatures/objects/creature_domestic.txt",
+                "vanilla_creatures/objects/creature_fanciful.txt",
+                "vanilla_creatures/objects/creature_birds.txt",
+                "vanilla_creatures/objects/creature_birds_new.txt",
+                "vanilla_creatures/objects/creature_reptiles.txt",
+                "vanilla_creatures/objects/creature_amphibians.txt",
+                "vanilla_creatures/objects/creature_insects.txt",
+                "vanilla_creatures/objects/creature_small_mammals.txt",
+                "vanilla_creatures/objects/creature_small_mammal_new.txt",
+                "vanilla_creatures/objects/creature_subterranean.txt",
+                "vanilla_creatures/objects/creature_tropical_new.txt",
+                "vanilla_creatures/objects/creature_temperate_new.txt",
+                "vanilla_creatures/objects/creature_desert_new.txt",
+                "vanilla_creatures/objects/creature_mountain_new.txt",
+                "vanilla_creatures/objects/creature_ocean_new.txt",
+                "vanilla_creatures/objects/creature_riverlakepool_new.txt",
+                "vanilla_creatures/objects/creature_tundra_taiga_new.txt",
+                "vanilla_creatures/objects/creature_next_underground.txt",
+                "vanilla_creatures/objects/creature_other.txt",
+                "vanilla_creatures/objects/creature_bug_slug_new.txt",
+                "vanilla_creatures/objects/creature_annelids.txt",
+                "vanilla_creatures/objects/creature_small_ocean.txt",
+                "vanilla_creatures/objects/creature_small_riverlake.txt",
+                "vanilla_creatures/objects/creature_equipment.txt",
+            ]
+            
+            item_files = [
+                "vanilla_items/objects/item_tool.txt",
+                "vanilla_items/objects/item_weapon.txt",
+                "vanilla_items/objects/item_armor.txt",
+                "vanilla_items/objects/item_food.txt",
+                "vanilla_items/objects/item_ammo.txt",
+                "vanilla_items/objects/item_shield.txt",
+                "vanilla_items/objects/item_helm.txt",
+                "vanilla_items/objects/item_gloves.txt",
+                "vanilla_items/objects/item_pants.txt",
+                "vanilla_items/objects/item_shoes.txt",
+                "vanilla_items/objects/item_toy.txt",
+                "vanilla_items/objects/item_trapcomp.txt",
+                "vanilla_items/objects/item_siegeammo.txt",
+            ]
+            
+            material_files = [
+                "vanilla_materials/objects/inorganic_stone_layer.txt",
+                "vanilla_materials/objects/inorganic_stone_mineral.txt",
+                "vanilla_materials/objects/inorganic_stone_soil.txt",
+                "vanilla_materials/objects/inorganic_stone_gem.txt",
+                "vanilla_materials/objects/inorganic_metal.txt",
+                "vanilla_materials/objects/inorganic_other.txt",
+            ]
+            
+            plant_files = [
+                "vanilla_plants/objects/plant_standard.txt",
+                "vanilla_plants/objects/plant_grasses.txt",
+                "vanilla_plants/objects/plant_new_trees.txt",
+                "vanilla_plants/objects/plant_crops.txt",
+                "vanilla_plants/objects/plant_garden.txt",
+            ]
         
         # Cargar archivos
         self.log("Loading creature files...")
@@ -547,19 +638,31 @@ class DFNameEditor:
         
         # Entidades
         self.log("Loading entity files...")
-        entity_file = self.base_path / "vanilla_entities/objects/entity_default.txt"
+        if self.is_version_47():
+            entity_file = self.base_path / "objects/entity_default.txt"
+        else:
+            entity_file = self.base_path / "vanilla_entities/objects/entity_default.txt"
         if entity_file.exists():
             self.parse_entity_file(entity_file)
         
         # Idiomas
         self.log("Loading language files...")
-        language_files = [
-            "vanilla_languages/objects/language_words.txt",
-            "vanilla_languages/objects/language_DWARF.txt",
-            "vanilla_languages/objects/language_ELF.txt",
-            "vanilla_languages/objects/language_HUMAN.txt",
-            "vanilla_languages/objects/language_GOBLIN.txt",
-        ]
+        if self.is_version_47():
+            language_files = [
+                "objects/language_words.txt",
+                "objects/language_DWARF.txt",
+                "objects/language_ELF.txt",
+                "objects/language_HUMAN.txt",
+                "objects/language_GOBLIN.txt",
+            ]
+        else:
+            language_files = [
+                "vanilla_languages/objects/language_words.txt",
+                "vanilla_languages/objects/language_DWARF.txt",
+                "vanilla_languages/objects/language_ELF.txt",
+                "vanilla_languages/objects/language_HUMAN.txt",
+                "vanilla_languages/objects/language_GOBLIN.txt",
+            ]
         
         for file_path in language_files:
             self.parse_file(self.base_path / file_path, "language")
@@ -567,81 +670,177 @@ class DFNameEditor:
         # Archivos de texto/frases
         self.log("Loading text files...")
         # Text files - Focus on Legends mode content
-        # Core Legends mode files (historical events, narratives, books)
-        text_files = [
-            # Essential Legends mode files
-            "vanilla_text/objects/text_general.txt",  # General historical narratives
-            "vanilla_text/objects/text_positive.txt",  # Positive events
-            "vanilla_text/objects/text_curse.txt",  # Negative events
-            "vanilla_text/objects/text_secret_death.txt",  # Secret deaths
-            "vanilla_text/objects/text_hist_fig_slayer.txt",  # Historical figure slayer
-            "vanilla_text/objects/text_slayer.txt",  # Slayer titles
-            "vanilla_text/objects/text_animal_slayer.txt",  # Animal slayer
-            # Book and scroll generation (Legends mode)
-            "vanilla_text/objects/text_book_art.txt",  # Artistic book titles
-            "vanilla_text/objects/text_book_instruction.txt",  # Instructional book titles
-            # Historical figure interactions (Legends mode)
-            "vanilla_text/objects/text_justification_antithetical.txt",
-            "vanilla_text/objects/text_justification_experience.txt",
-            "vanilla_text/objects/text_justification_proximity.txt",
-            "vanilla_text/objects/text_justification_reminder.txt",
-            "vanilla_text/objects/text_justification_representation.txt",
-            "vanilla_text/objects/text_arch_info_justification.txt",
-            # Historical figure relationships (Legends mode)
-            "vanilla_text/objects/text_family_relationship_spec.txt",
-            "vanilla_text/objects/text_family_relationship_no_spec.txt",
-            "vanilla_text/objects/text_family_relationship_spec_dead.txt",
-            "vanilla_text/objects/text_family_relationship_no_spec_dead.txt",
-            "vanilla_text/objects/text_family_relationship_additional.txt",
-            "vanilla_text/objects/text_family_relationship_additional_dead.txt",
-            # Historical figure professions (Legends mode)
-            "vanilla_text/objects/text_hunting_profession.txt",
-            "vanilla_text/objects/text_mercenary_profession.txt",
-            "vanilla_text/objects/text_thief_profession.txt",
-            "vanilla_text/objects/text_snatcher_profession.txt",
-            "vanilla_text/objects/text_wandering_profession.txt",
-            "vanilla_text/objects/text_past_hunting_profession.txt",
-            "vanilla_text/objects/text_past_mercenary_profession.txt",
-            "vanilla_text/objects/text_past_thief_profession.txt",
-            "vanilla_text/objects/text_past_snatcher_profession.txt",
-            "vanilla_text/objects/text_past_wandering_profession.txt",
-            "vanilla_text/objects/text_hunting_profession_year.txt",
-            "vanilla_text/objects/text_mercenary_profession_year.txt",
-            "vanilla_text/objects/text_thief_profession_year.txt",
-            "vanilla_text/objects/text_snatcher_profession_year.txt",
-            "vanilla_text/objects/text_wandering_profession_year.txt",
-            "vanilla_text/objects/text_current_profession_year.txt",
-            "vanilla_text/objects/text_current_profession_no_year.txt",
-            "vanilla_text/objects/text_past_profession_year.txt",
-            "vanilla_text/objects/text_past_profession_no_year.txt",
-            # Historical figure seekers (Legends mode)
-            "vanilla_text/objects/text_unknown_hf_seeker.txt",
-            "vanilla_text/objects/text_site_specific_hf_seeker.txt",
-            "vanilla_text/objects/text_ab_specific_hf_seeker.txt",
-            "vanilla_text/objects/text_same_site_specific_hf_seeker.txt",
-            "vanilla_text/objects/text_same_site_ab_specific_hf_seeker.txt",
-            # Other Legends mode content
-            "vanilla_text/objects/text_child_age_proclamation.txt",
-            "vanilla_text/objects/text_no_family.txt",
-            # Additional text files that may appear in Legends mode
-            "vanilla_text/objects/text_goodbye_worship_1.txt",
-            "vanilla_text/objects/text_goodbye_worship_2.txt",
-            "vanilla_text/objects/text_goodbye_worship_3.txt",
-            "vanilla_text/objects/text_greet_baby.txt",
-            "vanilla_text/objects/text_greet_reply_after_hero.txt",
-            "vanilla_text/objects/text_greet_reply_unusual_first.txt",
-            "vanilla_text/objects/text_greet_worship.txt",
-            "vanilla_text/objects/text_guard_profession.txt",
-            "vanilla_text/objects/text_guard_warning.txt",
-            "vanilla_text/objects/text_soldier_profession.txt",
-            "vanilla_text/objects/text_task_recommendation.txt",
-            "vanilla_text/objects/text_temple_already_member.txt",
-            "vanilla_text/objects/text_temple_become_member.txt",
-            "vanilla_text/objects/text_threat.txt",
-        ]
+        if self.is_version_47():
+            # Version 0.47: text files are in objects/text/
+            text_files = [
+                "objects/text/book_art.txt",
+                "objects/text/book_instruction.txt",
+                "objects/text/secret_death.txt",
+            ]
+        else:
+            # Version 0.53: text files are in vanilla_text/objects/
+            text_files = [
+                # Essential Legends mode files
+                "vanilla_text/objects/text_general.txt",  # General historical narratives
+                "vanilla_text/objects/text_positive.txt",  # Positive events
+                "vanilla_text/objects/text_curse.txt",  # Negative events
+                "vanilla_text/objects/text_secret_death.txt",  # Secret deaths
+                "vanilla_text/objects/text_hist_fig_slayer.txt",  # Historical figure slayer
+                "vanilla_text/objects/text_slayer.txt",  # Slayer titles
+                "vanilla_text/objects/text_animal_slayer.txt",  # Animal slayer
+                # Book and scroll generation (Legends mode)
+                "vanilla_text/objects/text_book_art.txt",  # Artistic book titles
+                "vanilla_text/objects/text_book_instruction.txt",  # Instructional book titles
+                # Historical figure interactions (Legends mode)
+                "vanilla_text/objects/text_justification_antithetical.txt",
+                "vanilla_text/objects/text_justification_experience.txt",
+                "vanilla_text/objects/text_justification_proximity.txt",
+                "vanilla_text/objects/text_justification_reminder.txt",
+                "vanilla_text/objects/text_justification_representation.txt",
+                "vanilla_text/objects/text_arch_info_justification.txt",
+                # Historical figure relationships (Legends mode)
+                "vanilla_text/objects/text_family_relationship_spec.txt",
+                "vanilla_text/objects/text_family_relationship_no_spec.txt",
+                "vanilla_text/objects/text_family_relationship_spec_dead.txt",
+                "vanilla_text/objects/text_family_relationship_no_spec_dead.txt",
+                "vanilla_text/objects/text_family_relationship_additional.txt",
+                "vanilla_text/objects/text_family_relationship_additional_dead.txt",
+                # Historical figure professions (Legends mode)
+                "vanilla_text/objects/text_hunting_profession.txt",
+                "vanilla_text/objects/text_mercenary_profession.txt",
+                "vanilla_text/objects/text_thief_profession.txt",
+                "vanilla_text/objects/text_snatcher_profession.txt",
+                "vanilla_text/objects/text_wandering_profession.txt",
+                "vanilla_text/objects/text_past_hunting_profession.txt",
+                "vanilla_text/objects/text_past_mercenary_profession.txt",
+                "vanilla_text/objects/text_past_thief_profession.txt",
+                "vanilla_text/objects/text_past_snatcher_profession.txt",
+                "vanilla_text/objects/text_past_wandering_profession.txt",
+                "vanilla_text/objects/text_hunting_profession_year.txt",
+                "vanilla_text/objects/text_mercenary_profession_year.txt",
+                "vanilla_text/objects/text_thief_profession_year.txt",
+                "vanilla_text/objects/text_snatcher_profession_year.txt",
+                "vanilla_text/objects/text_wandering_profession_year.txt",
+                "vanilla_text/objects/text_current_profession_year.txt",
+                "vanilla_text/objects/text_current_profession_no_year.txt",
+                "vanilla_text/objects/text_past_profession_year.txt",
+                "vanilla_text/objects/text_past_profession_no_year.txt",
+                # Historical figure seekers (Legends mode)
+                "vanilla_text/objects/text_unknown_hf_seeker.txt",
+                "vanilla_text/objects/text_site_specific_hf_seeker.txt",
+                "vanilla_text/objects/text_ab_specific_hf_seeker.txt",
+                "vanilla_text/objects/text_same_site_specific_hf_seeker.txt",
+                "vanilla_text/objects/text_same_site_ab_specific_hf_seeker.txt",
+                # Other Legends mode content
+                "vanilla_text/objects/text_child_age_proclamation.txt",
+                "vanilla_text/objects/text_no_family.txt",
+                # Additional text files that may appear in Legends mode
+                "vanilla_text/objects/text_goodbye_worship_1.txt",
+                "vanilla_text/objects/text_goodbye_worship_2.txt",
+                "vanilla_text/objects/text_goodbye_worship_3.txt",
+                "vanilla_text/objects/text_greet_baby.txt",
+                "vanilla_text/objects/text_greet_reply_after_hero.txt",
+                "vanilla_text/objects/text_greet_reply_unusual_first.txt",
+                "vanilla_text/objects/text_greet_worship.txt",
+                "vanilla_text/objects/text_guard_profession.txt",
+                "vanilla_text/objects/text_guard_warning.txt",
+                "vanilla_text/objects/text_soldier_profession.txt",
+                "vanilla_text/objects/text_task_recommendation.txt",
+                "vanilla_text/objects/text_temple_already_member.txt",
+                "vanilla_text/objects/text_temple_become_member.txt",
+                "vanilla_text/objects/text_threat.txt",
+            ]
         
         for file_path in text_files:
             self.parse_text_file(self.base_path / file_path)
+        
+        # For version 0.47, also search subfolders recursively for any additional .txt files
+        if self.is_version_47():
+            self.log("Scanning subfolders for additional text files...")
+            objects_path = self.base_path / "objects"
+            if objects_path.exists():
+                # Recursively find all .txt files in subfolders
+                for txt_file in objects_path.rglob("*.txt"):
+                    # Skip files we've already loaded
+                    relative_path = txt_file.relative_to(self.base_path)
+                    already_loaded = False
+                    
+                    # Check if already in our lists
+                    for creature_file in creature_files:
+                        if (self.base_path / creature_file) == txt_file:
+                            already_loaded = True
+                            break
+                    if already_loaded:
+                        continue
+                    
+                    for item_file in item_files:
+                        if (self.base_path / item_file) == txt_file:
+                            already_loaded = True
+                            break
+                    if already_loaded:
+                        continue
+                    
+                    for material_file in material_files:
+                        if (self.base_path / material_file) == txt_file:
+                            already_loaded = True
+                            break
+                    if already_loaded:
+                            continue
+                    
+                    for plant_file in plant_files:
+                        if (self.base_path / plant_file) == txt_file:
+                            already_loaded = True
+                            break
+                    if already_loaded:
+                        continue
+                    
+                    for lang_file in language_files:
+                        if (self.base_path / lang_file) == txt_file:
+                            already_loaded = True
+                            break
+                    if already_loaded:
+                        continue
+                    
+                    for text_file in text_files:
+                        if (self.base_path / text_file) == txt_file:
+                            already_loaded = True
+                            break
+                    if already_loaded:
+                        continue
+                    
+                    # Skip entity_default.txt (already handled)
+                    if txt_file.name == "entity_default.txt":
+                        continue
+                    
+                    # Try to parse the file based on its name/path
+                    file_name_lower = txt_file.name.lower()
+                    parent_dir = txt_file.parent.name.lower()
+                    
+                    if "creature" in file_name_lower or "creature" in parent_dir:
+                        self.log(f"Found additional creature file: {relative_path}")
+                        self.parse_file(txt_file, "creature")
+                    elif "item" in file_name_lower or "item" in parent_dir:
+                        self.log(f"Found additional item file: {relative_path}")
+                        self.parse_file(txt_file, "item")
+                    elif "inorganic" in file_name_lower or "material" in file_name_lower:
+                        self.log(f"Found additional material file: {relative_path}")
+                        self.parse_file(txt_file, "material")
+                    elif "plant" in file_name_lower:
+                        self.log(f"Found additional plant file: {relative_path}")
+                        self.parse_file(txt_file, "plant")
+                    elif "language" in file_name_lower:
+                        self.log(f"Found additional language file: {relative_path}")
+                        self.parse_file(txt_file, "language")
+                    elif "text" in parent_dir or "book" in file_name_lower or "secret" in file_name_lower:
+                        self.log(f"Found additional text file: {relative_path}")
+                        self.parse_text_file(txt_file)
+                    elif "entity" in file_name_lower:
+                        self.log(f"Found additional entity file: {relative_path}")
+                        self.parse_entity_file(txt_file)
+                    elif "descriptor" in file_name_lower or "body" in file_name_lower or "reaction" in file_name_lower or "interaction" in file_name_lower or "building" in file_name_lower:
+                        # These might have names we can edit
+                        self.log(f"Found additional file (attempting to parse): {relative_path}")
+                        self.parse_file(txt_file, "creature")  # Try creature parser as fallback
         
         self.update_tree()
         self.update_text_tree()
