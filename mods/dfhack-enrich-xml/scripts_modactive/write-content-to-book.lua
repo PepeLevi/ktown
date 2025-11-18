@@ -5,6 +5,12 @@ local json = require('json')
 local eventful = require('plugins.eventful')
 local repeatUtil = require('repeat-util')
 
+-- okieeee next steps so i dont forget
+-- instead of generating random content fill it with as many contextual factors about the book as possible
+-- then write a python script that will request the content from deepseek using those factors
+-- somehow catch and include references to previous work
+-- put a guard on it for now so it only enriches a few per run for testing
+
 -- -- DECLARE VARIABLES -- --
 local GLOBAL_KEY = 'write-content-to-book'
 
@@ -19,7 +25,7 @@ local function get_default_state()
     return {
         enabled = false,
         count = 0,
-        ungenerated_count = 0,
+        books_without_content = 0,
     }
 end
 
@@ -50,7 +56,7 @@ local function ensure_state_entry()
     if not state_entry then
         state_entry = dfhack.persistent.save({
             key = GLOBAL_KEY,
-            ints = {state.enabled and 1 or 0, state.count or 0, state.ungenerated_count or 0},
+            ints = {state.enabled and 1 or 0, state.count or 0, state.books_without_content or 0},
         })
     end
     return state_entry
@@ -66,7 +72,7 @@ local function persist_state()
     if not entry then return end
     entry.ints[1] = state.enabled and 1 or 0
     entry.ints[2] = state.count or 0
-    entry.ints[3] = state.ungenerated_count or 0
+    entry.ints[3] = state.books_without_content or 0
     entry:save()
     print('saving state - enabled: ' .. tostring(state.enabled) .. ', count: ' .. state.count)
 end
@@ -135,56 +141,194 @@ end
 --Functions
 --######
 
--- wrapper that returns "unknown N" for df.enum_type[BAD_VALUE],
--- instead of returning nil or causing an error
-function generateBookContent(artifact)
-    -- Simple random text generation - replace with your logic
-    local words = {"the", "and", "for", "was", "with", "that", "this", "from", "have", "were",
-                  "knowledge", "ancient", "secret", "power", "magic", "forbidden", "lost",
-                  "truth", "wisdom", "scroll", "tome", "codex", "manuscript", "library"}
-    
-    local content = ""
-    local paragraph_count = math.random(3, 10)
-    
-    for p = 1, paragraph_count do
-        local sentence_count = math.random(3, 8)
-        for s = 1, sentence_count do
-            local word_count = math.random(5, 15)
-            for w = 1, word_count do
-                content = content .. words[math.random(1, #words)]
-                if w < word_count then content = content .. " " end
-            end
-            content = content .. ". "
-        end
-        content = content .. "\n\n"
+local function get_author_info(author_hfid)
+    if not author_hfid or author_hfid == -1 then
+        return {race = "UNKNOWN", civilization = "UNKNOWN", name = "UNKNOWN"}
     end
     
-    return content
+    local hf = df.historical_figure.find(author_hfid)
+    if not hf then
+        return {race = "UNKNOWN", civilization = "UNKNOWN", name = "UNKNOWN"}
+    end
+    
+    local race = "UNKNOWN"
+    local civ = "UNKNOWN"
+    local name = "UNKNOWN"
+    
+    -- Get race name safely
+    if hf.race and df.creature_raw.find(hf.race) then
+        race = df.creature_raw.find(hf.race).name[0] or "UNKNOWN"
+    end
+    
+    -- Get civilization name safely
+    if hf.civ_id and hf.civ_id ~= -1 then
+        local civ_ent = df.historical_entity.find(hf.civ_id)
+        if civ_ent and civ_ent.name then
+            civ = civ_ent.name.has_name and civ_ent.name.first_name or "UNKNOWN_CIV"
+        end
+    end
+    
+    -- Get author name safely
+    if hf.name then
+        name = dfhack.TranslateName(hf.name) or "UNKNOWN"
+    end
+    
+    return {
+        race = race,
+        civilization = civ,
+        name = name,
+        hf_id = author_hfid
+    }
 end
 
-local function annotate_entry(entry, written_content)
-    entry.title = written_content.title ~= '' and written_content.title or ("Untitled #" .. written_content.id)
-    entry.type = df.written_content_type[written_content.type] or tostring(written_content.type)
-    entry.author_hfid = written_content.author
-    entry.author_roll = written_content.author_roll
+local function get_reference_info(v)
+    if not v then
+        return nil
+    end
+    
+    if tostring(v._type) ==  "<type: general_ref_written_contentst>" then
+        return {
+            reference_type = "written content",
+        } -- not implemented
+    end
+    if tostring(v._type) ==  "<type: general_ref_knowledge_scholar_flagst>" then
+        return {
+            reference_type = "knowledge",
+        } -- not implemented
+    end
+    if tostring(v._type) ==  "<type: general_ref_value_levelst>" then
+        return {
+            reference_type = "value level",
+        } -- not implemented
+    end
+    if tostring(v._type) ==  "<type: general_ref_sitest>" then
+        return {
+            reference_type = "site",
+        } -- not implemented
+    end
+    if tostring(v._type) ==  "<type: general_ref_historical_eventst>" then
+        return {
+            reference_type = "historical event",
+        } -- not implemented
+    end
+    
+    return {}
+end
+
+local function get_references(reference_list)
+    references = {}
+    
+    for k, v in pairs(reference_list) do
+        references[k] = get_reference_info(v)
+    end
+
+    return references
+end
+
+local function get_styles(style_list, style_strengths)
+    if style_list == nil or style_strengths == nil then
+        return nil
+    end
+
+    local styles = {}
+    
+    for k, v in pairs(style_list) do
+        styles[k] = {
+            style = (df.written_content_style[v] or tostring(v)) or "UNKNOWN",
+            strength = 0
+        }
+    end
+    for k, v in pairs(style_strengths) do
+        styles[k].strength= style_strengths[k]
+    end
+
+    return styles
+end
+
+local function get_quality_level(quality)
+    if quality == nil then
+        return "UNKNOWN"
+    end
+    if quality < 20 then
+        return "LOW"
+    end
+    if quality < 100 then
+        return "AVERAGE"
+    end
+    if quality < 200 then
+        return "HIGH"
+    end
+    
+    return "VERY HIGH"
+end
+
+local function annotate_entry(entry, written_content, item_quality)
+    if not written_content then
+        return entry
+    end
+    
+    entry.title = written_content.title and written_content.title ~= '' and written_content.title or ("Untitled #" .. written_content.id)
+    entry.type = written_content.type and (df.written_content_type[written_content.type] or tostring(written_content.type)) or "UNKNOWN"
+    entry.author_hfid = written_content.author or -1
+
+    -- Enhanced context points for AI generation - ONLY using actual game data
+    entry.context_points = {
+        work_type = entry.type,
+        -- quality = get_quality_level(item_quality),
+        -- quality = get_quality_level(written_content.author_roll or 0),
+        page_count = written_content.page_end - written_content.page_start + 1,
+        author = get_author_info(written_content.author),
+        references = get_references(written_content.refs),
+        poetic_form = written_content.poetic_form and df.poetic_form[written_content.poetic_form] or tostring(written_content.poetic_form) or "NONE",
+        styles = get_styles(written_content.styles, written_content.style_strength) or {}
+    }
+    
+    -- -- Additional metadata with safe access
+    -- entry.metadata = {
+    --     -- world_id = df.global.world and df.global.world.world_data and df.global.world.world_data.id or -1,
+    --     creation_tick = written_content.creation_tick or -1,
+    --     flags = written_content.flags and {
+    --         has_introduction = written_content.flags.has_introduction or false,
+    --         has_conclusion = written_content.flags.has_conclusion or false,
+    --         incomplete = written_content.flags.incomplete or false
+    --     } or {}
+    -- }
+    
     return entry
 end
 
-local function record_written_work(written_content, source)
+local function record_written_work(written_content, source, item_quality)
     if not written_content then
         return false
     end
+    
     local key = tostring(written_content.id)
     if enhanced_books.data[key] then
         return false
     end
+    
     local entry = {
-        text_content = generateBookContent(written_content),
+        text_content = "",  -- Empty for now, will be filled by AI
         written_content_id = written_content.id,
-        source = source or 'scan',
+        -- source = source or 'scan',
+        -- timestamp = os.time(),  -- Record when we captured this data
+        -- item_quality = item_quality or -1  -- Store the actual item quality
     }
-    enhanced_books.data[key] = annotate_entry(entry, written_content)
+    
+    enhanced_books.data[key] = annotate_entry(entry, written_content, item_quality)
     state.count = state.count + 1
+    
+    -- Debug output to verify we're capturing the right data
+    print(("Recorded written work %d: %s"):format(
+        written_content.id, 
+        enhanced_books.data[key].title
+    ))
+    print(("  Type: %s, Author: %s"):format(
+        enhanced_books.data[key].context_points.work_type,
+        enhanced_books.data[key].context_points.quality,
+        enhanced_books.data[key].context_points.author.name
+    ))
+    
     return true
 end
 
@@ -199,6 +343,7 @@ local function extract_written_content(item)
     end
 end
 
+-- Update the handle_item_created function to pass item quality
 local function handle_item_created(item_id) --fortress mode only
     print("handle_item_created!")
     if not state.enabled then
@@ -208,8 +353,12 @@ local function handle_item_created(item_id) --fortress mode only
     if not item then
         return
     end
+    
+    -- Get the item quality before extracting written content
+    local item_quality = item.quality or -1
+    
     local written_content = extract_written_content(item)
-    if record_written_work(written_content, 'event') then
+    if record_written_work(written_content, 'event', item_quality) then
         if state.count % 25 == 0 then
             saveEnhancedBooksData()
         end
@@ -236,6 +385,7 @@ local function unregister_item_listener()
     print("write-content-to-book: item creation listener removed")
 end
 
+-- Update the scanning function to handle cases where we don't have item quality
 local function processWrittenWorks()
     if not df.global.world or not df.global.world.written_contents then return end
     local contents = df.global.world.written_contents.all
@@ -245,7 +395,47 @@ local function processWrittenWorks()
     local new_entries = 0
 
     for _, wc in ipairs(contents) do
-        if wc and record_written_work(wc, 'scan') then
+
+        -- uncomment for documentation
+        -- if(_ % 50 == 0) then
+        --     print("written work:")
+        --     for k, v in pairs(wc) do
+        --         print(k, v)
+        --     end
+            
+        --     if(wc.refs ~= nil) then
+        --         print("refs:")
+        --         for k, v in pairs(wc.refs) do
+        --             print(v._type, tostring(v._type) == "<type: general_ref_written_contentst>")
+        --             for k2, v2 in pairs(v) do
+        --                 print(k2, v2)
+        --             end
+        --         end
+        --     end
+            
+        --     if(wc.ref_aux ~= nil) then
+        --         print("refs aux:")
+        --         for k, v in pairs(wc.ref_aux) do
+        --             print(v)
+        --         end
+        --     end
+            
+        --     if(wc.styles ~= nil) then
+        --         print("styles:")
+        --         for k, v in pairs(wc.styles) do
+        --             print(v)
+        --         end
+        --     end
+
+        --     if(wc.style_strength ~= nil) then
+        --         print("style strength:")
+        --         for k, v in pairs(wc.style_strength) do
+        --             print(k, v)
+        --         end
+        --     end
+        -- end
+
+        if wc and record_written_work(wc, 'scan', -1) then  -- Use -1 for unknown quality in scans
             new_entries = new_entries + 1
             if new_entries <= 5 then
                 local key = tostring(wc.id)
@@ -256,10 +446,11 @@ local function processWrittenWorks()
     end
 
     print(("Processed %d written works (%d new)"):format(scanned, new_entries))
-    print("ungenerated_count: " .. state.ungenerated_count)
+    print("books_without_content: " .. state.books_without_content)
 end
 
 local function start()
+    enhanced_books = {data = {}}
 
     -- Always register the event listener (works in fortress mode)
     register_item_listener()
@@ -274,12 +465,12 @@ local function start()
     end
 
     state.count = 0
-    state.ungenerated_count = 0
+    state.books_without_content = 0
     persist_state()
     
     -- Polling timer that works during worldgen
     print("scheduling polling timer")
-    repeatUtil.scheduleEvery(GLOBAL_KEY, 10, 'frames', function()
+    repeatUtil.scheduleEvery(GLOBAL_KEY, 100, 'frames', function()
         state.count = state.count + 1
         print("loop repeat count: " .. state.count)
         
@@ -290,14 +481,12 @@ local function start()
             local after_count = count_table_keys(enhanced_books.data)
             
             if after_count > before_count then
-                state.ungenerated_count = state.ungenerated_count + (after_count - before_count)
+                state.books_without_content = state.books_without_content + (after_count - before_count)
                 print("Saving enhanced books data (count: " .. state.count .. ")")
                 saveEnhancedBooksData()
 
-                if state.ungenerated_count > 100 then
-                    os.execute('python ' .. script_path)
-                    state.ungenerated_count = 0
-                end
+                os.execute('python ' .. script_path .. " " .. dfhack.getSavePath():gsub("%s", "+"))
+                state.books_without_content = 0
             end
         end
         
