@@ -14,7 +14,7 @@ function App() {
   const [allowUpload, setAllowUpload] = useState(true);
 
   // Use environment variable for backend URL, fallback to empty string for relative URLs
-  // For Cloudflare tunnel: set REACT_APP_BACKEND_URL to your backend tunnel URL (e.g., https://your-backend-tunnel.trycloudflare.com)
+  // For Cloudflare tunnel: set REACT_APP_BACKEND_URL to https://back.kt0wn.com
   // For local development: leave empty to use proxy, or set to http://localhost:3001
   const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
 
