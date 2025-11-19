@@ -1,0 +1,27 @@
+df_world{
+    [
+        {
+            celle_id: int,
+            coordinates: [0,0]
+            region: {
+                name,
+                type
+                coord: [0,0],
+                sites:[
+                    {name
+                    .....
+                    structures: {
+                        inhabitants: string or [string]
+                        full_historical_figues: [
+                            written_content: {
+
+                            }
+                        ]
+                    }
+                    }
+
+                ]
+            }
+       
+        }
+        }
