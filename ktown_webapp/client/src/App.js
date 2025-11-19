@@ -15,7 +15,7 @@ function App() {
 
   // Use environment variable for backend URL, fallback to empty string for relative URLs
   // For Cloudflare tunnel: set REACT_APP_BACKEND_URL to your tunnel URL (e.g., https://your-tunnel-url.trycloudflare.com)
-  // For local development: leave empty to use proxy, or set to http://localhost:3001
+  // For local development: leave empty to use proxy, or set git ato http://localhost:3001
   const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
 
   const handleFile1Change = (e) => setFile1(e.target.files[0] || null);
