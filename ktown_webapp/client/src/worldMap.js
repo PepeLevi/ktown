@@ -21,8 +21,6 @@ const CELL_GAP = 0;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 160;
 
-const zoomSpeed = 4;
-
 function calculateGridPositions(
   index,
   count,
@@ -205,6 +203,7 @@ function WorldMap({
   useEffect(() => {
     if (!worldData || !worldData.cells?.length) return;
 
+    // --- generic renderer for sites / structures / figures ---
     function drawEntityLayer({
       markers,
       rectClass,
@@ -220,15 +219,14 @@ function WorldMap({
       getTitleText, // (d) => string
       composeEntity, // (d) => composed object for onEntityClick
       getZoomParams, // (d) => { cx, cy, k }
+      getBoundingBox, // (d) => { x, y, width, height } (parent box)
     }) {
       if (!markers || !markers.length) {
-        // Clean old layer if markers now empty
         g.selectAll(`rect.${rectClass}`).remove();
         g.selectAll(`text.${labelClass}`).remove();
         return;
       }
 
-      // --- rects ---
       const rectSel = g.selectAll(`rect.${rectClass}`).data(markers, keyFn);
 
       const rectEnter = rectSel
@@ -239,29 +237,64 @@ function WorldMap({
         .attr("height", size)
         .style("cursor", "pointer");
 
+      let pos = { x: 0, y: 0 };
+
       rectEnter
         .merge(rectSel)
         .attr("x", (d) => {
-          const baseX = xScale(d.cell.y);
+          // parent bounding box: default is the whole cell
+          const bb = (getBoundingBox && getBoundingBox(d)) || {
+            x: xScale(d.cell.y),
+            y: yScale(d.cell.x),
+            width: CELL_SIZE,
+            height: CELL_SIZE,
+          };
+
           const { x } = calculateGridPositions(
             d.idx,
             d.count,
             size,
-            CELL_SIZE,
-            CELL_SIZE
+            bb.width,
+            bb.height
           );
-          return baseX + x;
+          const finalX = bb.x + x;
+
+          // store bbox for children, if needed
+          d._bbox = d._bbox || {};
+          d._bbox.x = finalX;
+          d._bbox.y = undefined; // will set in 'y' attr
+          d._bbox.width = size;
+          d._bbox.height = size;
+
+          pos.x = finalX;
+
+          return finalX;
         })
         .attr("y", (d) => {
-          const baseY = yScale(d.cell.x);
+          const bb = (getBoundingBox && getBoundingBox(d)) || {
+            x: xScale(d.cell.y),
+            y: yScale(d.cell.x),
+            width: CELL_SIZE,
+            height: CELL_SIZE,
+          };
+
           const { y } = calculateGridPositions(
             d.idx,
             d.count,
             size,
-            CELL_SIZE,
-            CELL_SIZE
+            bb.width,
+            bb.height
           );
-          return baseY + y;
+          const finalY = bb.y + y;
+
+          d._bbox = d._bbox || {};
+          d._bbox.y = finalY;
+          d._bbox.width = size;
+          d._bbox.height = size;
+
+          pos.y = finalY;
+
+          return finalY;
         })
         .each(function (d) {
           const rect = d3.select(this);
@@ -279,7 +312,7 @@ function WorldMap({
         .append("title")
         .text((d) => (getTitleText ? getTitleText(d) : ""));
 
-      // --- labels ---
+      // labels
       const labelSel = g.selectAll(`text.${labelClass}`).data(markers, keyFn);
 
       const labelEnter = labelSel
@@ -292,32 +325,26 @@ function WorldMap({
       labelEnter
         .merge(labelSel)
         .attr("x", (d) => {
-          const baseX = xScale(d.cell.y);
-          const { x } = calculateGridPositions(
-            d.idx,
-            d.count,
-            size,
-            CELL_SIZE,
-            CELL_SIZE
-          );
-          return baseX + x;
+          const bb = d._bbox || {
+            x: xScale(d.cell.y),
+            y: yScale(d.cell.x),
+          };
+          return bb.x + size / 100;
         })
         .attr("y", (d) => {
-          const baseY = yScale(d.cell.x);
-          const { y } = calculateGridPositions(
-            d.idx,
-            d.count,
-            size,
-            CELL_SIZE,
-            CELL_SIZE
-          );
-          return baseY + y; // a bit down from top-left
+          const bb = d._bbox || {
+            x: xScale(d.cell.y),
+            y: yScale(d.cell.x),
+          };
+          return bb.y + size / 100;
         })
         .style("font-size", `${labelFontSize}px`)
         .style("fill", labelFill ?? "#fff")
         .text((d) => (getLabelText ? getLabelText(d) : ""));
 
-      // --- shared click handler for rect + label ---
+      console.log("INSERTS ENTITY", getLabelText, pos);
+
+      // shared click handler
       const handleClick = (event, d) => {
         event.stopPropagation();
         onCellClick?.(null);
@@ -471,7 +498,7 @@ function WorldMap({
         // xScale/yScale are in scope in this effect
         const cx = xScale(d.y) + CELL_SIZE / 2;
         const cy = yScale(d.x) + CELL_SIZE / 2;
-        zoomToPoint(cx, cy, zoomSpeed); //
+        zoomToPoint(cx, cy, 20); //
       }
     });
 
@@ -515,7 +542,7 @@ function WorldMap({
       },
       baseStroke: "yellow",
       baseStrokeWidth: 0.1,
-      labelFontSize: 0.1,
+      labelFontSize: 4,
       labelFill: siteColor,
       getLabelText: (d) =>
         d.site?.fromFile2?.name ||
@@ -575,11 +602,13 @@ function WorldMap({
         const cy = yScale(d.cell.x) + CELL_SIZE / 2;
         return { cx, cy, k: 20 };
       },
+      // no getBoundingBox -> default = whole cell
     });
 
+    // --- STRUCTURES: use site rect as parent bbox ---
     const structureMarkers = [];
     cells.forEach((cell) => {
-      (cell.sites || []).forEach((site) => {
+      (cell.sites || []).forEach((site, siteIdx) => {
         const raw = site.structures?.structure;
         const structures = normalizeToArray(raw);
         structures.forEach((structure, idx) => {
@@ -590,12 +619,14 @@ function WorldMap({
             structure,
             idx,
             count: structures.length,
+            parentSiteIdx: siteIdx,
+            parentSiteCount: cell.sites.length,
           });
         });
       });
     });
 
-    const structureSize = siteSize * 0.3;
+    const structureSize = siteSize * 0.5;
 
     drawEntityLayer({
       markers: structureMarkers,
@@ -607,9 +638,9 @@ function WorldMap({
           d.structure.id || d.structure.local_id || d.idx
         }`,
       getFill: () => "#6b7280",
-      baseStroke: "#fbbf24",
-      baseStrokeWidth: 0.2,
-      labelFontSize: 0.1,
+      baseStroke: structureColor,
+      baseStrokeWidth: 0.3,
+      labelFontSize: 0.2,
       labelFill: structureColor,
       getLabelText: (d) => d.structure.name || d.structure.type || "",
       getTitleText: (d) => d.structure.name || d.structure.type || "Structure",
@@ -644,35 +675,72 @@ function WorldMap({
         const cy = yScale(d.cell.x) + CELL_SIZE / 2;
         return { cx, cy, k: 50 };
       },
+      getBoundingBox: (d) => {
+        // site’s bounding box within the cell
+        const siteIdx = d.parentSiteIdx;
+        const siteCount = d.parentSiteCount;
+        const baseX = xScale(d.cell.y);
+        const baseY = yScale(d.cell.x);
+        const { x, y } = calculateGridPositions(
+          siteIdx,
+          siteCount,
+          siteSize,
+          CELL_SIZE,
+          CELL_SIZE
+        );
+        return {
+          x: baseX + x,
+          y: baseY + y,
+          width: siteSize,
+          height: siteSize,
+        };
+      },
     });
 
     // figures
-    // --- FIGURES as a generic layer ---
+
+    // --- FIGURES: use structure rect as parent bbox ---
     const figureMarkers = [];
     cells.forEach((cell) => {
-      (cell.sites || []).forEach((site) => {
-        const figures = site.historical_figures || [];
-        figures.forEach((hf, idx) => {
-          figureMarkers.push({
-            kind: "figure",
-            cell,
-            site,
-            hf,
-            idx,
-            count: figures.length,
+      (cell.sites || []).forEach((site, siteIdx) => {
+        const raw = site.structures?.structure;
+        const structures = normalizeToArray(raw);
+        structures.forEach((structure, structIdx) => {
+          const inhabitantIds = normalizeToArray(structure.inhabitant);
+          const figures = (site.historical_figures || []).filter((hf) =>
+            inhabitantIds.includes(hf.id)
+          );
+
+          figures.forEach((hf, idx) => {
+            figureMarkers.push({
+              kind: "figure",
+              cell,
+              site,
+              structure,
+              hf,
+              idx,
+              count: figures.length,
+              parentSiteIdx: siteIdx,
+              parentSiteCount: cell.sites.length,
+              parentStructIdx: structIdx,
+              parentStructCount: structures.length,
+            });
           });
         });
       });
     });
 
-    const figSize = structureSize * 0.4;
+    const figSize = structureSize * 0.5;
 
     drawEntityLayer({
       markers: figureMarkers,
       rectClass: "figure-marker",
       labelClass: "figure-label",
       size: figSize,
-      keyFn: (d) => `${d.cell.key}-hf-${d.hf.id || d.idx}`,
+      keyFn: (d) =>
+        `${d.cell.key}-hf-${d.hf.id || d.idx}-struct-${
+          d.structure.id || d.structure.local_id || "s"
+        }`,
       getFill: (d) => {
         const texUrl = getFigureTex(d.hf);
         if (texUrl) {
@@ -681,9 +749,9 @@ function WorldMap({
         }
         return "#e5e7eb";
       },
-      baseStroke: figureColor,
+      baseStroke: "blue",
       baseStrokeWidth: 0.1,
-      labelFontSize: 0.1,
+      labelFontSize: 2.8,
       labelFill: figureColor,
       getLabelText: (d) => d.hf.name || "",
       getTitleText: (d) => {
@@ -713,6 +781,7 @@ function WorldMap({
           cellCoords: { x: d.cell.x, y: d.cell.y },
 
           figure: d.hf,
+          structure: d.structure,
           site: d.site,
           cell: d.cell,
           region: d.cell.region,
@@ -725,9 +794,45 @@ function WorldMap({
         };
       },
       getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2 + figSize / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2 + figSize / 2;
-        return { cx, cy, k: 60 };
+        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
+        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
+        return { cx, cy, k: 80 };
+      },
+      getBoundingBox: (d) => {
+        // 1) get site bbox inside cell
+        const siteIdx = d.parentSiteIdx;
+        const siteCount = d.parentSiteCount;
+        const baseX = xScale(d.cell.y);
+        const baseY = yScale(d.cell.x);
+        const sitePos = calculateGridPositions(
+          siteIdx,
+          siteCount,
+          siteSize,
+          CELL_SIZE,
+          CELL_SIZE
+        );
+        const siteX = baseX + sitePos.x;
+        const siteY = baseY + sitePos.y;
+
+        // 2) get structure bbox inside site bbox
+        const structIdx = d.parentStructIdx;
+        const structCount = d.parentStructCount;
+        const structPos = calculateGridPositions(
+          structIdx,
+          structCount,
+          structureSize,
+          siteSize,
+          siteSize
+        );
+        const structX = siteX + structPos.x;
+        const structY = siteY + structPos.y;
+
+        return {
+          x: structX,
+          y: structY,
+          width: structureSize,
+          height: structureSize,
+        };
       },
     });
   }, [worldData]);
@@ -770,20 +875,20 @@ function WorldMap({
     };
   }, [worldData]);
 
-  // highlight selected cell
-  useEffect(() => {
-    const svg = d3.select(svgRef.current);
-    const rects = svg.selectAll("rect.cell");
+  // // highlight selected cell
+  // useEffect(() => {
+  //   const svg = d3.select(svgRef.current);
+  //   const rects = svg.selectAll("rect.cell");
 
-    rects.each(function (d) {
-      const rect = d3.select(this);
-      if (selectedCell && selectedCell.key === d.key) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.5);
-      } else {
-        rect.style("stroke", "#020617").style("stroke-width", 0);
-      }
-    });
-  }, [selectedCell]);
+  //   rects.each(function (d) {
+  //     const rect = d3.select(this);
+  //     if (selectedCell && selectedCell.key === d.key) {
+  //       rect.style("stroke", "#f97316").style("stroke-width", 0.5);
+  //     } else {
+  //       rect.style("stroke", "#020617").style("stroke-width", 0);
+  //     }
+  //   });
+  // }, [selectedCell]);
 
   // highlight selected entity (site / figure)
   useEffect(() => {
@@ -805,7 +910,7 @@ function WorldMap({
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 5);
       } else {
-        rect.style("stroke", "yellow").style("stroke-width", 0);
+        rect.style("stroke", celleRects).style("stroke-width", 0);
       }
     });
     // sites
@@ -821,7 +926,7 @@ function WorldMap({
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 0.7);
       } else {
-        rect.style("stroke", "yellow").style("stroke-width", 0.1);
+        rect.style("stroke", siteRects).style("stroke-width", 0.1);
       }
     });
 
@@ -840,7 +945,7 @@ function WorldMap({
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 0.7);
       } else {
-        rect.style("stroke", "#fbbf24").style("stroke-width", 0.3);
+        rect.style("stroke", structureColor).style("stroke-width", 0.1);
       }
     });
 
@@ -857,7 +962,7 @@ function WorldMap({
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 0.7);
       } else {
-        rect.style("stroke", "blue").style("stroke-width", 0.1);
+        rect.style("stroke", figureColor).style("stroke-width", 0);
       }
     });
   }, [selectedEntity]);

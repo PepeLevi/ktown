@@ -13,7 +13,7 @@ function App() {
 
   const [allowUpload, setAllowUpload] = useState(true);
 
-  const backendUrl = "http://localhost:3001";
+  const backendUrl = "";
 
   const handleFile1Change = (e) => setFile1(e.target.files[0] || null);
   const handleFile2Change = (e) => setFile2(e.target.files[0] || null);
