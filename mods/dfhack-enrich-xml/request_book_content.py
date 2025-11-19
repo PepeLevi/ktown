@@ -23,7 +23,7 @@ def load_api_config():
         print(f"Error loading API config: {e}")
         return None
 
-def build_prompt(book_entry):
+def build_prompt(book_entry, all_books_data=None):
     """Build a prompt for generating book content based on the book's context"""
     context = book_entry.get('context_points', {})
     title = book_entry.get('title', 'Untitled')
@@ -47,8 +47,35 @@ def build_prompt(book_entry):
     
     # Add poetic form if applicable
     poetic_form = context.get('poetic_form', '')
-    if poetic_form and poetic_form != 'NONE' and poetic_form != '10' and poetic_form != '19':
-        prompt_parts.append(f"Poetic form: {poetic_form}")
+    if poetic_form:
+        if isinstance(poetic_form, dict):
+            # Handle dict format with name, mood, features, etc.
+            form_name = poetic_form.get('name', '')
+            form_mood = poetic_form.get('mood', '')
+            form_features = poetic_form.get('features', {})
+            
+            form_parts = []
+            if form_name:
+                form_parts.append(form_name)
+            if form_mood and form_mood is not False:
+                form_parts.append(f"mood: {form_mood}")
+            if form_features:
+                feature_list = []
+                if isinstance(form_features, dict):
+                    for feat_key, feat_value in form_features.items():
+                        if isinstance(feat_value, str):
+                            feature_list.append(feat_value)
+                        elif isinstance(feat_value, (int, float)):
+                            feature_list.append(str(feat_value))
+                elif isinstance(form_features, list):
+                    feature_list = [str(f) for f in form_features if f]
+                if feature_list:
+                    form_parts.append(f"features: {', '.join(feature_list)}")
+            
+            if form_parts:
+                prompt_parts.append(f"Poetic form: {'; '.join(form_parts)}")
+        elif isinstance(poetic_form, str) and poetic_form not in ('NONE', '10', '19', ''):
+            prompt_parts.append(f"Poetic form: {poetic_form}")
     
     # Add styles
     styles = context.get('styles', {})
@@ -63,10 +90,123 @@ def build_prompt(book_entry):
         if style_descriptions:
             prompt_parts.append(f"Writing styles: {', '.join(style_descriptions)}")
     
-    # Add references if any
-    references = context.get('references', [])
-    if references and len(references) > 0:
-        prompt_parts.append("The work may reference historical events, sites, or other works.")
+    # Handle references - check for written content references
+    references = context.get('references', {})
+    written_content_refs = []
+    
+    if references:
+        # Handle both dict and list formats
+        if isinstance(references, dict):
+            ref_items = references.items()
+        elif isinstance(references, list):
+            ref_items = enumerate(references)
+        else:
+            ref_items = []
+        
+        for ref_key, ref_data in ref_items:
+            if isinstance(ref_data, dict):
+                ref_type = ref_data.get('reference_type', '')
+                if ref_type == 'written content':
+                    written_content_id = ref_data.get('written_content_id')
+                    if written_content_id is not None and all_books_data:
+                        # Look up the referenced work
+                        ref_id_str = str(written_content_id)
+                        if ref_id_str in all_books_data:
+                            written_content_refs.append(all_books_data[ref_id_str])
+    
+    # Add information about referenced written works
+    if written_content_refs:
+        prompt_parts.append("\nThis work references the following written work(s):")
+        for ref_work in written_content_refs:
+            ref_context = ref_work.get('context_points', {})
+            ref_title = ref_work.get('title', 'Untitled')
+            ref_work_type = ref_context.get('work_type', 'Unknown')
+            
+            ref_info = [f"  - '{ref_title}' ({ref_work_type})"]
+            
+            # Add referenced work's author
+            ref_author = ref_context.get('author', {})
+            if ref_author:
+                ref_author_name = ref_author.get('name', 'Unknown')
+                ref_author_race = ref_author.get('race', 'Unknown')
+                ref_info.append(f"    Author: {ref_author_name} ({ref_author_race})")
+            
+            # Add referenced work's page count
+            ref_page_count = ref_context.get('page_count', 1)
+            ref_info.append(f"    Length: {ref_page_count} page(s)")
+            
+            # Add referenced work's poetic form if applicable
+            ref_poetic_form = ref_context.get('poetic_form', '')
+            if ref_poetic_form:
+                if isinstance(ref_poetic_form, dict):
+                    # Handle dict format with name, mood, features, etc.
+                    ref_form_name = ref_poetic_form.get('name', '')
+                    ref_form_mood = ref_poetic_form.get('mood', '')
+                    ref_form_features = ref_poetic_form.get('features', {})
+                    
+                    ref_form_parts = []
+                    if ref_form_name:
+                        ref_form_parts.append(ref_form_name)
+                    if ref_form_mood and ref_form_mood is not False:
+                        ref_form_parts.append(f"mood: {ref_form_mood}")
+                    if ref_form_features:
+                        ref_feature_list = []
+                        if isinstance(ref_form_features, dict):
+                            for ref_feat_key, ref_feat_value in ref_form_features.items():
+                                if isinstance(ref_feat_value, str):
+                                    ref_feature_list.append(ref_feat_value)
+                                elif isinstance(ref_feat_value, (int, float)):
+                                    ref_feature_list.append(str(ref_feat_value))
+                        elif isinstance(ref_form_features, list):
+                            ref_feature_list = [str(f) for f in ref_form_features if f]
+                        if ref_feature_list:
+                            ref_form_parts.append(f"features: {', '.join(ref_feature_list)}")
+                    
+                    if ref_form_parts:
+                        ref_info.append(f"    Poetic form: {'; '.join(ref_form_parts)}")
+                elif isinstance(ref_poetic_form, str) and ref_poetic_form not in ('NONE', '10', '19', ''):
+                    ref_info.append(f"    Poetic form: {ref_poetic_form}")
+            
+            # Add referenced work's styles
+            ref_styles = ref_context.get('styles', {})
+            if ref_styles:
+                ref_style_descriptions = []
+                for ref_style_key, ref_style_data in ref_styles.items():
+                    if isinstance(ref_style_data, dict):
+                        ref_style_name = ref_style_data.get('style', '')
+                        ref_strength = ref_style_data.get('strength', 0)
+                        if ref_style_name:
+                            ref_style_descriptions.append(f"{ref_style_name} (strength: {ref_strength})")
+                if ref_style_descriptions:
+                    ref_info.append(f"    Writing styles: {', '.join(ref_style_descriptions)}")
+            
+            prompt_parts.append("\n".join(ref_info))
+            
+            # Add referenced work's text content if available
+            ref_text_content = ref_work.get('text_content', '')
+            if ref_text_content and ref_text_content.strip():
+                prompt_parts.append(f"    Full text of '{ref_title}':")
+                prompt_parts.append(f"    {ref_text_content}")
+    
+    # Add other references (non-written content) if any
+    if references:
+        has_other_refs = False
+        if isinstance(references, dict):
+            ref_items = references.items()
+        elif isinstance(references, list):
+            ref_items = enumerate(references)
+        else:
+            ref_items = []
+        
+        for ref_key, ref_data in ref_items:
+            if isinstance(ref_data, dict):
+                ref_type = ref_data.get('reference_type', '')
+                if ref_type != 'written content':
+                    has_other_refs = True
+                    break
+        
+        if has_other_refs:
+            prompt_parts.append("\nThe work may also reference historical events, sites, or other knowledge.")
     
     prompt_parts.append("\nGenerate the complete text content for this work, matching the style and length appropriate for the given context.")
     
@@ -161,7 +301,7 @@ def process_books(json_path, config):
         for key, book_entry in batch:
             print(f"  Generating content for book {key}: '{book_entry.get('title', 'Untitled')}'")
             
-            prompt = build_prompt(book_entry)
+            prompt = build_prompt(book_entry, data['data'])
             content = call_deepseek_api(prompt, config)
             
             if content:
