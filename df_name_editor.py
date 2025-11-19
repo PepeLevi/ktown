@@ -346,6 +346,42 @@ class DFNameEditor:
         self.user_prompt_text = scrolledtext.ScrolledText(prompt_frame, height=5, wrap=tk.WORD)
         self.user_prompt_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
+        # Opción para múltiples prompts (evitar repetición)
+        prompt_variation_frame = ttk.Frame(prompt_frame)
+        prompt_variation_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(prompt_variation_frame, text="🔄 Multiple Prompts (one per line, rotate every:").pack(side=tk.LEFT, padx=5)
+        
+        self.rotate_prompts_var = tk.BooleanVar(value=False)
+        rotate_check = ttk.Checkbutton(prompt_variation_frame, variable=self.rotate_prompts_var, 
+                                      command=lambda: self.toggle_prompt_rotation())
+        rotate_check.pack(side=tk.LEFT, padx=2)
+        
+        ttk.Label(prompt_variation_frame, text="calls):").pack(side=tk.LEFT, padx=2)
+        
+        self.rotate_every_var = tk.IntVar(value=5)
+        rotate_entry = ttk.Entry(prompt_variation_frame, width=5, textvariable=tk.StringVar())
+        rotate_entry.pack(side=tk.LEFT, padx=2)
+        rotate_entry.insert(0, "5")
+        rotate_entry.config(state=tk.DISABLED)
+        self.rotate_entry = rotate_entry
+        
+        # Calculadora de llamadas API
+        self.api_calls_label = ttk.Label(prompt_variation_frame, text="(Estimated API calls: -)", 
+                                         foreground="gray", font=("TkDefaultFont", 8))
+        self.api_calls_label.pack(side=tk.LEFT, padx=10)
+        
+        # Frame para múltiples prompts (oculto por defecto)
+        self.multi_prompt_frame = ttk.Frame(prompt_frame)
+        self.multi_prompt_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        ttk.Label(self.multi_prompt_frame, 
+                 text="Enter multiple prompts (one per line). The AI will rotate between them to avoid repetition:").pack(anchor=tk.W, pady=2)
+        
+        self.multi_prompt_text = scrolledtext.ScrolledText(self.multi_prompt_frame, height=4, wrap=tk.WORD)
+        self.multi_prompt_text.pack(fill=tk.BOTH, expand=True, pady=2)
+        self.multi_prompt_frame.pack_forget()  # Oculto inicialmente
+        
         # Botones de acción
         ai_button_frame = ttk.Frame(prompt_frame)
         ai_button_frame.pack(fill=tk.X, pady=10)
@@ -450,7 +486,7 @@ class DFNameEditor:
         self.batch_info_label.pack(side=tk.LEFT, padx=10)
         
         # Bind para actualizar info cuando cambia el slider
-        def update_percentage_info(*args):
+        def update_percentage_info_internal(*args):
             try:
                 pct = self.percentage_var.get()
                 # Asegurar mínimo de 0.1%
@@ -464,6 +500,11 @@ class DFNameEditor:
                     self.percentage_entry.insert(0, f"{pct:.1f}")
                 self.percentage_label.config(text=f"{pct:.1f}%")
                 
+                # Calcular estimación de llamadas API
+                optimal_batch_size = 20  # Tamaño de batch usado en la generación
+                estimated_calls = 0
+                entries_to_process = 0
+                
                 # Priorizar name entries (hay muchos más)
                 if hasattr(self, 'name_entries') and len(self.name_entries) > 0:
                     total = len(self.name_entries)
@@ -471,6 +512,8 @@ class DFNameEditor:
                     # Asegurar mínimo de 1 entrada
                     if to_process < 1 and pct > 0:
                         to_process = 1
+                    entries_to_process = to_process
+                    
                     if hasattr(self, 'text_entries') and len(self.text_entries) > 0:
                         # Si hay ambos, mostrar ambos
                         text_total = len(self.text_entries)
@@ -479,22 +522,43 @@ class DFNameEditor:
                             text_to_process = 1
                         self.batch_info_label.config(
                             text=f"Names: {to_process:,}/{total:,} | Texts: {text_to_process:,}/{text_total:,}")
+                        # Calcular llamadas para ambos
+                        name_calls = (to_process + optimal_batch_size - 1) // optimal_batch_size  # Ceil division
+                        text_calls = (text_to_process + optimal_batch_size - 1) // optimal_batch_size
+                        estimated_calls = name_calls + text_calls
                     else:
                         self.batch_info_label.config(
                             text=f"Will process {to_process:,} of {total:,} name entries")
+                        estimated_calls = (to_process + optimal_batch_size - 1) // optimal_batch_size
                 elif hasattr(self, 'text_entries') and len(self.text_entries) > 0:
                     total = len(self.text_entries)
                     to_process = int(total * pct / 100)
                     if to_process < 1 and pct > 0:
                         to_process = 1
+                    entries_to_process = to_process
                     self.batch_info_label.config(
                         text=f"Will process {to_process:,} of {total:,} text entries")
+                    estimated_calls = (to_process + optimal_batch_size - 1) // optimal_batch_size
                 else:
                     self.batch_info_label.config(text="(Load files to see entry count)")
+                    estimated_calls = 0
+                
+                # Actualizar label de llamadas API
+                if hasattr(self, 'api_calls_label'):
+                    if estimated_calls > 0:
+                        self.api_calls_label.config(
+                            text=f"(Estimated API calls: ~{estimated_calls:,})",
+                            foreground="gray")
+                    else:
+                        self.api_calls_label.config(
+                            text="(Estimated API calls: -)",
+                            foreground="gray")
             except:
                 pass
         
-        self.percentage_var.trace('w', update_percentage_info)
+        # Make update_percentage_info a method so it can be called from load_files
+        self.update_percentage_info = update_percentage_info_internal
+        self.percentage_var.trace('w', update_percentage_info_internal)
         
         # Inicializar
         self.total_name_entries = 0
@@ -1260,24 +1324,9 @@ class DFNameEditor:
         self.log("=" * 60)
         self.status_label.config(text=f"✅ Cargadas {len(self.name_entries)} nombres y {len(self.text_entries)} frases")
         
-        # Actualizar info del porcentaje
-        if hasattr(self, 'percentage_var'):
-            self.percentage_var.set(1.0)  # Reset a 1% para pruebas
-            pct = self.percentage_var.get()
-            if self.total_name_entries > 0:
-                to_process = int(self.total_name_entries * pct / 100)
-                if self.total_text_entries > 0:
-                    # Si hay ambos, mostrar ambos
-                    text_to_process = int(self.total_text_entries * pct / 100)
-                    self.batch_info_label.config(
-                        text=f"Names: {to_process:,}/{self.total_name_entries:,} | Texts: {text_to_process:,}/{self.total_text_entries:,}")
-                else:
-                    self.batch_info_label.config(
-                        text=f"Will process {to_process:,} of {self.total_name_entries:,} name entries")
-            elif self.total_text_entries > 0:
-                to_process = int(self.total_text_entries * pct / 100)
-                self.batch_info_label.config(
-                    text=f"Will process {to_process:,} of {self.total_text_entries:,} text entries")
+        # Actualizar info del porcentaje (esto también actualizará el calculador de llamadas API)
+        if hasattr(self, 'update_percentage_info'):
+            self.update_percentage_info()  # This will update both batch_info_label and api_calls_label
     
     def parse_file(self, file_path: Path, file_type: str):
         """Parsea un archivo según su tipo"""
@@ -2851,7 +2900,7 @@ class DFNameEditor:
             self.log("USER PROMPT:")
             self.log(user_prompt)
             self.log("=" * 60)
-            response = requests.post(self.api_url, headers=headers, json=data, timeout=120)  # Timeout reducido - modelo más rápido
+            response = requests.post(self.api_url, headers=headers, json=data, timeout=500)  # Timeout reducido - modelo más rápido
             response.raise_for_status()
             result = response.json()
             content = result["choices"][0]["message"]["content"]
@@ -2874,6 +2923,39 @@ class DFNameEditor:
             self.root.after(0, lambda: messagebox.showerror("Error API", error_msg))
             return ""
     
+    def toggle_prompt_rotation(self):
+        """Muestra/oculta el campo de múltiples prompts"""
+        if self.rotate_prompts_var.get():
+            self.multi_prompt_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            self.rotate_entry.config(state=tk.NORMAL)
+        else:
+            self.multi_prompt_frame.pack_forget()
+            self.rotate_entry.config(state=tk.DISABLED)
+    
+    def get_prompts_list(self):
+        """Obtiene la lista de prompts a usar (simple o múltiples con rotación)"""
+        if self.rotate_prompts_var.get():
+            # Múltiples prompts
+            multi_text = self.multi_prompt_text.get(1.0, tk.END).strip()
+            if multi_text:
+                prompts = [line.strip() for line in multi_text.split('\n') if line.strip()]
+                if prompts:
+                    try:
+                        rotate_every = int(self.rotate_entry.get())
+                        return prompts, rotate_every
+                    except:
+                        return prompts, 5
+            # Si no hay prompts múltiples, usar el prompt principal
+            main_prompt = self.user_prompt_text.get(1.0, tk.END).strip()
+            if main_prompt:
+                return [main_prompt], 999999  # Nunca rotar si solo hay uno
+        
+        # Prompt simple
+        main_prompt = self.user_prompt_text.get(1.0, tk.END).strip()
+        if main_prompt:
+            return [main_prompt], 999999  # Nunca rotar
+        return [], 999999
+    
     def set_percentage(self, value):
         """Establece el porcentaje del slider y actualiza el entry"""
         self.percentage_var.set(float(value))
@@ -2883,8 +2965,8 @@ class DFNameEditor:
     
     def generate_names_with_ai(self):
         """Genera nombres usando AI con batch processing (no bloquea UI)"""
-        user_prompt = self.user_prompt_text.get(1.0, tk.END).strip()
-        if not user_prompt:
+        prompts_list, rotate_every = self.get_prompts_list()
+        if not prompts_list:
             messagebox.showwarning("Advertencia", "Escribe un prompt primero")
             return
         
@@ -2900,11 +2982,11 @@ class DFNameEditor:
         
         # Ejecutar en thread separado para no bloquear UI
         thread = threading.Thread(target=self._generate_names_with_ai_thread, 
-                                  args=(user_prompt, percentage), daemon=True)
+                                  args=(prompts_list, rotate_every, percentage), daemon=True)
         thread.start()
     
-    def _generate_names_with_ai_thread(self, user_prompt: str, percentage: float):
-        """Genera nombres en thread separado"""
+    def _generate_names_with_ai_thread(self, prompts_list: list, rotate_every: int, percentage: float):
+        """Genera nombres en thread separado con rotación de prompts"""
         
         self.log(f"Starting name generation with {percentage}% of entries")
         self.root.after(0, lambda: self.status_label.config(text="Generando nombres con AI..."))
@@ -2921,6 +3003,7 @@ class DFNameEditor:
         self.log(f"  Total entries available: {total_entries:,}")
         self.log(f"  Percentage: {percentage}%")
         self.log(f"  Entries to process: {entries_to_process:,}")
+        self.log(f"  Prompts to rotate: {len(prompts_list)} (rotate every {rotate_every} calls)")
         self.log(f"=" * 60)
         
         # Batch size reducido - modelo es lento (~54s por batch), optimizar para velocidad
@@ -2935,7 +3018,19 @@ class DFNameEditor:
             api_key = self.api_key if hasattr(self, 'api_key') else ""
             model = self.model if hasattr(self, 'model') else "qwen/qwen3-vl-30b"
         
+        # Sistema de rotación de prompts
+        current_prompt_idx = 0
+        api_call_count = 0
+        
+        def get_current_prompt():
+            nonlocal current_prompt_idx, api_call_count
+            if len(prompts_list) > 1 and api_call_count > 0 and api_call_count % rotate_every == 0:
+                current_prompt_idx = (current_prompt_idx + 1) % len(prompts_list)
+                self.log(f"🔄 Rotating to prompt {current_prompt_idx + 1}/{len(prompts_list)}: {prompts_list[current_prompt_idx][:50]}...")
+            return prompts_list[current_prompt_idx]
+        
         # Prompt del sistema - ENFATIZAR EL TEMA DEL USUARIO Y NOMBRES LARGOS
+        user_prompt = get_current_prompt()
         system_prompt = f"""Generate Dwarf Fortress names following THIS THEME: "{user_prompt}"
 
 CRITICAL: ALL names MUST follow the user's theme. Ignore original names. Create NEW names based on theme.
@@ -2972,6 +3067,18 @@ Rules: NAME/CASTE=3 parts (each can be a long phrase), GENERAL/NOUN=2, ADJ=1, T_
                 idx = start_idx + i
                 # Formato más compacto: [idx, type, parts]
                 entries_info.append([idx, entry.tag_type, entry.parts])
+            
+            # Rotar prompt antes de cada batch
+            user_prompt = get_current_prompt()
+            system_prompt = f"""Generate Dwarf Fortress names following THIS THEME: "{user_prompt}"
+
+CRITICAL: ALL names MUST follow the user's theme. Ignore original names. Create NEW names based on theme.
+
+IMPORTANT: Names can be LONG PHRASES or SENTENCES. Each "part" can be a complete phrase, not just a single word.
+Example: ["This is an example of a long philosophical quote", "These are longer names to create complexity", "No single words"]
+
+JSON format: [{{"index":N,"type":"NAME","parts":["phrase1","phrase2","phrase3"]}},...]
+Rules: NAME/CASTE=3 parts (each can be a long phrase), GENERAL/NOUN=2, ADJ=1, T_WORD=2. Use "index","parts","type". Match entry count."""
             
             # Prompt - TEMA DEL USUARIO PRIMERO Y MÁS PROMINENTE - NOMBRES LARGOS
             data_json = json.dumps(entries_info, separators=(',', ':'), ensure_ascii=False)
@@ -3012,6 +3119,16 @@ For each entry in input, generate a NEW name with LONG PHRASES following the the
                     entries_info.append([idx, entry.tag_type, entry.parts])
                 
                 data_json = json.dumps(entries_info, separators=(',', ':'), ensure_ascii=False)
+                user_prompt = get_current_prompt()
+                system_prompt = f"""Generate Dwarf Fortress names following THIS THEME: "{user_prompt}"
+
+CRITICAL: ALL names MUST follow the user's theme. Ignore original names. Create NEW names based on theme.
+
+IMPORTANT: Names can be LONG PHRASES or SENTENCES. Each "part" can be a complete phrase, not just a single word.
+Example: ["This is an example of a long philosophical quote", "These are longer names to create complexity", "No single words"]
+
+JSON format: [{{"index":N,"type":"NAME","parts":["phrase1","phrase2","phrase3"]}},...]
+Rules: NAME/CASTE=3 parts (each can be a long phrase), GENERAL/NOUN=2, ADJ=1, T_WORD=2. Use "index","parts","type". Match entry count."""
                 user_prompt_full = f"""THEME (MANDATORY): {user_prompt}
 
 Generate names following THIS THEME. Ignore original names. Create NEW names based on theme.
@@ -3034,6 +3151,7 @@ For each entry in input, generate a NEW name with LONG PHRASES following the the
             self.log(f"Processing entries {start_idx:,}-{end_idx-1:,} ({batch_entries_count} entries, ~{estimated_tokens} tokens)")
             
             result = self.call_deepseek_api(system_prompt, user_prompt_full, api_key, model)
+            api_call_count += 1  # Incrementar contador después de cada llamada
             
             if result:
                 parsed = self.parse_json_response(result)
@@ -3078,8 +3196,8 @@ For each entry in input, generate a NEW name with LONG PHRASES following the the
     
     def generate_texts_with_ai(self):
         """Genera textos/frases usando AI con batch processing (no bloquea UI)"""
-        user_prompt = self.user_prompt_text.get(1.0, tk.END).strip()
-        if not user_prompt:
+        prompts_list, rotate_every = self.get_prompts_list()
+        if not prompts_list:
             messagebox.showwarning("Advertencia", "Escribe un prompt primero")
             return
         
@@ -3095,11 +3213,11 @@ For each entry in input, generate a NEW name with LONG PHRASES following the the
         
         # Ejecutar en thread separado
         thread = threading.Thread(target=self._generate_texts_with_ai_thread, 
-                                  args=(user_prompt, percentage), daemon=True)
+                                  args=(prompts_list, rotate_every, percentage), daemon=True)
         thread.start()
     
-    def _generate_texts_with_ai_thread(self, user_prompt: str, percentage: float):
-        """Genera textos en thread separado"""
+    def _generate_texts_with_ai_thread(self, prompts_list: list, rotate_every: int, percentage: float):
+        """Genera textos en thread separado con rotación de prompts"""
         
         self.log(f"Starting text generation with {percentage}% of entries")
         self.root.after(0, lambda: self.status_label.config(text="Generando textos con AI..."))
@@ -3116,6 +3234,7 @@ For each entry in input, generate a NEW name with LONG PHRASES following the the
         self.log(f"  Total text entries available: {total_entries:,}")
         self.log(f"  Percentage: {percentage}%")
         self.log(f"  Entries to process: {entries_to_process:,}")
+        self.log(f"  Prompts to rotate: {len(prompts_list)} (rotate every {rotate_every} calls)")
         self.log(f"=" * 60)
         
         # Batch size reducido - modelo es lento
@@ -3129,7 +3248,19 @@ For each entry in input, generate a NEW name with LONG PHRASES following the the
             api_key = self.api_key if hasattr(self, 'api_key') else ""
             model = self.model if hasattr(self, 'model') else "qwen/qwen3-vl-30b"
         
+        # Sistema de rotación de prompts
+        current_prompt_idx = 0
+        api_call_count = 0
+        
+        def get_current_prompt():
+            nonlocal current_prompt_idx, api_call_count
+            if len(prompts_list) > 1 and api_call_count > 0 and api_call_count % rotate_every == 0:
+                current_prompt_idx = (current_prompt_idx + 1) % len(prompts_list)
+                self.log(f"🔄 Rotating to prompt {current_prompt_idx + 1}/{len(prompts_list)}: {prompts_list[current_prompt_idx][:50]}...")
+            return prompts_list[current_prompt_idx]
+        
         # Prompt del sistema - ENFATIZAR EL TEMA DEL USUARIO
+        user_prompt = get_current_prompt()
         system_prompt = f"""Generate Dwarf Fortress text following THIS THEME: "{user_prompt}"
 
 CRITICAL: ALL text MUST follow the user's theme. Ignore original text. Create NEW text based on theme.
@@ -3162,6 +3293,15 @@ Rules: Use "index","text","type". Keep [PLACEHOLDERS] exact. Match entry count."
                 idx = start_idx + i
                 # Formato más compacto: [idx, type, text_truncated]
                 entries_info.append([idx, entry.text_set, entry.text[:35]])  # Más corto
+            
+            # Rotar prompt antes de cada batch
+            user_prompt = get_current_prompt()
+            system_prompt = f"""Generate Dwarf Fortress text following THIS THEME: "{user_prompt}"
+
+CRITICAL: ALL text MUST follow the user's theme. Ignore original text. Create NEW text based on theme.
+
+JSON format: [{{"index":N,"text":"phrase [PLACEHOLDERS]","type":"SET"}},...]
+Rules: Use "index","text","type". Keep [PLACEHOLDERS] exact. Match entry count."""
             
             # Prompt - TEMA DEL USUARIO PRIMERO Y MÁS PROMINENTE
             data_json = json.dumps(entries_info, separators=(',', ':'), ensure_ascii=False)
@@ -3199,6 +3339,13 @@ For each entry in input, generate a NEW text following the theme. Use "index","t
                     entries_info.append([idx, entry.text_set, entry.text[:30]])
                 
                 data_json = json.dumps(entries_info, separators=(',', ':'), ensure_ascii=False)
+                user_prompt = get_current_prompt()
+                system_prompt = f"""Generate Dwarf Fortress text following THIS THEME: "{user_prompt}"
+
+CRITICAL: ALL text MUST follow the user's theme. Ignore original text. Create NEW text based on theme.
+
+JSON format: [{{"index":N,"text":"phrase [PLACEHOLDERS]","type":"SET"}},...]
+Rules: Use "index","text","type". Keep [PLACEHOLDERS] exact. Match entry count."""
                 user_prompt_full = f"""THEME (MANDATORY): {user_prompt}
 
 Generate text following THIS THEME. Ignore original text. Create NEW text based on theme.
@@ -3218,6 +3365,7 @@ For each entry in input, generate a NEW text following the theme. Use "index","t
             self.log(f"Processing entries {start_idx:,}-{end_idx-1:,} ({batch_entries_count} entries, ~{estimated_tokens} tokens)")
             
             result = self.call_deepseek_api(system_prompt, user_prompt_full, api_key, model)
+            api_call_count += 1  # Incrementar contador después de cada llamada
             
             if result:
                 parsed = self.parse_json_response(result)
@@ -3262,8 +3410,8 @@ For each entry in input, generate a NEW text following the theme. Use "index","t
     
     def generate_all_with_ai(self):
         """Genera nombres y textos con AI (no bloquea UI)"""
-        user_prompt = self.user_prompt_text.get(1.0, tk.END).strip()
-        if not user_prompt:
+        prompts_list, rotate_every = self.get_prompts_list()
+        if not prompts_list:
             messagebox.showwarning("Advertencia", "Escribe un prompt primero")
             return
         
@@ -3277,10 +3425,10 @@ For each entry in input, generate a NEW text following the theme. Use "index","t
         def generate_all_thread():
             self.log("Starting generation of names and texts...")
             if self.name_entries:
-                self._generate_names_with_ai_thread(user_prompt, percentage)
+                self._generate_names_with_ai_thread(prompts_list, rotate_every, percentage)
                 time.sleep(1)  # Pequeña pausa entre tipos
             if self.text_entries:
-                self._generate_texts_with_ai_thread(user_prompt, percentage)
+                self._generate_texts_with_ai_thread(prompts_list, rotate_every, percentage)
         
         thread = threading.Thread(target=generate_all_thread, daemon=True)
         thread.start()
