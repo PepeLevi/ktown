@@ -6,10 +6,9 @@ local eventful = require('plugins.eventful')
 local repeatUtil = require('repeat-util')
 
 -- okieeee next steps so i dont forget
--- instead of generating random content fill it with as many contextual factors about the book as possible
--- then write a python script that will request the content from deepseek using those factors
--- somehow catch and include references to previous work
--- put a guard on it for now so it only enriches a few per run for testing
+-- write the python script that will request the content from deepseek using those factors
+-- ideally do this with local ai at least while testing
+-- make the reference list actually real
 
 -- -- DECLARE VARIABLES -- --
 local GLOBAL_KEY = 'write-content-to-book'
@@ -211,8 +210,18 @@ local function get_reference_info(v)
             reference_type = "historical event",
         } -- not implemented
     end
+    if tostring(v._type) ==  "<type: general_ref_dance_formst>" then
+        return {
+            reference_type = "dance form",
+        } -- not implemented
+    end
+    if tostring(v._type) ==  "<type: general_ref_entity>" then
+        return {
+            reference_type = "entity",
+        } -- not implemented
+    end
     
-    return {}
+    return {reference_type = "unknown reference: " .. tostring(v._type)}
 end
 
 local function get_references(reference_list)
@@ -470,7 +479,7 @@ local function start()
     
     -- Polling timer that works during worldgen
     print("scheduling polling timer")
-    repeatUtil.scheduleEvery(GLOBAL_KEY, 100, 'frames', function()
+    repeatUtil.scheduleEvery(GLOBAL_KEY, 10, 'frames', function()
         state.count = state.count + 1
         print("loop repeat count: " .. state.count)
         
