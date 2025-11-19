@@ -19,6 +19,11 @@ local script_path = '../mods/dfhack-enrich-xml/request_book_content.py'
 enhanced_books = enhanced_books or {data = {}}
 enhanced_books.data = enhanced_books.data or {}
 
+
+local DEATH_TYPES = {
+ [0] = 'OLD_AGE','HUNGER','THIRST','SHOT','BLEED','DROWN','SUFFOCATE','STRUCK_DOWN','SCUTTLE','COLLISION','MAGMA','MAGMA_MIST','DRAGONFIRE','FIRE','SCALD','CAVEIN','DRAWBRIDGE','FALLING_ROCKS','CHASM','CAGE','MURDER','TRAP','VANISH','QUIT','ABANDON','HEAT','COLD','SPIKE','ENCASE_LAVA','ENCASE_MAGMA','ENCASE_ICE','BEHEAD','CRUCIFY','BURY_ALIVE','DROWN_ALT','BURN_ALIVE','FEED_TO_BEASTS','HACK_TO_PIECES','LEAVE_OUT_IN_AIR','BOIL','MELT','CONDENSE','SOLIDIFY','INFECTION','MEMORIALIZE','SCARE','DARKNESS','COLLAPSE','DRAIN_BLOOD','SLAUGHTER','VEHICLE','FALLING_OBJECT'
+}
+
 -- SHIT I NEED FOR THIS TO RUN IN THE BACKGROUND
 local function get_default_state()
     return {
@@ -140,12 +145,12 @@ end
 --Functions
 --######
 
-local function get_author_info(author_hfid)
-    if not author_hfid or author_hfid == -1 then
+local function get_hf_info(hfid)
+    if not hfid or hfid == -1 then
         return {race = "UNKNOWN", civilization = "UNKNOWN", name = "UNKNOWN"}
     end
     
-    local hf = df.historical_figure.find(author_hfid)
+    local hf = df.historical_figure.find(hfid)
     if not hf then
         return {race = "UNKNOWN", civilization = "UNKNOWN", name = "UNKNOWN"}
     end
@@ -180,6 +185,69 @@ local function get_author_info(author_hfid)
     }
 end
 
+local function get_site(site_id)
+    if not site_id then
+        return nil
+    end
+
+    site = df.world_site.find(site_id)
+    print("getting site: ", site)
+    return 
+end
+
+local function get_historical_event(event_id)
+    if not event_id then
+        return nil
+    end
+
+    event_object = df.history_event.find(event_id)
+    print("getting historical event: ", event_object)
+    for k, v in pairs(event_object) do
+        print(k, v)
+    end
+    
+    if df.history_event_hist_figure_diedst:is_instance(event_object) then
+        for k, v in pairs(event_object.weapon) do
+            print(k, v)
+        end
+        return {
+            year = event_object.year,
+            victim = get_hf_info(event_object.victim_hf),
+            slayer = get_hf_info(event_object.slayer_hf),
+            site = get_site(event_object.site),
+            death_cause = DEATH_TYPES[event_object.death_cause],
+        }
+    end
+    if df.history_event_written_content_composedst:is_instance(event_object) then
+        return { year = event_object.year, } --NOT IMPLEMENTED
+    end
+    if df.history_event_hist_figure_simple_battle_eventst:is_instance(event_object) then
+        return { year = event_object.year, } --NOT IMPLEMENTED
+    end
+    
+    return "event of type " .. tostring(event_object._type)
+end
+
+local function analyze_knowledge(knowledge)
+    if not knowledge then
+        return nil
+    end
+    
+    -- print("analyzing knowledge", knowledge.flag_data["flags_" .. knowledge.flag_type])
+
+    local topics = {}
+    local i = 0
+    for k, v in pairs(knowledge.flag_data["flags_" .. knowledge.flag_type]) do
+        -- print(k, v)
+        if v then
+            topics[i] = k
+            i = i + 1
+        end
+    end
+
+    return topics
+end
+
 local function get_reference_info(v)
     if not v then
         return nil
@@ -188,34 +256,49 @@ local function get_reference_info(v)
     if tostring(v._type) ==  "<type: general_ref_written_contentst>" then
         return {
             reference_type = "written content",
-        } -- not implemented
+            written_content_id = v.written_content_id
+        }
     end
     if tostring(v._type) ==  "<type: general_ref_knowledge_scholar_flagst>" then
         return {
             reference_type = "knowledge",
-        } -- not implemented
+            topics = analyze_knowledge(v.knowledge)
+        } -- not done
     end
     if tostring(v._type) ==  "<type: general_ref_value_levelst>" then
+        print("value level", df.value_type[v.value])
         return {
             reference_type = "value level",
-        } -- not implemented
+            value = df.value_type[v.value],
+            level = v.level
+        } -- not tested
     end
     if tostring(v._type) ==  "<type: general_ref_sitest>" then
         return {
             reference_type = "site",
+            site = get_site(v.site_id)
         } -- not implemented
     end
     if tostring(v._type) ==  "<type: general_ref_historical_eventst>" then
         return {
             reference_type = "historical event",
-        } -- not implemented
+            event = get_historical_event(v.event_id)
+        } -- not done
     end
     if tostring(v._type) ==  "<type: general_ref_dance_formst>" then
+        print("reference info:", v)
+        for k2, v2 in pairs(v) do
+            print(k2, v2)
+        end
         return {
             reference_type = "dance form",
         } -- not implemented
     end
     if tostring(v._type) ==  "<type: general_ref_entity>" then
+        print("reference info:", v)
+        for k2, v2 in pairs(v) do
+            print(k2, v2)
+        end
         return {
             reference_type = "entity",
         } -- not implemented
@@ -254,6 +337,59 @@ local function get_styles(style_list, style_strengths)
     return styles
 end
 
+local function get_poetic_form(poetic_form_id)
+    if poetic_form_id == nil or poetic_form_id == -1 or poetic_form_id >= #df.global.world.poetic_forms.all then
+        return nil
+    end
+
+    -- -- ALL THIS POETRY SHIT IS TOO COMPLICATED. LEAVE FOR LATER.
+    
+    poetic_form = df.global.world.poetic_forms.all[poetic_form_id]
+
+    poetic_form_features = {
+        name =  dfhack.TranslateName(poetic_form.name)  or "UNKNOWN",
+        feet_per_line = poetic_form.each_line_feet > -1 and poetic_form.each_line_feet,
+        pattern_per_line = poetic_form.each_line_pattern > -1 and poetic_form.each_line_pattern,
+        caesura_position_on_line = poetic_form.every_line_caesura_position > -1 and poetic_form.every_line_caesura_position,
+        mood = poetic_form.mood > -1 and df.mood_type[poetic_form.mood],
+        features = {},
+
+    }
+    
+    -- for k, v in pairs(poetic_form) do
+    --     print(k, v)
+    -- end
+    -- print("name:")
+    -- for k, v in pairs(poetic_form.name.words) do
+    --     print(k, v)
+    -- end
+    -- for k, v in pairs(poetic_form.name.parts_of_speech) do
+    --     print(k, v)
+    -- end
+    -- for k, v in pairs(poetic_form.parts) do
+    --     print(k, v)
+    --     for k2, v2 in pairs(v) do
+    --         print(k2, v2)
+    --     end
+    -- end
+    -- print("common features")
+    -- for k, v in pairs(poetic_form.common_features) do
+    --     for k2, v2 in pairs(v) do
+    --         print(k2, v2)
+    --     end
+    -- end
+    local i=0
+    for k, v in pairs(poetic_form.features) do
+        if v then
+            poetic_form_features.features[i] = k
+            i = i + 1
+        end
+    end
+    -- NOT USING FLAGS AND PERSPECTIVES RN
+
+    return poetic_form_features
+end
+
 local function get_quality_level(quality)
     if quality == nil then
         return "UNKNOWN"
@@ -286,10 +422,11 @@ local function annotate_entry(entry, written_content, item_quality)
         -- quality = get_quality_level(item_quality),
         -- quality = get_quality_level(written_content.author_roll or 0),
         page_count = written_content.page_end - written_content.page_start + 1,
-        author = get_author_info(written_content.author),
+        author = get_hf_info(written_content.author),
         references = get_references(written_content.refs),
-        poetic_form = written_content.poetic_form and df.poetic_form[written_content.poetic_form] or tostring(written_content.poetic_form) or "NONE",
-        styles = get_styles(written_content.styles, written_content.style_strength) or {}
+        -- poetic_form = written_content.poetic_form > -1 and df.global.world.poetic_forms.all[written_content.poetic_form] or tostring(written_content.poetic_form) or "NONE",
+        styles = get_styles(written_content.styles, written_content.style_strength) or {},
+        poetic_form = get_poetic_form(written_content.poetic_form),
     }
     
     -- -- Additional metadata with safe access
@@ -327,16 +464,16 @@ local function record_written_work(written_content, source, item_quality)
     enhanced_books.data[key] = annotate_entry(entry, written_content, item_quality)
     state.count = state.count + 1
     
-    -- Debug output to verify we're capturing the right data
-    print(("Recorded written work %d: %s"):format(
-        written_content.id, 
-        enhanced_books.data[key].title
-    ))
-    print(("  Type: %s, Author: %s"):format(
-        enhanced_books.data[key].context_points.work_type,
-        enhanced_books.data[key].context_points.quality,
-        enhanced_books.data[key].context_points.author.name
-    ))
+    -- -- Debug output to verify we're capturing the right data FIXME UNCOMMENT LATER!!!
+    -- print(("Recorded written work %d: %s"):format(
+    --     written_content.id, 
+    --     enhanced_books.data[key].title
+    -- ))
+    -- print(("  Type: %s, Author: %s"):format(
+    --     enhanced_books.data[key].context_points.work_type,
+    --     enhanced_books.data[key].context_points.quality,
+    --     enhanced_books.data[key].context_points.author.name
+    -- ))
     
     return true
 end
@@ -479,7 +616,7 @@ local function start()
     
     -- Polling timer that works during worldgen
     print("scheduling polling timer")
-    repeatUtil.scheduleEvery(GLOBAL_KEY, 10, 'frames', function()
+    repeatUtil.scheduleEvery(GLOBAL_KEY, 50, 'frames', function()
         state.count = state.count + 1
         print("loop repeat count: " .. state.count)
         
@@ -494,7 +631,9 @@ local function start()
                 print("Saving enhanced books data (count: " .. state.count .. ")")
                 saveEnhancedBooksData()
 
-                os.execute('python ' .. script_path .. " " .. dfhack.getSavePath():gsub("%s", "+"))
+                -- -- UNCOMMENT TO WRITE BOOK CONTENTS
+                -- os.execute('python ' .. script_path .. " " .. dfhack.getSavePath():gsub("%s", "+"))
+                -- loadEnhancedBooksData()
                 state.books_without_content = 0
             end
         end
