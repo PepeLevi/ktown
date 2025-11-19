@@ -16,51 +16,62 @@ app.use(express.static(PUBLIC_DIR));
 function loadDefaultFiles() {
   const file1Path = path.join(PUBLIC_DIR, "map_plus.json");
   const file2Path = path.join(PUBLIC_DIR, "map.json");
+  const booksPath = path.join(PUBLIC_DIR, "books_hf.json"); // NEW
 
   const hasFile1 = fs.existsSync(file1Path);
   const hasFile2 = fs.existsSync(file2Path);
+  const hasBooks = fs.existsSync(booksPath); // NEW
 
-  if (!hasFile1 || !hasFile2) {
+  if (!hasFile1 || !hasFile2 || !hasBooks) {
     throw new Error(
-      `Default files missing. map_plus.json: ${hasFile1}, map.json: ${hasFile2}`
+      `Default files missing. map_plus.json: ${hasFile1}, map.json: ${hasFile2}, books.json: ${hasBooks}`
     );
   }
 
   const file1Raw = fs.readFileSync(file1Path, "utf8");
   const file2Raw = fs.readFileSync(file2Path, "utf8");
+  const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
 
   const file1 = JSON.parse(file1Raw);
   const file2 = JSON.parse(file2Raw);
+  const books = JSON.parse(booksRaw); // NEW
 
-  return { file1, file2 };
+  return { file1, file2, books }; // UPDATED
 }
 
 // ---------- Existing endpoint to check default files ----------
 app.get("/api/default-files", (req, res) => {
   const file1Path = path.join(PUBLIC_DIR, "map_plus.json");
   const file2Path = path.join(PUBLIC_DIR, "map.json");
+  const booksPath = path.join(PUBLIC_DIR, "books_hf.json"); // NEW
 
   const hasFile1 = fs.existsSync(file1Path);
   const hasFile2 = fs.existsSync(file2Path);
+  const hasBooks = fs.existsSync(booksPath); // NEW
 
-  if (!hasFile1 || !hasFile2) {
+  if (!hasFile1 || !hasFile2 || !hasBooks) {
     return res.json({
       hasDefaults: false,
       hasFile1,
       hasFile2,
+      hasBooks,
     });
   }
 
   try {
     const file1Raw = fs.readFileSync(file1Path, "utf8");
     const file2Raw = fs.readFileSync(file2Path, "utf8");
+    const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
+
     const file1 = JSON.parse(file1Raw);
     const file2 = JSON.parse(file2Raw);
+    const books = JSON.parse(booksRaw); // NEW
 
     return res.json({
       hasDefaults: true,
       file1,
       file2,
+      books, // NEW
     });
   } catch (err) {
     console.error("Error reading default JSON files:", err);
@@ -71,7 +82,6 @@ app.get("/api/default-files", (req, res) => {
     });
   }
 });
-
 // ---------- Utility functions (unchanged from your code) ----------
 function normalizeToArray(value) {
   if (!value) return [];
@@ -152,34 +162,86 @@ function buildWrittenByAuthorMap(file1, file2) {
   return byAuthor;
 }
 
-function collectHistFigIdsFromStructures(structures, histFigureById) {
-  const ids = new Set();
+function buildBooksByAuthorMap(booksFile) {
+  const byAuthor = {};
+  if (!booksFile) return byAuthor;
+
+  // Adjust this path if your books JSON is shaped differently
+  const booksArr = normalizeToArray(
+    booksFile?.df_world?.books?.book ||
+      booksFile?.books?.book ||
+      booksFile?.books ||
+      booksFile?.book
+  );
+
+  booksArr.forEach((b) => {
+    if (!b) return;
+
+    const authorId =
+      b.author_hfid || b.author_hf_id || b.author || b.author_id || null;
+
+    if (!authorId) return;
+
+    const authorKey = String(authorId);
+
+    const normalized = {
+      id: b.id,
+      title: b.title,
+      raw: b,
+    };
+
+    if (!byAuthor[authorKey]) byAuthor[authorKey] = [];
+    byAuthor[authorKey].push(normalized);
+  });
+
+  return byAuthor;
+}
+
+function collectHistFigIdsForStructure(
+  structure,
+  histFigureById,
+  booksByAuthor
+) {
+  const figsById = new Map(); // id (string) -> hf object
 
   function traverse(val) {
     if (!val) return;
-    const t = typeof val;
 
-    if (t === "string" || t === "number") {
+    if (typeof val === "string" || typeof val === "number") {
       const key = String(val);
-      if (histFigureById[key]) {
-        ids.add(key);
+      const hf = histFigureById[key];
+      if (hf) {
+        figsById.set(key, hf);
       }
     } else if (Array.isArray(val)) {
       val.forEach(traverse);
-    } else if (t === "object") {
+    } else if (typeof val === "object") {
       Object.values(val).forEach(traverse);
     }
   }
 
-  traverse(structures);
-  return Array.from(ids);
+  traverse(structure);
+
+  const inhabitants = Array.from(figsById.values());
+
+  // Attach books to each historical figure if we have the map
+  if (booksByAuthor) {
+    inhabitants.forEach((hf) => {
+      const hid = String(hf.id);
+      hf.books = booksByAuthor[hid] || [];
+    });
+  }
+
+  structure.inhabitants = inhabitants;
+  return inhabitants;
 }
 
 // ---------- Core: buildWorldData from file1/file2 ----------
-function buildWorldData(file1, file2) {
+function buildWorldData(file1, file2, booksFile) {
   // Maps & helpers
   const histFigureById = buildHistoricalFiguresMap(file1, file2);
   const writtenByAuthor = buildWrittenByAuthorMap(file1, file2);
+  const booksByAuthor = buildBooksByAuthorMap(booksFile); // NEW
 
   // Regions
   const regions1 = normalizeToArray(file1?.df_world?.regions?.region);
@@ -295,27 +357,37 @@ function buildWorldData(file1, file2) {
       written_contents: [],
     };
 
-    const inhabitantIds = collectHistFigIdsFromStructures(
-      mergedSite.structures,
-      histFigureById
-    );
-    mergedSite.inhabitants = inhabitantIds;
+    if (mergedSite.structures) {
+      if (Array.isArray(mergedSite.structures.structure)) {
+        mergedSite.structures.structure.forEach((struct) => {
+          collectHistFigIdsForStructure(struct, histFigureById, booksByAuthor);
+        });
+      } else {
+        collectHistFigIdsForStructure(
+          mergedSite.structures.structure,
+          histFigureById,
+          booksByAuthor
+        );
+      }
+    }
 
-    const siteHFs = inhabitantIds
-      .map((id) => histFigureById[id])
-      .filter(Boolean);
-    mergedSite.historical_figures = siteHFs;
+    // mergedSite.inhabitants = inhabitantIds;
 
-    const siteWCs = [];
-    inhabitantIds.forEach((hid) => {
-      const wcs = writtenByAuthor[hid] || [];
-      wcs.forEach((w) => siteWCs.push(w));
-    });
-    mergedSite.written_contents = siteWCs;
+    // const siteHFs = inhabitantIds
+    //   .map((id) => histFigureById[id])
+    //   .filter(Boolean);
+    // mergedSite.historical_figures = siteHFs;
+
+    // const siteWCs = [];
+    // inhabitantIds.forEach((hid) => {
+    //   const wcs = writtenByAuthor[hid] || [];
+    //   wcs.forEach((w) => siteWCs.push(w));
+    // });
+    // mergedSite.written_contents = siteWCs;
 
     cell.sites.push(mergedSite);
-    addHistoricalFiguresToCell(cell, siteHFs);
-    addWrittenContentsToCell(cell, siteWCs);
+    // addHistoricalFiguresToCell(cell, siteHFs);
+    // addWrittenContentsToCell(cell, siteWCs);
   });
 
   // 4) Sort cells
@@ -347,8 +419,8 @@ function buildWorldData(file1, file2) {
 // ---------- NEW: GET / -> worldData from default files ----------
 app.get("/", (req, res) => {
   try {
-    const { file1, file2 } = loadDefaultFiles();
-    const worldData = buildWorldData(file1, file2);
+    const { file1, file2, books } = loadDefaultFiles();
+    const worldData = buildWorldData(file1, file2, books);
     res.json({ worldData });
     console.log("WORLD DATA (from default files)", worldData);
   } catch (err) {
@@ -377,7 +449,7 @@ app.post("/api/world-data", (req, res) => {
     const worldData = buildWorldData(file1, file2);
 
     res.json({ worldData });
-    console.log("WORLD DATA (from request body)", worldData);
+    // console.log("WORLD DATA (from request body)", worldData);
   } catch (err) {
     console.error(err);
     res.status(500).json({

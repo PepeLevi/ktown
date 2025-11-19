@@ -342,8 +342,6 @@ function WorldMap({
         .style("fill", labelFill ?? "#fff")
         .text((d) => (getLabelText ? getLabelText(d) : ""));
 
-      console.log("INSERTS ENTITY", getLabelText, pos);
-
       // shared click handler
       const handleClick = (event, d) => {
         event.stopPropagation();
@@ -700,18 +698,36 @@ function WorldMap({
     // figures
 
     // --- FIGURES: use structure rect as parent bbox ---
+    // --- FIGURES: nested inside structures (or sites if no structures) ---
     const figureMarkers = [];
     cells.forEach((cell) => {
       (cell.sites || []).forEach((site, siteIdx) => {
-        const raw = site.structures?.structure;
-        const structures = normalizeToArray(raw);
-        structures.forEach((structure, structIdx) => {
-          const inhabitantIds = normalizeToArray(structure.inhabitant);
-          const figures = (site.historical_figures || []).filter((hf) =>
-            inhabitantIds.includes(hf.id)
-          );
+        const structures = normalizeToArray(site.structures?.structure);
+        const figures = site.historical_figures || [];
 
+        if (!structures.length) {
+          // no structures: pack all figures directly in the SITE bbox
           figures.forEach((hf, idx) => {
+            figureMarkers.push({
+              kind: "figure",
+              cell,
+              site,
+              structure: null,
+              hf,
+              idx,
+              count: figures.length,
+              parentSiteIdx: siteIdx,
+              parentSiteCount: (cell.sites || []).length,
+              parentStructIdx: null,
+              parentStructCount: 0,
+            });
+          });
+        } else {
+          // have structures: distribute figures across them round-robin
+          figures.forEach((hf, idx) => {
+            const structIdx = idx % structures.length;
+            const structure = structures[structIdx];
+
             figureMarkers.push({
               kind: "figure",
               cell,
@@ -721,12 +737,12 @@ function WorldMap({
               idx,
               count: figures.length,
               parentSiteIdx: siteIdx,
-              parentSiteCount: cell.sites.length,
+              parentSiteCount: (cell.sites || []).length,
               parentStructIdx: structIdx,
               parentStructCount: structures.length,
             });
           });
-        });
+        }
       });
     });
 
@@ -739,7 +755,7 @@ function WorldMap({
       size: figSize,
       keyFn: (d) =>
         `${d.cell.key}-hf-${d.hf.id || d.idx}-struct-${
-          d.structure.id || d.structure.local_id || "s"
+          d.structure?.id || d.structure?.local_id || "none"
         }`,
       getFill: (d) => {
         const texUrl = getFigureTex(d.hf);
@@ -799,11 +815,13 @@ function WorldMap({
         return { cx, cy, k: 80 };
       },
       getBoundingBox: (d) => {
-        // 1) get site bbox inside cell
-        const siteIdx = d.parentSiteIdx;
-        const siteCount = d.parentSiteCount;
+        // If there is no structure, use the SITE bbox.
         const baseX = xScale(d.cell.y);
         const baseY = yScale(d.cell.x);
+
+        // 1) Site bbox inside the cell
+        const siteIdx = d.parentSiteIdx;
+        const siteCount = d.parentSiteCount || 1;
         const sitePos = calculateGridPositions(
           siteIdx,
           siteCount,
@@ -814,7 +832,17 @@ function WorldMap({
         const siteX = baseX + sitePos.x;
         const siteY = baseY + sitePos.y;
 
-        // 2) get structure bbox inside site bbox
+        if (d.parentStructIdx == null || d.parentStructCount === 0) {
+          // No structure -> figures live directly in the site box
+          return {
+            x: siteX,
+            y: siteY,
+            width: siteSize,
+            height: siteSize,
+          };
+        }
+
+        // 2) Structure bbox inside the site bbox
         const structIdx = d.parentStructIdx;
         const structCount = d.parentStructCount;
         const structPos = calculateGridPositions(
@@ -874,21 +902,6 @@ function WorldMap({
       svg.on(".zoom", null);
     };
   }, [worldData]);
-
-  // // highlight selected cell
-  // useEffect(() => {
-  //   const svg = d3.select(svgRef.current);
-  //   const rects = svg.selectAll("rect.cell");
-
-  //   rects.each(function (d) {
-  //     const rect = d3.select(this);
-  //     if (selectedCell && selectedCell.key === d.key) {
-  //       rect.style("stroke", "#f97316").style("stroke-width", 0.5);
-  //     } else {
-  //       rect.style("stroke", "#020617").style("stroke-width", 0);
-  //     }
-  //   });
-  // }, [selectedCell]);
 
   // highlight selected entity (site / figure)
   useEffect(() => {
