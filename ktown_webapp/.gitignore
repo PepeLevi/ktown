@@ -50,8 +50,8 @@ client/build/
 client/dist/
 
 # Big Json Samples
-client/public/big/
-client/public/
+public/big/
+public/*
 
 # Parcel / Vite cache
 client/.cache/
