@@ -587,7 +587,11 @@ function WorldMap({
       const texUrl = getRegionTex(d.region?.type);
       const rect = d3.select(this);
 
+<<<<<<< HEAD
       if (texUrl) {
+=======
+      if (texUrl && d.sites.length) {
+>>>>>>> c0ec853df47c8d6f00c17dee8aa5088b99a0fecf
         const pid = getPatternId("region", d.region?.type);
         rect.style("fill", `url(#${pid})`);
       } else {
