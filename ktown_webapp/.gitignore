@@ -10,7 +10,7 @@ client/node_modules/
 =======
 
 # Big Json Samples
-_public/big/*
+public/big
 public
 
 >>>>>>> c0ec853df47c8d6f00c17dee8aa5088b99a0fecf
