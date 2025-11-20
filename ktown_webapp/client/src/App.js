@@ -4,45 +4,24 @@ import WorldMap from "./worldMap";
 import { REGION_TEXTURES } from "./regionTextures";
 
 function App() {
-  const [file1, setFile1] = useState(null);
-  const [file2, setFile2] = useState(null);
   const [worldData, setWorldData] = useState(null);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
 
-  const [allowUpload, setAllowUpload] = useState(true);
-
+  // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
 
-  const handleFile1Change = (e) => setFile1(e.target.files[0] || null);
-  const handleFile2Change = (e) => setFile2(e.target.files[0] || null);
-
-  function readJsonFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(reader.error);
-      reader.onload = () => {
-        try {
-          const json = JSON.parse(reader.result);
-          resolve(json);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  const buildWorldDataFromJson = async (json1, json2, msgPrefix = "") => {
+  const fetchWorldData = async () => {
     try {
-      setStatus(msgPrefix + "Sending to server...");
+      setStatus("Requesting world data from server...");
 
       const res = await fetch(`${backendUrl}/api/world-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file1: json1, file2: json2 }),
       });
+
+      console.log(res);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -50,86 +29,40 @@ function App() {
       }
 
       const data = await res.json();
-      setWorldData(data.worldData);
-      data.worldData.cells.forEach((cell) => {
-        if (cell.written_contents.length > 0) {
+
+      // Support both { worldData: {...} } and direct worldData payloads
+      const wd = data.worldData || data;
+
+      if (!wd || !wd.cells) {
+        throw new Error("Invalid worldData format from server");
+      }
+
+      setWorldData(wd);
+
+      wd.cells.forEach((cell) => {
+        if (cell.written_contents && cell.written_contents.length > 0) {
           console.log("has cell with book", cell);
         }
       });
 
       setSelectedCell(null);
       setSelectedEntity(null);
-      setStatus(
-        `${msgPrefix}WorldData built: ${data.worldData.cells.length} cell(s).`
-      );
+      setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
     } catch (err) {
       console.error(err);
-      setStatus("Error building worldData.");
-      alert("Error: " + err.message);
-    }
-  };
-
-  const handleBuild = async () => {
-    if (!file1 || !file2) {
-      alert("Please select both file1.json and file2.json.");
-      return;
-    }
-
-    setStatus("Reading files...");
-
-    try {
-      const [json1, json2] = await Promise.all([
-        readJsonFile(file1),
-        readJsonFile(file2),
-      ]);
-
-      await buildWorldDataFromJson(json1, json2, "");
-    } catch (err) {
-      console.error(err);
-      setStatus("Error reading files.");
+      setStatus("Error loading world data.");
       alert("Error: " + err.message);
     }
   };
 
   useEffect(() => {
-    const checkDefaults = async () => {
-      try {
-        setStatus("Checking for default JSON files...");
-        const res = await fetch(`${backendUrl}/api/default-files`);
-        if (!res.ok) throw new Error("Failed to check default files");
-
-        const data = await res.json();
-
-        console.log("worldData", data);
-
-        if (data.hasDefaults && data.file1 && data.file2) {
-          setAllowUpload(false);
-          setStatus("Default JSON files found. Building map...");
-          await buildWorldDataFromJson(data.file1, data.file2, "Defaults: ");
-        } else {
-          setAllowUpload(true);
-          setStatus("No default JSON files. Please upload your files.");
-        }
-      } catch (err) {
-        console.error(err);
-        setAllowUpload(true);
-        setStatus("Could not check default files. Please upload your files.");
-      }
-    };
-
-    checkDefaults();
+    fetchWorldData();
+    // backendUrl is constant, so no need to add it to deps
   }, []);
 
-  // ---- selection handlers ----
-
-  const handleCellClick = (cell) => {
-    setSelectedCell(cell);
-    setSelectedEntity(null); // 🔸 only the cell is in focus
-  };
-
   const handleEntityClick = (entity) => {
-    setSelectedEntity(entity); // site or figure composed object
-    setSelectedCell(null); // 🔸 clear cell highlight when clicking inside
+    setSelectedEntity(entity);
+    setSelectedCell(null);
   };
 
   return (
@@ -139,49 +72,22 @@ function App() {
           {worldData ? (
             <WorldMap
               worldData={worldData}
-              onCellClick={handleCellClick}
               onEntityClick={handleEntityClick}
               selectedCell={selectedCell}
-              selectedEntity={selectedEntity} // 🔸 pass down
+              selectedEntity={selectedEntity}
             />
           ) : (
-            <p className="placeholder">Map will appear here.</p>
+            <p className="placeholder">Map will appear here once loaded.</p>
           )}
         </section>
 
         <section className="details-panel">
           <div className="app-header">
-            <p>
-              {allowUpload
-                ? "Upload file1.json & file2.json to build the map."
-                : "ktown: release the ktown files"}
-            </p>
+            <p>World data is fetched directly from the server.</p>
           </div>
 
           <section className="controls">
-            {allowUpload && (
-              <>
-                <div className="file-inputs">
-                  <label>
-                    File 1:
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleFile1Change}
-                    />
-                  </label>
-                  <label>
-                    File 2:
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleFile2Change}
-                    />
-                  </label>
-                </div>
-                <button onClick={handleBuild}>Build Map</button>
-              </>
-            )}
+            <button onClick={fetchWorldData}>Reload World Data</button>
             <p className="status">{status}</p>
           </section>
 
@@ -198,14 +104,7 @@ function App() {
 
 function TexturePreview({ label, src }) {
   if (!src) return null;
-  return (
-    // <div className="texture-preview">
-    //   <div className="texture-label">{label}</div>
-    //   <div className="texture-frame">
-    <img src={src} alt={label} />
-    //   </div>
-    // </div>
-  );
+  return <img src={src} alt={label} />;
 }
 
 function EntityDetailsView({ entity }) {
@@ -217,6 +116,10 @@ function EntityDetailsView({ entity }) {
     regionTextureUrl,
     siteTextureUrl,
     cellCoords,
+    site,
+    structure,
+    figure,
+    book,
   } = entity;
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
@@ -313,45 +216,6 @@ function EntityDetailsView({ entity }) {
           </pre>
         </>
       )}
-    </div>
-  );
-}
-
-function CellDetailsView({ cell }) {
-  const regionType = cell.region?.type || null;
-  const regionTexture = regionType ? REGION_TEXTURES[regionType] : null;
-
-  return (
-    <div className="details-content">
-      <h3>
-        Cell ({cell.x}, {cell.y})
-      </h3>
-
-      <div className="texture-previews">
-        <TexturePreview label="Region texture" src={regionTexture} />
-      </div>
-
-      <h4>Region</h4>
-      <pre>{cell.region ? JSON.stringify(cell.region, null, 2) : "None"}</pre>
-
-      <h4>Sites</h4>
-      <pre>
-        {cell.sites?.length ? JSON.stringify(cell.sites, null, 2) : "None"}
-      </pre>
-
-      <h4>Historical Figures in Cell</h4>
-      <pre>
-        {cell.historical_figures?.length
-          ? JSON.stringify(cell.historical_figures, null, 2)
-          : "None"}
-      </pre>
-
-      <h4>Written Contents in Cell</h4>
-      <pre>
-        {cell.written_contents?.length
-          ? JSON.stringify(cell.written_contents, null, 2)
-          : "None"}
-      </pre>
     </div>
   );
 }
