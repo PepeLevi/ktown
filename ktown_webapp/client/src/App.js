@@ -8,6 +8,8 @@ function App() {
   const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
+  const [figures, setFigures] = useState([]);
+  const [books, setBooks] = useState([]);
 
   // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
@@ -20,8 +22,6 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
-
-      console.log(res);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -39,11 +39,23 @@ function App() {
 
       setWorldData(wd);
 
+      let temp_figures = [];
+      let temp_books = [];
       wd.cells.forEach((cell) => {
         if (cell.written_contents && cell.written_contents.length > 0) {
           console.log("has cell with book", cell);
+
+          for (let index = 0; index < cell.written_contents.length; index++) {
+            temp_books.push(cell.written_contents[index]);
+          }
+        }
+        for (let index = 0; index < cell.historical_figures.length; index++) {
+          temp_figures.push(cell.historical_figures[index]);
         }
       });
+
+      setFigures(temp_figures);
+      setBooks(temp_books);
 
       setSelectedCell(null);
       setSelectedEntity(null);
@@ -83,16 +95,16 @@ function App() {
 
         <section className="details-panel">
           <div className="app-header">
-            <p>World data is fetched directly from the server.</p>
+            <p>KT0WN</p>
           </div>
 
-          <section className="controls">
+          {/* <section className="controls">
             <button onClick={fetchWorldData}>Reload World Data</button>
             <p className="status">{status}</p>
-          </section>
+          </section> */}
 
           {selectedEntity ? (
-            <EntityDetailsView entity={selectedEntity} />
+            <EntityDetailsView entity={selectedEntity} figures={figures} />
           ) : null}
         </section>
       </main>
@@ -107,7 +119,85 @@ function TexturePreview({ label, src }) {
   return <img src={src} alt={label} />;
 }
 
-function EntityDetailsView({ entity }) {
+function FigureDetailView({ figure, figures, isTopLevel }) {
+  if (!figure) {
+    return;
+  }
+
+  return (
+    <div className="figure-detail-view">
+      <div className="flex-row-full">
+        <p>{figure.name}</p>{" "}
+        <p
+          style={{
+            transform: figure.sex === "-1" ? "rotate(90deg)" : "none",
+          }}
+        >
+          {figure.id}
+        </p>
+      </div>
+
+      <p>{figure.race}</p>
+      <p>{figure.associated_type}</p>
+
+      {figure.sphere && (
+        <div className="flex-row-full">
+          {Array.isArray(figure.sphere) &&
+            figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
+        </div>
+      )}
+
+      {figure.hf_link && isTopLevel && (
+        <div className="flex-column subFigures">
+          {figure.hf_link.map((s, i) => (
+            <>
+              {figures[s.hfid] ? (
+                <div key={i} className={s.link_type + " subFigure"}>
+                  <p>{s.link_type}</p>
+                  <FigureDetailView
+                    figure={figures[s.hfid]}
+                    isTopLevel={false}
+                  />
+                </div>
+              ) : (
+                <p>
+                  {s.link_type}
+                  {s.hfid}
+                </p>
+              )}
+            </>
+          ))}
+        </div>
+      )}
+
+      {figure.books && isTopLevel && (
+        <>
+          <p>has book</p>
+          {figure.books.map((b, i) => {
+            <div key={i}>
+              {" "}
+              <p>has bok</p>
+              <BookDetailView book={b} />
+            </div>;
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+function BookDetailView({ book }) {
+  console.log("BOOOK", book);
+
+  return <div></div>;
+}
+function structureDetailView({ e }) {
+  return <div></div>;
+}
+function siteDetailView({ e }) {
+  return <div></div>;
+}
+
+function EntityDetailsView({ entity, figures }) {
   const {
     kind,
     name,
@@ -124,27 +214,22 @@ function EntityDetailsView({ entity }) {
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
 
+  console.log("clicked on entity", entity);
+
   return (
     <div className="details-content">
-      <h3>
-        {kind === "site" && "Site"}
-        {kind === "figure" && "Historical Figure"}
-        {!kind && "Entity"}
-      </h3>
-
-      <p>
-        <strong>Name:</strong> {name || "Unknown"}
-      </p>
-      {type && (
-        <p>
-          <strong>Type:</strong> {type}
-        </p>
-      )}
-      {cellCoords && (
-        <p>
-          <strong>Cell:</strong> ({cellCoords.x}, {cellCoords.y})
-        </p>
-      )}
+      <div className="flex-row-full">
+        <p>{name || "Unknown"}</p>
+        {cellCoords && (
+          <p>
+            [{cellCoords.x}, {cellCoords.y}]
+          </p>
+        )}
+      </div>
+      <div className="flex-row-full">
+        {type && <p>**{type}</p>}
+        {kind && <p>{kind}**</p>}
+      </div>
 
       <div className="texture-previews">
         <TexturePreview label="Entity texture" src={mainTexture} />
@@ -156,7 +241,9 @@ function EntityDetailsView({ entity }) {
         )}
       </div>
 
-      {kind === "site" && (
+      <div className="flex-row-full"></div>
+
+      {/* {kind === "site" && (
         <>
           <h4>Site object</h4>
           <pre>{JSON.stringify(entity.site, null, 2)}</pre>
@@ -215,7 +302,16 @@ function EntityDetailsView({ entity }) {
             {JSON.stringify(entity.cell_written_contents || [], null, 2)}
           </pre>
         </>
-      )}
+      )} */}
+      <div className="specs">
+        {figure && (
+          <FigureDetailView
+            figure={figure}
+            figures={figures}
+            isTopLevel={true}
+          />
+        )}
+      </div>
     </div>
   );
 }

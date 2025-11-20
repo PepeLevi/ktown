@@ -184,3 +184,29 @@ button:hover {
   object-fit: cover;
   mix-blend-mode: exclusion;
 }
+
+.flex-row-full {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--primary-color);
+}
+
+.specs {
+  margin-top: 10px;
+}
+
+.enemy p {
+  color: red !important;
+}
+
+.subFigures {
+  margin: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 3 columns */
+  gap: 1rem; /* space between children */
+}
+
+.subFigure {
+  border: 1px solid var(--primary-color);
+}
