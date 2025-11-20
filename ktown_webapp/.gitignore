@@ -9,7 +9,7 @@ client/node_modules/
 
 # Big Json Samples
 _public/big/*
-_public
+public
 
 # Environment files
 .env
