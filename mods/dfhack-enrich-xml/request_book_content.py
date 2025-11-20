@@ -5,10 +5,13 @@ import requests
 from pathlib import Path
 
 # Testing limit - set to a small number for testing, or None to process all
-TEST_LIMIT = 5
+TEST_LIMIT = 20
 
 # Batch size for API calls
 BATCH_SIZE = 5
+
+SKIPPING_WORK_TYPES = []
+# SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
 
 def load_api_config():
     """Load API configuration from config_api.json in repo root"""
@@ -23,7 +26,7 @@ def load_api_config():
         print(f"Error loading API config: {e}")
         return None
 
-def build_prompt(book_entry, all_books_data=None):
+def build_prompt(book_entry, all_books_data, config):
     """Build a prompt for generating book content based on the book's context"""
     context = book_entry.get('context_points', {})
     title = book_entry.get('title', 'Untitled')
@@ -112,6 +115,9 @@ def build_prompt(book_entry, all_books_data=None):
                         # Look up the referenced work
                         ref_id_str = str(written_content_id)
                         if ref_id_str in all_books_data:
+                            if all_books_data[ref_id_str].get('text_content', '') == '':
+                                print("oops generating necessary reference first: ", ref_id_str)
+                                generate_entry(ref_id_str, all_books_data[ref_id_str], all_books_data, config)
                             written_content_refs.append(all_books_data[ref_id_str])
     
     # Add information about referenced written works
@@ -201,12 +207,23 @@ def build_prompt(book_entry, all_books_data=None):
         for ref_key, ref_data in ref_items:
             if isinstance(ref_data, dict):
                 ref_type = ref_data.get('reference_type', '')
-                if ref_type != 'written content':
+                if ref_type == 'knowledge':
+                    prompt_parts.append("\nThe work is an academic work concerning the topic(s) of: ")
+                    for topic_key, topic in ref_data.get('topics', 'unknown').items():
+                        prompt_parts.append(topic + ', ')
+                elif ref_type == 'historical event':
+                    prompt_parts.append("\nThe work references a historical event in the year " + str(ref_data.get('event').get('year', 'unkown')) if  ref_data.get('event', False) else 'Unknown')
+                elif ref_type == 'site':
+                    prompt_parts.append("\nThe work references the location " + ref_data.get('site','unkown'))
+                elif ref_type == 'value level':
+                    level = 'strongly' if ref_data.get('level', 0) > 25 else 'mildly' 
+                    prompt_parts.append("\nThe work " + level + " emphasizes the value of " + ref_data.get('value','unkown'))
+                else:
                     has_other_refs = True
                     break
         
-        if has_other_refs:
-            prompt_parts.append("\nThe work may also reference historical events, sites, or other knowledge.")
+        # if has_other_refs:
+        #     prompt_parts.append("\nThe work may also reference historical events, sites, or other knowledge.")
     
     prompt_parts.append("\nGenerate the complete text content for this work, matching the style and length appropriate for the given context.")
     
@@ -257,6 +274,22 @@ def call_deepseek_api(prompt, config):
     except Exception as e:
         print(f"Error calling DeepSeek API: {e}")
         return None
+    
+def generate_entry(key, book_entry, data, config):
+    print(f"  Generating content for book {key}: '{book_entry.get('title', 'Untitled')}'")
+    
+    prompt = build_prompt(book_entry, data, config)
+    print(prompt)
+    content = call_deepseek_api(prompt, config)
+    content = False
+    
+    if content:
+        data[key]['text_content'] = content
+        # processed_count += 1
+        print(f"    ✓ Success")
+    else:
+        # failed_count += 1
+        print(f"    ✗ Failed to generate content")
 
 def process_books(json_path, config):
     """Process books in the JSON file, generating content for those with empty text_content"""
@@ -276,7 +309,7 @@ def process_books(json_path, config):
     books_to_process = []
     for key, book_entry in data['data'].items():
         text_content = book_entry.get('text_content', '')
-        if not text_content or text_content.strip() == '':
+        if (not text_content or text_content.strip() == '') and book_entry.get('context_points', '').get('work_type') not in SKIPPING_WORK_TYPES:
             books_to_process.append((key, book_entry))
     
     if not books_to_process:
@@ -287,40 +320,34 @@ def process_books(json_path, config):
     
     # Apply test limit if set
     if TEST_LIMIT:
-        books_to_process = books_to_process[:TEST_LIMIT]
+        books_to_process = books_to_process[len(books_to_process)-TEST_LIMIT-1:TEST_LIMIT]
         print(f"Processing {len(books_to_process)} books (TEST_LIMIT={TEST_LIMIT})")
     
-    # Process books in batches
-    processed_count = 0
-    failed_count = 0
+    # # Process books in batches
+    # processed_count = 0
+    # failed_count = 0
     
     for i in range(0, len(books_to_process), BATCH_SIZE):
         batch = books_to_process[i:i + BATCH_SIZE]
         print(f"\nProcessing batch {i // BATCH_SIZE + 1} ({len(batch)} books)...")
         
         for key, book_entry in batch:
-            print(f"  Generating content for book {key}: '{book_entry.get('title', 'Untitled')}'")
-            
-            prompt = build_prompt(book_entry, data['data'])
-            content = call_deepseek_api(prompt, config)
-            
-            if content:
-                data['data'][key]['text_content'] = content
-                processed_count += 1
-                print(f"    ✓ Success")
-            else:
-                failed_count += 1
-                print(f"    ✗ Failed to generate content")
+            if data['data'][key].get('text_content', '') != '':
+                print("book already filled")
+                continue
+            generate_entry(key, book_entry, data['data'], config)
         
         # Save after each batch to avoid losing progress
         try:
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            with open('enhanced_books_backup.json', 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
             print(f"  Saved progress after batch")
         except Exception as e:
             print(f"  Error saving JSON: {e}")
     
-    print(f"\nCompleted: {processed_count} successful, {failed_count} failed")
+    # print(f"\nCompleted: {processed_count} successful, {failed_count} failed")
     return True
 
 def main():

@@ -6,9 +6,8 @@ local eventful = require('plugins.eventful')
 local repeatUtil = require('repeat-util')
 
 -- okieeee next steps so i dont forget
--- write the python script that will request the content from deepseek using those factors
--- ideally do this with local ai at least while testing
--- make the reference list actually real
+-- implement dance form and entity reference
+-- more hist events
 
 -- -- DECLARE VARIABLES -- --
 local GLOBAL_KEY = 'write-content-to-book'
@@ -192,7 +191,12 @@ local function get_site(site_id)
 
     site = df.world_site.find(site_id)
     print("getting site: ", site)
-    return 
+    
+    -- for k, v in pairs(site) do
+    --     print(k, v)
+    -- end -- theres a lot here i can also do civilization, population, buildings, year founded
+
+    return dfhack.TranslateName(site.name)  or "UNKNOWN"
 end
 
 local function get_historical_event(event_id)
@@ -201,10 +205,10 @@ local function get_historical_event(event_id)
     end
 
     event_object = df.history_event.find(event_id)
-    print("getting historical event: ", event_object)
-    for k, v in pairs(event_object) do
-        print(k, v)
-    end
+    -- print("getting historical event: ", event_object)
+    -- for k, v in pairs(event_object) do
+    --     print(k, v)
+    -- end
     
     if df.history_event_hist_figure_diedst:is_instance(event_object) then
         for k, v in pairs(event_object.weapon) do
@@ -218,14 +222,17 @@ local function get_historical_event(event_id)
             death_cause = DEATH_TYPES[event_object.death_cause],
         }
     end
-    if df.history_event_written_content_composedst:is_instance(event_object) then
-        return { year = event_object.year, } --NOT IMPLEMENTED
-    end
-    if df.history_event_hist_figure_simple_battle_eventst:is_instance(event_object) then
-        return { year = event_object.year, } --NOT IMPLEMENTED
-    end
+    -- if df.history_event_written_content_composedst:is_instance(event_object) then
+    --     return { year = event_object.year, } --NOT IMPLEMENTED
+    -- end
+    -- if df.history_event_hist_figure_simple_battle_eventst:is_instance(event_object) then
+    --     return { year = event_object.year, } --NOT IMPLEMENTED
+    -- end
     
-    return "event of type " .. tostring(event_object._type)
+    return {
+        year = event_object.year,
+        type = tostring(event_object._type)
+    }
 end
 
 local function analyze_knowledge(knowledge)
@@ -266,7 +273,7 @@ local function get_reference_info(v)
         } -- not done
     end
     if tostring(v._type) ==  "<type: general_ref_value_levelst>" then
-        print("value level", df.value_type[v.value])
+        -- print("value level", df.value_type[v.value])
         return {
             reference_type = "value level",
             value = df.value_type[v.value],
@@ -542,45 +549,6 @@ local function processWrittenWorks()
 
     for _, wc in ipairs(contents) do
 
-        -- uncomment for documentation
-        -- if(_ % 50 == 0) then
-        --     print("written work:")
-        --     for k, v in pairs(wc) do
-        --         print(k, v)
-        --     end
-            
-        --     if(wc.refs ~= nil) then
-        --         print("refs:")
-        --         for k, v in pairs(wc.refs) do
-        --             print(v._type, tostring(v._type) == "<type: general_ref_written_contentst>")
-        --             for k2, v2 in pairs(v) do
-        --                 print(k2, v2)
-        --             end
-        --         end
-        --     end
-            
-        --     if(wc.ref_aux ~= nil) then
-        --         print("refs aux:")
-        --         for k, v in pairs(wc.ref_aux) do
-        --             print(v)
-        --         end
-        --     end
-            
-        --     if(wc.styles ~= nil) then
-        --         print("styles:")
-        --         for k, v in pairs(wc.styles) do
-        --             print(v)
-        --         end
-        --     end
-
-        --     if(wc.style_strength ~= nil) then
-        --         print("style strength:")
-        --         for k, v in pairs(wc.style_strength) do
-        --             print(k, v)
-        --         end
-        --     end
-        -- end
-
         if wc and record_written_work(wc, 'scan', -1) then  -- Use -1 for unknown quality in scans
             new_entries = new_entries + 1
             if new_entries <= 5 then
@@ -616,7 +584,7 @@ local function start()
     
     -- Polling timer that works during worldgen
     print("scheduling polling timer")
-    repeatUtil.scheduleEvery(GLOBAL_KEY, 50, 'frames', function()
+    repeatUtil.scheduleEvery(GLOBAL_KEY, 25, 'frames', function()
         state.count = state.count + 1
         print("loop repeat count: " .. state.count)
         
@@ -631,9 +599,9 @@ local function start()
                 print("Saving enhanced books data (count: " .. state.count .. ")")
                 saveEnhancedBooksData()
 
-                -- -- UNCOMMENT TO WRITE BOOK CONTENTS
-                -- os.execute('python ' .. script_path .. " " .. dfhack.getSavePath():gsub("%s", "+"))
-                -- loadEnhancedBooksData()
+                -- UNCOMMENT TO WRITE BOOK CONTENTS
+                os.execute('python ' .. script_path .. " " .. dfhack.getSavePath():gsub("%s", "+"))
+                loadEnhancedBooksData()
                 state.books_without_content = 0
             end
         end
