@@ -172,14 +172,11 @@ function FigureDetailView({ figure, figures, isTopLevel }) {
 
       {figure.books && isTopLevel && (
         <>
-          <p>has book</p>
-          {figure.books.map((b, i) => {
+          {figure.books.map((b, i) => (
             <div key={i}>
-              {" "}
-              <p>has bok</p>
               <BookDetailView book={b} />
-            </div>;
-          })}
+            </div>
+          ))}
         </>
       )}
     </div>
@@ -187,8 +184,16 @@ function FigureDetailView({ figure, figures, isTopLevel }) {
 }
 function BookDetailView({ book }) {
   console.log("BOOOK", book);
+  if (!book) {
+    return;
+  }
 
-  return <div></div>;
+  return (
+    <div className="book">
+      <p>{book.title}</p>
+      <p>{book.text_content}</p>
+    </div>
+  );
 }
 function structureDetailView({ e }) {
   return <div></div>;
