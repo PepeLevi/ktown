@@ -6,10 +6,10 @@ const cors = require("cors");
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "map_plus.json";
-const map_location = "map.json";
+const map_plus_location = "json_big_xml_plus.json";
+const map_location = "json_big_xml.json";
 const book_location = "books_hf.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
@@ -28,7 +28,7 @@ function loadDefaultFiles() {
 
   if (!hasFile1 || !hasFile2 || !hasBooks) {
     throw new Error(
-      `Default files missing. map_plus.json: ${hasFile1}, map.json: ${hasFile2}, books.json: ${hasBooks}`
+      `Default files missing. json_big_xml_plus.json: ${hasFile1}, json_big_xml.json: ${hasFile2}, books.json: ${hasBooks}`
     );
   }
 
