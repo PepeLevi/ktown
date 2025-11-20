@@ -51,6 +51,7 @@ client/dist/
 
 # Big Json Samples
 client/public/big/
+client/public/
 
 # Parcel / Vite cache
 client/.cache/
