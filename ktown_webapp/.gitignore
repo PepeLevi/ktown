@@ -6,6 +6,11 @@
 node_modules/
 client/node_modules/
 
+
+# Big Json Samples
+_public/big/*
+_public
+
 # Environment files
 .env
 .env.local
@@ -49,9 +54,7 @@ pids
 client/build/
 client/dist/
 
-# Big Json Samples
-public/big/
-public/*
+
 
 # Parcel / Vite cache
 client/.cache/
