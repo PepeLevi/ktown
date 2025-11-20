@@ -184,8 +184,6 @@ button:hover {
   object-fit: cover;
   mix-blend-mode: exclusion;
 }
-<<<<<<< HEAD
-=======
 
 .flex-row-full {
   display: flex;
@@ -212,4 +210,3 @@ button:hover {
 .subFigure {
   border: 1px solid var(--primary-color);
 }
->>>>>>> c0ec853df47c8d6f00c17dee8aa5088b99a0fecf

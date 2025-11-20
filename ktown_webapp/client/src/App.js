@@ -7,10 +7,11 @@ function App() {
   const [file1, setFile1] = useState(null);
   const [file2, setFile2] = useState(null);
   const [worldData, setWorldData] = useState(null);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
-
+  const [figures, setFigures] = useState([]);
+  const [books, setBooks] = useState([]);
   const [allowUpload, setAllowUpload] = useState(true);
 
   const backendUrl = "";
@@ -50,21 +51,99 @@ function App() {
       }
 
       const data = await res.json();
-      setWorldData(data.worldData);
-      data.worldData.cells.forEach((cell) => {
-        if (cell.written_contents.length > 0) {
+
+      // Support both { worldData: {...} } and direct worldData payloads
+      const wd = data.worldData || data;
+
+      if (!wd || !wd.cells) {
+        throw new Error("Invalid worldData format from server");
+      }
+
+      setWorldData(wd);
+
+      let temp_figures = [];
+      let temp_books = [];
+      wd.cells.forEach((cell) => {
+        if (cell.written_contents && cell.written_contents.length > 0) {
           console.log("has cell with book", cell);
+
+          for (let index = 0; index < cell.written_contents.length; index++) {
+            temp_books.push(cell.written_contents[index]);
+          }
+        }
+        if (cell.historical_figures) {
+          for (let index = 0; index < cell.historical_figures.length; index++) {
+            temp_figures.push(cell.historical_figures[index]);
+          }
         }
       });
+
+      setFigures(temp_figures);
+      setBooks(temp_books);
 
       setSelectedCell(null);
       setSelectedEntity(null);
       setStatus(
-        `${msgPrefix}WorldData built: ${data.worldData.cells.length} cell(s).`
+        `${msgPrefix}WorldData built: ${wd.cells.length} cell(s).`
       );
     } catch (err) {
       console.error(err);
       setStatus("Error building worldData.");
+      alert("Error: " + err.message);
+    }
+  };
+
+  const fetchWorldData = async () => {
+    try {
+      setStatus("Requesting world data from server...");
+
+      const res = await fetch(`${backendUrl}/api/world-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Request failed");
+      }
+
+      const data = await res.json();
+
+      // Support both { worldData: {...} } and direct worldData payloads
+      const wd = data.worldData || data;
+
+      if (!wd || !wd.cells) {
+        throw new Error("Invalid worldData format from server");
+      }
+
+      setWorldData(wd);
+
+      let temp_figures = [];
+      let temp_books = [];
+      wd.cells.forEach((cell) => {
+        if (cell.written_contents && cell.written_contents.length > 0) {
+          console.log("has cell with book", cell);
+
+          for (let index = 0; index < cell.written_contents.length; index++) {
+            temp_books.push(cell.written_contents[index]);
+          }
+        }
+        if (cell.historical_figures) {
+          for (let index = 0; index < cell.historical_figures.length; index++) {
+            temp_figures.push(cell.historical_figures[index]);
+          }
+        }
+      });
+
+      setFigures(temp_figures);
+      setBooks(temp_books);
+
+      setSelectedCell(null);
+      setSelectedEntity(null);
+      setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
+    } catch (err) {
+      console.error(err);
+      setStatus("Error loading world data.");
       alert("Error: " + err.message);
     }
   };
@@ -96,7 +175,11 @@ function App() {
       try {
         setStatus("Checking for default JSON files...");
         const res = await fetch(`${backendUrl}/api/default-files`);
-        if (!res.ok) throw new Error("Failed to check default files");
+        if (!res.ok) {
+          // If default files endpoint doesn't exist, try fetching directly
+          await fetchWorldData();
+          return;
+        }
 
         const data = await res.json();
 
@@ -109,11 +192,19 @@ function App() {
         } else {
           setAllowUpload(true);
           setStatus("No default JSON files. Please upload your files.");
+          // Try fetching directly as fallback
+          await fetchWorldData();
         }
       } catch (err) {
         console.error(err);
         setAllowUpload(true);
         setStatus("Could not check default files. Please upload your files.");
+        // Try fetching directly as fallback
+        try {
+          await fetchWorldData();
+        } catch (fetchErr) {
+          console.error("Failed to fetch world data:", fetchErr);
+        }
       }
     };
 
@@ -124,13 +215,13 @@ function App() {
 
   const handleCellClick = (cell) => {
     setSelectedCell(cell);
-    setSelectedEntity(null); // 🔸 only the cell is in focus
+    setSelectedEntity(null);
   };
 
   const handleEntityClick = (entity) => {
     console.log("handleEntityClick", entity);
-    setSelectedEntity(entity); // site or figure composed object
-    setSelectedCell(null); // 🔸 clear cell highlight when clicking inside
+    setSelectedEntity(entity);
+    setSelectedCell(null);
   };
 
   return (
@@ -143,10 +234,10 @@ function App() {
               onCellClick={handleCellClick}
               onEntityClick={handleEntityClick}
               selectedCell={selectedCell}
-              selectedEntity={selectedEntity} // 🔸 pass down
+              selectedEntity={selectedEntity}
             />
           ) : (
-            <p className="placeholder">Map will appear here.</p>
+            <p className="placeholder">Map will appear here once loaded.</p>
           )}
         </section>
 
@@ -187,7 +278,7 @@ function App() {
           </section>
 
           {selectedEntity ? (
-            <EntityDetailsView entity={selectedEntity} />
+            <EntityDetailsView entity={selectedEntity} figures={figures} />
           ) : null}
         </section>
       </main>
@@ -199,17 +290,89 @@ function App() {
 
 function TexturePreview({ label, src }) {
   if (!src) return null;
+  return <img src={src} alt={label} />;
+}
+
+function FigureDetailView({ figure, figures, isTopLevel }) {
+  if (!figure) {
+    return null;
+  }
+
   return (
-    // <div className="texture-preview">
-    //   <div className="texture-label">{label}</div>
-    //   <div className="texture-frame">
-    <img src={src} alt={label} />
-    //   </div>
-    // </div>
+    <div className="figure-detail-view">
+      <div className="flex-row-full">
+        <p>{figure.name}</p>{" "}
+        <p
+          style={{
+            transform: figure.sex === "-1" ? "rotate(90deg)" : "none",
+          }}
+        >
+          {figure.id}
+        </p>
+      </div>
+
+      <p>{figure.race}</p>
+      <p>{figure.associated_type}</p>
+
+      {figure.sphere && (
+        <div className="flex-row-full">
+          {Array.isArray(figure.sphere) &&
+            figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
+        </div>
+      )}
+
+      {figure.hf_link && isTopLevel && (
+        <div className="flex-column subFigures">
+          {figure.hf_link.map((s, i) => (
+            <div key={i}>
+              {figures[s.hfid] ? (
+                <div className={s.link_type + " subFigure"}>
+                  <p>{s.link_type}</p>
+                  <FigureDetailView
+                    figure={figures[s.hfid]}
+                    figures={figures}
+                    isTopLevel={false}
+                  />
+                </div>
+              ) : (
+                <p>
+                  {s.link_type}
+                  {s.hfid}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {figure.books && isTopLevel && (
+        <>
+          {figure.books.map((b, i) => (
+            <div key={i}>
+              <BookDetailView book={b} />
+            </div>
+          ))}
+        </>
+      )}
+    </div>
   );
 }
 
-function EntityDetailsView({ entity }) {
+function BookDetailView({ book }) {
+  console.log("BOOOK", book);
+  if (!book) {
+    return null;
+  }
+
+  return (
+    <div className="book">
+      <p>{book.title}</p>
+      <p>{book.text_content}</p>
+    </div>
+  );
+}
+
+function EntityDetailsView({ entity, figures }) {
   const {
     kind,
     name,
@@ -218,9 +381,15 @@ function EntityDetailsView({ entity }) {
     regionTextureUrl,
     siteTextureUrl,
     cellCoords,
+    site,
+    structure,
+    figure,
+    book,
   } = entity;
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
+
+  console.log("clicked on entity", entity);
 
   return (
     <div className="details-content">
@@ -234,19 +403,18 @@ function EntityDetailsView({ entity }) {
         {!kind && "Entity"}
       </h3>
 
-      <p>
-        <strong>Name:</strong> {name || "Unknown"}
-      </p>
-      {type && (
-        <p>
-          <strong>Type:</strong> {type}
-        </p>
-      )}
-      {cellCoords && (
-        <p>
-          <strong>Cell:</strong> ({cellCoords.x}, {cellCoords.y})
-        </p>
-      )}
+      <div className="flex-row-full">
+        <p>{name || "Unknown"}</p>
+        {cellCoords && (
+          <p>
+            [{cellCoords.x}, {cellCoords.y}]
+          </p>
+        )}
+      </div>
+      <div className="flex-row-full">
+        {type && <p>**{type}</p>}
+        {kind && <p>{kind}**</p>}
+      </div>
 
       <div className="texture-previews">
         <TexturePreview label="Entity texture" src={mainTexture} />
@@ -258,27 +426,17 @@ function EntityDetailsView({ entity }) {
         )}
       </div>
 
-      {kind === "cell" && (
-        <>
-          <h4>Cell Data</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+      <div className="flex-row-full"></div>
 
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-
-          <h4>Sites</h4>
-          <pre>{JSON.stringify(entity.sites || [], null, 2)}</pre>
-
-          <h4>Underground Regions</h4>
-          <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
-
-          <h4>Historical Figures</h4>
-          <pre>{JSON.stringify(entity.historical_figures || [], null, 2)}</pre>
-
-          <h4>Written Contents</h4>
-          <pre>{JSON.stringify(entity.written_contents || [], null, 2)}</pre>
-        </>
-      )}
+      <div className="specs">
+        {figure && (
+          <FigureDetailView
+            figure={figure}
+            figures={figures}
+            isTopLevel={true}
+          />
+        )}
+      </div>
 
       {kind === "site" && (
         <>
@@ -331,93 +489,37 @@ function EntityDetailsView({ entity }) {
 
           <h4>Underground Regions</h4>
           <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
+        </>
+      )}
 
-          <h4>Figures at Site</h4>
+      {kind === "cell" && (
+        <>
+          <h4>Cell</h4>
+          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+
+          <h4>Region</h4>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
+
+          <h4>Sites</h4>
           <pre>
-            {JSON.stringify(entity.site_historical_figures || [], null, 2)}
+            {entity.sites?.length ? JSON.stringify(entity.sites, null, 2) : "None"}
           </pre>
 
-          <h4>Figures in Cell</h4>
+          <h4>Historical Figures in Cell</h4>
           <pre>
-            {JSON.stringify(entity.cell_historical_figures || [], null, 2)}
-          </pre>
-
-          <h4>Written Contents at Site</h4>
-          <pre>
-            {JSON.stringify(entity.site_written_contents || [], null, 2)}
+            {entity.historical_figures?.length
+              ? JSON.stringify(entity.historical_figures, null, 2)
+              : "None"}
           </pre>
 
           <h4>Written Contents in Cell</h4>
           <pre>
-            {JSON.stringify(entity.cell_written_contents || [], null, 2)}
+            {entity.written_contents?.length
+              ? JSON.stringify(entity.written_contents, null, 2)
+              : "None"}
           </pre>
         </>
       )}
-
-      {kind === "undergroundRegion" && (
-        <>
-          <h4>Underground Region object</h4>
-          <pre>{JSON.stringify(entity.undergroundRegion, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-        </>
-      )}
-
-      {kind === "writtenContent" && (
-        <>
-          <h4>Written Content object</h4>
-          <pre>{JSON.stringify(entity.writtenContent, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-        </>
-      )}
-    </div>
-  );
-}
-
-function CellDetailsView({ cell }) {
-  const regionType = cell.region?.type || null;
-  const regionTexture = regionType ? REGION_TEXTURES[regionType] : null;
-
-  return (
-    <div className="details-content">
-      <h3>
-        Cell ({cell.x}, {cell.y})
-      </h3>
-
-      <div className="texture-previews">
-        <TexturePreview label="Region texture" src={regionTexture} />
-      </div>
-
-      <h4>Region</h4>
-      <pre>{cell.region ? JSON.stringify(cell.region, null, 2) : "None"}</pre>
-
-      <h4>Sites</h4>
-      <pre>
-        {cell.sites?.length ? JSON.stringify(cell.sites, null, 2) : "None"}
-      </pre>
-
-      <h4>Historical Figures in Cell</h4>
-      <pre>
-        {cell.historical_figures?.length
-          ? JSON.stringify(cell.historical_figures, null, 2)
-          : "None"}
-      </pre>
-
-      <h4>Written Contents in Cell</h4>
-      <pre>
-        {cell.written_contents?.length
-          ? JSON.stringify(cell.written_contents, null, 2)
-          : "None"}
-      </pre>
     </div>
   );
 }
