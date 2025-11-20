@@ -2,72 +2,176 @@
 import React, { useEffect, useRef } from "react";
 import * as d3 from "d3";
 import {
-  REGION_TEXTURES,
-  SITE_TEXTURES,
-  FIGURE_TEXTURES,
-  DEFAULT_TEXTURE,
-} from "./regionTextures";
+  getRegionTex,
+  getSiteTex,
+  getFigureTex,
+} from "./proceduralTextures";
 
 const regionColor = "yellow";
-const siteColor = "var(--primary-color)";
-const structureColor = "var(--primary-color)";
-const figureColor = "var(--primary-color)";
-const bookColor = "var(--primary-color)";
+const siteColor = "blue";
+const structureColor = "green";
+const figureColor = "pink";
+const bookColor = "white";
 
 const CELL_SIZE = 30;
 const CELL_GAP = 0;
 
 // zoom limits
 const MIN_ZOOM = 1;
-const MAX_ZOOM = 500;
+const MAX_ZOOM = 160;
 
+// Hierarchical zoom thresholds - defines when each level becomes visible
+// This is extensible: add new levels by adding entries to this array
+// When a level is visible, it SUBDIVIDES its parent completely (fractal subdivision)
+// Subdivision is procedural - only shows as you zoom in
+const HIERARCHY_LEVELS = [
+  {
+    name: "cell",
+    minZoom: 1, // Always visible
+    getChildren: (cell) => {
+      // Cell can contain: sites, underground regions, cell-level historical figures, written contents
+      const children = [];
+      if (cell.sites && cell.sites.length > 0) children.push(...cell.sites.map(s => ({ type: 'site', data: s })));
+      if (cell.undergroundRegions && cell.undergroundRegions.length > 0) {
+        children.push(...cell.undergroundRegions.map(ug => ({ type: 'undergroundRegion', data: ug })));
+      }
+      if (cell.historical_figures && cell.historical_figures.length > 0) {
+        children.push(...cell.historical_figures.map(hf => ({ type: 'cellFigure', data: hf })));
+      }
+      if (cell.written_contents && cell.written_contents.length > 0) {
+        children.push(...cell.written_contents.map(wc => ({ type: 'writtenContent', data: wc })));
+      }
+      return children;
+    },
+    sizeRatio: 1.0, // Full cell size
+  },
+  {
+    name: "undergroundRegion",
+    minZoom: 3, // Show underground regions when zoom >= 3
+    getChildren: () => [], // Leaf nodes
+    sizeRatio: 1.0,
+  },
+  {
+    name: "site",
+    minZoom: 5, // Show sites when zoom >= 5 - they subdivide the cell
+    getChildren: (site) => {
+      const structures = site.data?.structures?.structure || site.structures?.structure;
+      if (!structures) return [];
+      return Array.isArray(structures) ? structures : [structures];
+    },
+    sizeRatio: 1.0, // Sites fill the entire cell when visible (fractal subdivision)
+  },
+  {
+    name: "structure",
+    minZoom: 15, // Show structures when zoom >= 15 - they subdivide the site
+    getChildren: (structure) => {
+      // Structures contain inhabitants (historical figures)
+      return structure.inhabitants || [];
+    },
+    sizeRatio: 1.0, // Structures fill the entire site when visible (fractal subdivision)
+  },
+  {
+    name: "figure",
+    minZoom: 40, // Show figures when zoom >= 40 - they subdivide the structure
+    getChildren: () => [], // Figures are leaf nodes
+    sizeRatio: 1.0, // Figures fill the entire structure when visible (fractal subdivision)
+  },
+  {
+    name: "cellFigure",
+    minZoom: 8, // Show cell-level figures when zoom >= 8
+    getChildren: () => [], // Leaf nodes
+    sizeRatio: 1.0,
+  },
+  {
+    name: "writtenContent",
+    minZoom: 10, // Show written contents (books) when zoom >= 10
+    getChildren: () => [], // Leaf nodes
+    sizeRatio: 1.0,
+  },
+];
+
+// Calculate Fibonacci-style fractal subdivision in a square
+// Dynamic: works with any count, creating square-like subdivisions
+// Pattern: always divide the largest dimension, creating recursive Fibonacci-like pattern
+// 2 subdivisions: half left (1), half right (2) - vertical split
+// 3 subdivisions: half left (1), right half split horizontally: top (2), bottom (3)
+// 4 subdivisions: half left (1), right half: top square (2), bottom split: left (3), right (4)
+// Recursive: always divide the largest remaining area to maintain square-like proportions
 function calculateGridPositions(
   index,
   count,
-  entitySize,
   boundingBoxWidth,
-  boundingBoxHeight
+  boundingBoxHeight,
+  offsetX = 0,
+  offsetY = 0
 ) {
+  if (count === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  
   if (count === 1) {
-    const x = boundingBoxWidth / 2 - entitySize / 2;
-    const y = boundingBoxHeight / 2 - entitySize / 2;
-    return { x, y };
+    // Single element fills entire parent space
+    return { 
+      x: offsetX, 
+      y: offsetY, 
+      width: boundingBoxWidth, 
+      height: boundingBoxHeight 
+    };
   }
 
-  const cols = Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / cols);
+  // Determine if we should split vertically or horizontally
+  // For Fibonacci pattern: always divide the larger dimension to create more square-like shapes
+  const isWide = boundingBoxWidth >= boundingBoxHeight;
+  
+  if (index === 0) {
+    // First element always takes half of the larger dimension
+    if (isWide) {
+      // Vertical split: left half (creates a square-like left portion)
+      return {
+        x: offsetX,
+        y: offsetY,
+        width: boundingBoxWidth / 2,
+        height: boundingBoxHeight
+      };
+    } else {
+      // Horizontal split: top half (creates a square-like top portion)
+      return {
+        x: offsetX,
+        y: offsetY,
+        width: boundingBoxWidth,
+        height: boundingBoxHeight / 2
+      };
+    }
+  }
 
-  const col = index % cols;
-  const row = Math.floor(index / cols);
-
-  const totalGridWidth = cols * entitySize;
-  const totalGridHeight = rows * entitySize;
-
-  const startX = (boundingBoxWidth - totalGridWidth) / 2;
-  const startY = (boundingBoxHeight - totalGridHeight) / 2;
-
-  const x = startX + col * entitySize;
-  const y = startY + row * entitySize;
-
-  return { x, y };
+  // Remaining elements go in the other half, recursively subdivided
+  // This creates the Fibonacci pattern: each subdivision maintains square-like proportions
+  const remainingCount = count - 1;
+  const remainingIndex = index - 1;
+  
+  if (isWide) {
+    // Vertical split: remaining elements in right half, which will be subdivided recursively
+    const remainingWidth = boundingBoxWidth / 2;
+    return calculateGridPositions(
+      remainingIndex,
+      remainingCount,
+      remainingWidth,
+      boundingBoxHeight,
+      offsetX + remainingWidth,
+      offsetY
+    );
+  } else {
+    // Horizontal split: remaining elements in bottom half, which will be subdivided recursively
+    const remainingHeight = boundingBoxHeight / 2;
+    return calculateGridPositions(
+      remainingIndex,
+      remainingCount,
+      boundingBoxWidth,
+      remainingHeight,
+      offsetX,
+      offsetY + remainingHeight
+    );
+  }
 }
 
-function computeChildSize(
-  parentWidth,
-  parentHeight,
-  count,
-  paddingFactor = 0.8
-) {
-  if (!count || count <= 0) return 0;
-
-  const cols = Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / cols);
-
-  const maxWidth = (parentWidth * paddingFactor) / cols;
-  const maxHeight = (parentHeight * paddingFactor) / rows;
-
-  return Math.min(maxWidth, maxHeight);
-}
 
 function WorldMap({
   worldData,
@@ -81,12 +185,33 @@ function WorldMap({
   const zoomBehaviorRef = useRef(null); // 🆕 store d3.zoom()
   const mapWidthRef = useRef(0); // 🆕 store map width
   const mapHeightRef = useRef(0); // 🆕 store map height
+  const currentZoomRef = useRef(1); // Track current zoom level
+  const focusedCellRef = useRef(null); // Track which cell is currently focused/zoomed into
+  const xScaleRef = useRef(null); // Store xScale for zoom calculations
+  const yScaleRef = useRef(null); // Store yScale for zoom calculations
 
   const regionTypesRef = useRef([]);
   const siteTypesRef = useRef([]);
   const figureKindsRef = useRef(["default"]);
+  
+  // Track drag state for cells - allow panning even when clicking on cells
+  const cellDragStateRef = useRef({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    threshold: 5, // pixels to consider it a drag
+    timeoutId: null,
+  });
 
   const sanitizeKey = (val) => String(val || "Unknown").replace(/\s+/g, "");
+
+  // Sanitize for CSS selector - remove invalid characters (commas, dots, etc.)
+  const sanitizeForSelector = (val) => {
+    return String(val || "unknown")
+      .replace(/[^a-zA-Z0-9_-]/g, "_") // Replace invalid chars with underscore
+      .replace(/_+/g, "_") // Collapse multiple underscores
+      .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
+  };
 
   // helper: accept single object or array and always return array
   const normalizeToArray = (value) => {
@@ -94,24 +219,255 @@ function WorldMap({
     return Array.isArray(value) ? value : [value];
   };
 
+  // Check if a hierarchy level should be visible at current zoom
+  const isLevelVisible = (levelName) => {
+    const level = HIERARCHY_LEVELS.find((l) => l.name === levelName);
+    if (!level) return false;
+    return currentZoomRef.current >= level.minZoom;
+  };
+
+  // Check if a cell is visible in the current viewport
+  const isCellVisible = (cell, xScale, yScale, transform, svgNode) => {
+    if (!cell || !xScale || !yScale || !transform || !svgNode) return false;
+    
+    const viewBox = svgNode.viewBox.baseVal;
+    const { x, y, k } = transform;
+    
+    // Calculate cell position in world coordinates
+    const cellX = xScale(cell.y);
+    const cellY = yScale(cell.x);
+    const cellWidth = CELL_SIZE;
+    const cellHeight = CELL_SIZE;
+    
+    // Transform cell bounds to viewport coordinates
+    const cellLeft = cellX * k + x;
+    const cellRight = (cellX + cellWidth) * k + x;
+    const cellTop = cellY * k + y;
+    const cellBottom = (cellY + cellHeight) * k + y;
+    
+    // Check if cell intersects with viewport (with some padding for smooth transitions)
+    const padding = CELL_SIZE * k; // Padding based on zoom level
+    const viewportRight = viewBox.width + padding;
+    const viewportBottom = viewBox.height + padding;
+    
+    return !(cellRight < -padding || cellLeft > viewportRight || 
+             cellBottom < -padding || cellTop > viewportBottom);
+  };
+  
+  // Check if a cell should subdivide based on visibility and zoom
+  // Only subdivide cells that are visible in viewport (dynamic and logical)
+  const shouldCellSubdivide = (cell, zoom, xScale, yScale, transform, svgNode) => {
+    if (!cell || !xScale || !yScale || !transform || !svgNode) return false;
+    
+    // First check if cell is visible in viewport
+    if (!isCellVisible(cell, xScale, yScale, transform, svgNode)) {
+      return false; // Don't subdivide cells outside viewport
+    }
+    
+    const viewBox = svgNode.viewBox.baseVal;
+    const viewportCenterX = viewBox.width / 2;
+    const viewportCenterY = viewBox.height / 2;
+    const { x, y, k } = transform;
+    
+    // Transform viewport center to world coordinates
+    const worldCenterX = (viewportCenterX - x) / k;
+    const worldCenterY = (viewportCenterY - y) / k;
+    
+    // Calculate cell center
+    const cellX = xScale(cell.y);
+    const cellY = yScale(cell.x);
+    const cellCenterX = cellX + CELL_SIZE / 2;
+    const cellCenterY = cellY + CELL_SIZE / 2;
+    
+    // Calculate distance from viewport center (in world coordinates)
+    const dx = Math.abs(cellCenterX - worldCenterX);
+    const dy = Math.abs(cellCenterY - worldCenterY);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Subdivision radius based on zoom - cells closer to center subdivide first
+    // More progressive: radius increases smoothly with zoom
+    // At zoom 1: radius = 2 cells
+    // At zoom 5: radius = ~4 cells
+    // At zoom 10: radius = ~8 cells
+    const baseRadius = CELL_SIZE * 2.5; // Base radius at zoom 1
+    const zoomFactor = 1.3; // How much radius increases per zoom level
+    const maxRadius = baseRadius * Math.pow(zoomFactor, Math.max(0, zoom - 1));
+    
+    // Cells closer to center and within radius should subdivide
+    return distance <= maxRadius;
+  };
+  
+  // Check if an element belongs to a cell that should subdivide
+  // This is a legacy function - kept for compatibility but may not be used
+  const belongsToSubdividingCell = (cell, zoom) => {
+    // Fallback to simple distance check if no transform available
+    const focused = focusedCellRef.current;
+    if (!focused || !cell) return false;
+    const dx = Math.abs(cell.x - focused.x);
+    const dy = Math.abs(cell.y - focused.y);
+    const distance = Math.max(dx, dy);
+    const maxDistance = Math.floor((zoom - 1) / 10);
+    return distance <= maxDistance;
+  };
+
+  // Get the parent level for a given level
+  const getParentLevel = (levelName) => {
+    const idx = HIERARCHY_LEVELS.findIndex((l) => l.name === levelName);
+    return idx > 0 ? HIERARCHY_LEVELS[idx - 1] : null;
+  };
+
   const handleLabelClick = (d) => {
     console.log("clicks label", d);
   };
 
-  const getRegionTex = (type) =>
-    (type && REGION_TEXTURES[type]) || DEFAULT_TEXTURE;
-
-  const getSiteTex = (type) => {
-    if (!type) return SITE_TEXTURES.default || DEFAULT_TEXTURE;
-    const key = String(type).toLowerCase();
-    return SITE_TEXTURES[key] || SITE_TEXTURES.default || DEFAULT_TEXTURE;
-  };
-
-  const getFigureTex = (hf) => FIGURE_TEXTURES.default || DEFAULT_TEXTURE;
-
   const getPatternId = (kind, key) => `pattern-${kind}-${sanitizeKey(key)}`;
 
-  const zoomToPoint = (x, y, targetK = 8, duration = 750) => {
+  // Update visibility of elements based on zoom level (cumulative fractal subdivision)
+  // All visible levels are shown together, progressively subdividing the space
+  const updateElementVisibility = (gSelection, zoom, xScale, yScale) => {
+    if (!gSelection || gSelection.empty()) return;
+    
+    const sitesVisible = isLevelVisible("site");
+    const structuresVisible = isLevelVisible("structure");
+    const figuresVisible = isLevelVisible("figure");
+    const undergroundRegionsVisible = isLevelVisible("undergroundRegion");
+    const cellFiguresVisible = isLevelVisible("cellFigure");
+    const writtenContentsVisible = isLevelVisible("writtenContent");
+    
+    // Check if cell has any visible children
+    const hasAnyVisibleChildren = (cell) => {
+      const shouldSubdivide = shouldCellSubdivide(cell, zoom);
+      if (!shouldSubdivide) return false;
+      return (cell.sites && cell.sites.length > 0 && sitesVisible) ||
+             (cell.undergroundRegions && cell.undergroundRegions.length > 0 && undergroundRegionsVisible) ||
+             (cell.historical_figures && cell.historical_figures.length > 0 && cellFiguresVisible) ||
+             (cell.written_contents && cell.written_contents.length > 0 && writtenContentsVisible);
+    };
+    
+    // Update sites visibility - show if level is visible and cell subdivides
+    gSelection.selectAll("rect.site-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      rect.style("opacity", (sitesVisible && shouldSubdivide) ? 1 : 0);
+    });
+    gSelection.selectAll("text.site-label").each(function(d) {
+      const text = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      text.style("opacity", (sitesVisible && shouldSubdivide) ? 1 : 0);
+    });
+    
+    // Update structures visibility - show if level is visible
+    gSelection.selectAll("rect.structure-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      rect.style("opacity", (structuresVisible && shouldSubdivide) ? 1 : 0);
+    });
+    gSelection.selectAll("text.structure-label").each(function(d) {
+      const text = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      text.style("opacity", (structuresVisible && shouldSubdivide) ? 1 : 0);
+    });
+    
+    // Update figures visibility
+    gSelection.selectAll("rect.figure-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      rect.style("opacity", (figuresVisible && shouldSubdivide) ? 1 : 0);
+    });
+    gSelection.selectAll("text.figure-label").each(function(d) {
+      const text = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      text.style("opacity", (figuresVisible && shouldSubdivide) ? 1 : 0);
+    });
+    
+    // Update underground regions visibility
+    gSelection.selectAll("rect.underground-region-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      rect.style("opacity", (undergroundRegionsVisible && shouldSubdivide) ? 1 : 0);
+    });
+    
+    // Update cell figures visibility
+    gSelection.selectAll("rect.cell-figure-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      rect.style("opacity", (cellFiguresVisible && shouldSubdivide) ? 1 : 0);
+    });
+    
+    // Update written contents visibility
+    gSelection.selectAll("rect.written-content-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      rect.style("opacity", (writtenContentsVisible && shouldSubdivide) ? 1 : 0);
+    });
+    
+    // Update cell appearance - cell is ALWAYS visible, but becomes more transparent when subdivided
+    gSelection.selectAll("rect.cell").each(function(d) {
+      const rect = d3.select(this);
+      const hasVisibleChildren = hasAnyVisibleChildren(d);
+      
+      // Cell is always visible, but opacity reduces as children appear
+      if (hasVisibleChildren) {
+        // Cell with visible children - reduce opacity so children show through
+        // More children = more transparent
+        const childCount = [
+          (d.sites && sitesVisible ? d.sites.length : 0),
+          (d.undergroundRegions && undergroundRegionsVisible ? d.undergroundRegions.length : 0),
+          (d.historical_figures && cellFiguresVisible ? d.historical_figures.length : 0),
+          (d.written_contents && writtenContentsVisible ? d.written_contents.length : 0)
+        ].reduce((a, b) => a + b, 0);
+        
+        const opacity = Math.max(0.2, 1 - (childCount * 0.1)); // More children = more transparent
+        rect.style("opacity", opacity);
+        rect.style("stroke", "rgba(255,255,255,0.5)").style("stroke-width", 0.5);
+      } else {
+        // No visible children - show full cell
+        rect.style("opacity", 1);
+        rect.style("stroke", null).style("stroke-width", 0);
+      }
+    });
+    
+    // Update site appearance - sites become transparent when structures appear
+    gSelection.selectAll("rect.site-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      if (!shouldSubdivide) return;
+      
+      const structures = normalizeToArray(d.site?.structures?.structure || d.site?.data?.structures?.structure);
+      const hasStructures = structures.length > 0;
+      const shouldShowStructures = hasStructures && structuresVisible;
+      
+      if (shouldShowStructures) {
+        // Structures are visible - make site semi-transparent so structures show through
+        rect.style("opacity", 0.4);
+        rect.style("stroke", "rgba(0,255,0,0.6)").style("stroke-width", 0.4);
+      } else {
+        // No structures visible - show full site
+        rect.style("opacity", 1);
+      }
+    });
+    
+    // Update structure appearance - structures become transparent when figures appear
+    gSelection.selectAll("rect.structure-marker").each(function(d) {
+      const rect = d3.select(this);
+      const shouldSubdivide = belongsToSubdividingCell(d.cell, zoom);
+      if (!shouldSubdivide) return;
+      
+      const hasInhabitants = d.structure?.inhabitants && d.structure.inhabitants.length > 0;
+      const shouldShowFigures = hasInhabitants && figuresVisible;
+      
+      if (shouldShowFigures) {
+        // Figures are visible - make structure semi-transparent so figures show through
+        rect.style("opacity", 0.4);
+        rect.style("stroke", "rgba(255,192,203,0.6)").style("stroke-width", 0.4);
+      } else {
+        // No figures visible - show full structure
+        rect.style("opacity", 1);
+      }
+    });
+  };
+
+  const zoomToPoint = (x, y, targetK = 8, duration = 200) => {
     const svgNode = svgRef.current;
     const zoomBehavior = zoomBehaviorRef.current;
     if (!svgNode || !zoomBehavior) return;
@@ -133,259 +489,635 @@ function WorldMap({
       .call(zoomBehavior.transform, next);
   };
 
-  const createOrUpdatePatterns = (defsSelection, k = 1) => {
-    if (!defsSelection || defsSelection.empty()) return;
-
-    defsSelection.selectAll("pattern").remove();
-
-    const baseSize = CELL_SIZE;
-    const patternSize = baseSize / k;
-
-    // regions
-    regionTypesRef.current.forEach((type) => {
-      const texUrl = getRegionTex(type);
-      if (!texUrl) return;
-      const pid = getPatternId("region", type);
-
-      const pattern = defsSelection
+  // Create or get pattern for a specific cell/texture key
+  const getOrCreatePattern = (defsSelection, patternKey, textureUrl) => {
+    if (!defsSelection || defsSelection.empty()) {
+      console.warn("getOrCreatePattern: defsSelection is empty");
+      return null;
+    }
+    
+    if (!textureUrl) {
+      console.warn("getOrCreatePattern: textureUrl is missing for patternKey:", patternKey);
+      return null;
+    }
+    
+    const pid = sanitizeForSelector(`pattern-${patternKey}`);
+    
+    // Check if pattern already exists
+    let pattern = defsSelection.select(`#${pid}`);
+    if (!pattern.empty()) {
+      return pid; // Pattern already exists
+    }
+    
+    // Create new pattern
+    try {
+      pattern = defsSelection
         .append("pattern")
         .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", patternSize)
-        .attr("height", patternSize);
+        .attr("patternUnits", "objectBoundingBox")
+        .attr("patternContentUnits", "objectBoundingBox")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", 1)
+        .attr("height", 1);
 
       pattern
         .append("image")
-        .attr("href", texUrl)
+        .attr("href", textureUrl)
         .attr("x", 0)
         .attr("y", 0)
-        .attr("width", patternSize)
-        .attr("height", patternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
+        .attr("width", 1)
+        .attr("height", 1)
+        .attr("preserveAspectRatio", "none"); // Stretch to fill - no aspect ratio preservation
+      
+      return pid;
+    } catch (error) {
+      console.error("getOrCreatePattern: Error creating pattern:", error, "patternKey:", patternKey);
+      return null;
+    }
+  };
+
+  // Recursive function to render a cell and its children
+  const renderRecursiveCell = (cell, parentBbox, gSelection, xScale, yScale, level = 0) => {
+    // Calculate this cell's position
+    const cellX = level === 0 ? xScale(cell.y) : (parentBbox.x + (cell.bbox?.x || 0));
+    const cellY = level === 0 ? yScale(cell.x) : (parentBbox.y + (cell.bbox?.y || 0));
+    const cellWidth = level === 0 ? CELL_SIZE : (cell.bbox?.width || CELL_SIZE);
+    const cellHeight = level === 0 ? CELL_SIZE : (cell.bbox?.height || CELL_SIZE);
+    
+    const cellBbox = { x: cellX, y: cellY, width: cellWidth, height: cellHeight };
+    
+    // If level 0 has children, the original cell is now one of the children
+    // So we only render children, not the original cell itself
+    // Each child should be rendered as a separate cell with its own texture
+    if (level === 0 && cell.children && cell.children.length > 0) {
+      // Render children directly - they fill the entire cell space
+      // Each child is a separate rect with its own texture, tiling the parent space
+      cell.children.forEach((child, idx) => {
+        // Ensure each child has a unique key for proper rendering
+        if (!child.key) {
+          child.key = `${cell.key}-child-${idx}`;
+        }
+        // Render each child with its own texture - they tile the parent space
+        renderRecursiveCell(child, cellBbox, gSelection, xScale, yScale, 1);
+      });
+      return; // Don't render the original cell, only its children
+    }
+    
+    // Create rect for this cell - sanitize key for CSS selector
+    // Use a more unique key that includes level and position to avoid conflicts
+    const rawCellKey = cell.key || `cell-${level}-${cellX}-${cellY}`;
+    // Sanitize coordinates to avoid decimal points in selectors
+    const sanitizedX = Math.round(cellX * 100) / 100; // Round to 2 decimals
+    const sanitizedY = Math.round(cellY * 100) / 100;
+    const uniqueKeyRaw = `${rawCellKey}-${level}-${sanitizedX}-${sanitizedY}`;
+    const uniqueKey = sanitizeForSelector(uniqueKeyRaw); // Fully sanitize the key
+    const cellRect = gSelection.selectAll(`rect.cell-${uniqueKey}`)
+      .data([{ ...cell, cellKey: uniqueKey, cellBbox }], d => d.cellKey || uniqueKey);
+    
+    const cellEnter = cellRect.enter()
+      .append("rect")
+      .attr("class", `cell cell-level-${level} cell-${uniqueKey}`)
+      .attr("x", cellX)
+      .attr("y", cellY)
+      .attr("width", cellWidth)
+      .attr("height", cellHeight)
+      .style("cursor", "pointer")
+      .style("pointer-events", "auto") // Ensure cells are clickable
+      .style("z-index", 10); // Ensure cells are above other elements
+    
+    cellEnter.merge(cellRect)
+      .attr("x", cellX)
+      .attr("y", cellY)
+      .attr("width", cellWidth)
+      .attr("height", cellHeight)
+      .style("cursor", "pointer")
+      .style("pointer-events", "auto") // Ensure cells are clickable
+      .each(function(d) {
+        const rect = d3.select(this);
+        const svg = d3.select(svgRef.current);
+        const defs = svg.select("defs");
+        
+        // Skip ocean cells - don't render them
+        if (level === 0 && d.region?.type === "Ocean") {
+          rect.style("display", "none");
+          return;
+        }
+        
+        // Get cell key for procedural texture generation - ensure we always have a valid key
+        const cellKeyForTexture = d.key || d.originalCell?.key || d.cellKey || `cell-${level}-${cellX}-${cellY}`;
+        
+        // Determine texture based on cell type - use procedural generation
+        let texUrl = null;
+        let patternKey = null;
+        
+        if (level === 0) {
+          // Original cell - use region texture (skip if ocean)
+          if (d.region?.type !== "Ocean") {
+            texUrl = getRegionTex(d.region?.type, cellKeyForTexture);
+            patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
+          }
+        } else if (d.isOriginalCell || d.childType === "region") {
+          // This is the original cell texture in a subdivision - use region texture
+          const regionType = d.childData?.type || d.originalCell?.region?.type;
+          texUrl = getRegionTex(regionType, cellKeyForTexture);
+          patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
+        } else if (d.childType === "site") {
+          const siteType = d.childData?.fromFile2?.type || d.childData?.fromFile1?.type || d.childData?.type || "default";
+          texUrl = getSiteTex(siteType, cellKeyForTexture);
+          patternKey = `site-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(siteType)}`;
+        } else if (d.childType === "structure") {
+          // Structures get procedural textures - use neutral palette
+          const structId = d.childData?.id || d.childData?.local_id || 'default';
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-struct-${structId}`); // null type = default palette
+          patternKey = `structure-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(structId))}`;
+        } else if (d.childType === "figure" || d.childType === "cellFigure") {
+          texUrl = getFigureTex(d.childData, cellKeyForTexture);
+          patternKey = `fig-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(d.childData?.id || 'default'))}`;
+        } else if (d.childType === "undergroundRegion") {
+          // Underground regions get procedural textures - use cavern palette
+          const ugId = d.childData?.id || 'default';
+          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`); // Use cavern palette
+          patternKey = `underground-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(ugId))}`;
+        } else if (d.childType === "writtenContent") {
+          // Written contents get procedural textures - use neutral palette
+          const wcId = d.childData?.id || d.childData?.title || 'default';
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`); // null type = default palette
+          patternKey = `written-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(wcId))}`;
+        } else {
+          // Fallback: generate a default texture for any unknown type
+          texUrl = getRegionTex(null, cellKeyForTexture);
+          patternKey = `default-${sanitizeForSelector(cellKeyForTexture)}`;
+        }
+        
+        // Apply procedural texture - ensure we always have a texture
+        // This is critical: every cell MUST have a texture
+        let appliedTexture = false;
+        if (texUrl && patternKey) {
+          const pid = getOrCreatePattern(defs, patternKey, texUrl);
+          if (pid) {
+            rect.style("fill", `url(#${pid})`).style("opacity", 1);
+            appliedTexture = true;
+          }
+        }
+        
+        // Fallback: if texture wasn't applied, generate a default one
+        if (!appliedTexture) {
+          // Generate a fallback texture using the cell key
+          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+          const fallbackPatternKey = `fallback-${sanitizeForSelector(cellKeyForTexture)}`;
+          const fallbackPid = getOrCreatePattern(defs, fallbackPatternKey, fallbackTexUrl);
+          if (fallbackPid) {
+            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+          } else {
+            // Last resort: solid color (should never happen)
+            rect.style("fill", "#f0f0f0").style("opacity", 1);
+            console.warn("Failed to create texture for cell:", cellKeyForTexture);
+          }
+        }
+        
+        // Always set opacity to 1 (opaque) - no transparency
+        rect.style("opacity", 1);
+        
+        // Optional: add subtle stroke for cells with children
+        const hasVisibleChildren = d.children && d.children.length > 0;
+        if (hasVisibleChildren) {
+          rect.style("stroke", "rgba(255,255,255,0.3)").style("stroke-width", 0.5);
+        } else {
+          rect.style("stroke", null).style("stroke-width", 0);
+        }
+      });
+    
+    // Add click handler - make child cells selectable and show JSON info in right panel
+    // Apply to both new and existing elements
+    // Allow panning even when clicking on cells - detect drag vs click
+    const cellDragState = cellDragStateRef.current;
+    
+    const handleCellMouseDown = (event, d) => {
+      // Start tracking drag
+      cellDragState.isDragging = false;
+      cellDragState.startX = event.clientX;
+      cellDragState.startY = event.clientY;
+      
+      // Clear any pending timeout
+      if (cellDragState.timeoutId) {
+        clearTimeout(cellDragState.timeoutId);
+        cellDragState.timeoutId = null;
+      }
+      
+      // Don't stop propagation - allow zoom to handle panning
+      // We'll check in click handler if it was a drag or click
+    };
+    
+    const handleCellMouseMove = (event) => {
+      // Check if user is dragging
+      if (cellDragState.startX !== 0 || cellDragState.startY !== 0) {
+        const dx = Math.abs(event.clientX - cellDragState.startX);
+        const dy = Math.abs(event.clientY - cellDragState.startY);
+        if (dx > cellDragState.threshold || dy > cellDragState.threshold) {
+          cellDragState.isDragging = true;
+        }
+      }
+    };
+    
+    const handleCellClick = (event, d) => {
+      // Check if user was dragging
+      const wasDragging = cellDragState.isDragging;
+      
+      // Reset drag state after a short delay
+      if (cellDragState.timeoutId) {
+        clearTimeout(cellDragState.timeoutId);
+      }
+      cellDragState.timeoutId = setTimeout(() => {
+        cellDragState.isDragging = false;
+        cellDragState.startX = 0;
+        cellDragState.startY = 0;
+        cellDragState.timeoutId = null;
+      }, 150);
+      
+      // If user was dragging, don't treat as click - let pan happen
+      if (wasDragging) {
+        event.stopPropagation();
+        return; // Let pan happen, don't show info
+      }
+      
+      event.stopPropagation();
+      
+      console.log("Cell clicked:", d); // Debug log
+      
+      // Compose entity for click - include all JSON data for display
+      const originalCell = d.originalCell || d;
+      
+      // Ensure we have valid data
+      if (!originalCell) {
+        console.warn("No originalCell found in clicked cell:", d);
+        return;
+      }
+
+      let composed = null;
+      
+      if (level === 0) {
+        // Original cell - show cell information
+        composed = {
+          kind: "cell",
+          name: `Cell (${originalCell.x}, ${originalCell.y})`,
+          type: originalCell.region?.type || null,
+          cellCoords: { x: originalCell.x, y: originalCell.y },
+          cell: originalCell,
+          region: originalCell.region,
+          sites: originalCell.sites || [],
+          undergroundRegions: originalCell.undergroundRegions || [],
+          historical_figures: originalCell.historical_figures || [],
+          written_contents: originalCell.written_contents || [],
+        };
+      } else {
+        // Child cell - show specific child data
+        if (d.childType === "site") {
+          const site = d.childData;
+          const siteType = site?.fromFile2?.type || site?.fromFile1?.type || site?.type || "default";
+          const siteName = site?.fromFile2?.name || site?.fromFile1?.name || site?.name || "Unknown site";
+          
+          composed = {
+            kind: "site",
+            name: siteName,
+            type: siteType,
+            textureUrl: getSiteTex(siteType),
+            regionTextureUrl: getRegionTex(originalCell.region?.type),
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            site: site,
+            cell: originalCell,
+            region: originalCell.region,
+            undergroundRegions: originalCell.undergroundRegions || [],
+            historical_figures: site.historical_figures || [],
+            inhabitants: site.inhabitants || [],
+            written_contents: site.written_contents || [],
+          };
+        } else if (d.childType === "structure") {
+          const structure = d.childData;
+          const name = structure.name || structure.type || "Structure";
+          
+          composed = {
+            kind: "structure",
+            name: name,
+            type: structure.type || null,
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            structure: structure,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "figure" || d.childType === "cellFigure") {
+          const hf = d.childData;
+          const hfName = hf.name || hf.id || "Unknown figure";
+          
+          composed = {
+            kind: "figure",
+            name: hfName,
+            textureUrl: getFigureTex(hf),
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            figure: hf,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "undergroundRegion") {
+          const ug = d.childData;
+          
+          composed = {
+            kind: "undergroundRegion",
+            name: ug.name || "Underground Region",
+            type: ug.type || null,
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            undergroundRegion: ug,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "writtenContent") {
+          const wc = d.childData;
+          
+          composed = {
+            kind: "writtenContent",
+            name: wc.title || "Written Content",
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            writtenContent: wc,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "region") {
+          // Region subdivision
+          const region = d.childData || originalCell.region;
+          
+          composed = {
+            kind: "cell",
+            name: `Region: ${region?.type || "Unknown"}`,
+            type: region?.type || null,
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            cell: originalCell,
+            region: region,
+            sites: originalCell.sites || [],
+            undergroundRegions: originalCell.undergroundRegions || [],
+            historical_figures: originalCell.historical_figures || [],
+            written_contents: originalCell.written_contents || [],
+          };
+        }
+      }
+      
+      console.log("Composed entity:", composed); // Debug log
+      
+      if (composed) {
+        // Call onEntityClick to show info in EntityDetailsView
+        if (onEntityClick) {
+          console.log("Calling onEntityClick with:", composed);
+          onEntityClick(composed);
+        } else {
+          console.warn("onEntityClick is not defined!");
+        }
+      } else {
+        console.warn("No composed entity created for click");
+      }
+      
+      // Also call onCellClick for cell selection
+      if (onCellClick) {
+        onCellClick(d);
+      }
+      
+      // REMOVED: Auto-zoom on click - user should manually zoom if they want
+      // This was causing unwanted camera movement when clicking on cells
+    };
+    
+    // Apply click and drag handlers to both new and existing elements
+    const mergedCells = cellEnter.merge(cellRect);
+    
+    // Handle mousedown to track drag start
+    mergedCells.on("mousedown", handleCellMouseDown);
+    
+    // Handle mousemove to detect dragging
+    mergedCells.on("mousemove", handleCellMouseMove);
+    
+    // Handle click - only show info if not dragging
+    mergedCells.on("click", handleCellClick);
+    
+    // Reset drag state on mouseup (global to catch mouseup even if outside cell)
+    // This ensures we can detect drags even if mouse leaves the cell
+    d3.select(window).on("mouseup.cellDrag", () => {
+      // The click handler will check drag state and reset it
+      // This is just a backup reset
     });
+    
+    // Recursively render children
+    if (cell.children && cell.children.length > 0) {
+      cell.children.forEach(child => {
+        renderRecursiveCell(child, cellBbox, gSelection, xScale, yScale, level + 1);
+      });
+    }
+    
+    cellRect.exit().remove();
+  };
 
-    // sites
-    const sitePatternSize = CELL_SIZE;
+  // Calculate how many children to show progressively based on zoom
+  // Dynamic Fibonacci subdivision: start with 1, then 2, 3, 4, etc. as zoom increases
+  // Smooth progression: +1 child for every few zoom levels (one by one)
+  const getVisibleChildCount = (totalChildren, zoom, level = 0) => {
+    if (totalChildren === 0) return 0;
+    if (totalChildren === 1) return 1; // Always show if only 1
+    
+    // Progressive formula: show children one by one as zoom increases
+    // Base: 1 child at zoom 1
+    // Add 1 child smoothly as zoom increases (1 by 1)
+    // Level 0 (cells): +1 every 2 zoom levels (zoom 1->2, 3->4, 5->6, etc.)
+    // Level 1 (sites/regions): +1 every 3 zoom levels
+    // Level 2+ (deeper): +1 every 4 zoom levels
+    const zoomFactor = level === 0 ? 2 : (level === 1 ? 3 : 4);
+    const baseCount = 1; // Start with 1, not 2
+    const additionalCount = Math.floor((zoom - 1) / zoomFactor);
+    const visibleCount = Math.min(totalChildren, baseCount + additionalCount);
+    
+    // Ensure we show at least 1 (unless total is 0), but not more than total
+    return Math.max(1, Math.min(visibleCount, totalChildren));
+  };
 
-    siteTypesRef.current.forEach((type) => {
-      const texUrl = getSiteTex(type);
-      if (!texUrl) return;
-      const pid = getPatternId("site", type);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", sitePatternSize)
-        .attr("height", sitePatternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", sitePatternSize)
-        .attr("height", sitePatternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
+  // Build recursive cell structure for a cell (works for both original cells and child cells)
+  // Subdivision stops when there are no more children (leaf nodes)
+  // Ocean cells are not rendered and don't subdivide
+  const buildCellChildren = (cell, zoom, parentBbox, isChildCell = false, xScale = null, yScale = null, transform = null, svgNode = null) => {
+    // Skip ocean cells - don't render or subdivide them
+    if (!isChildCell && cell.region?.type === "Ocean") {
+      return []; // Ocean cells are empty - no texture, no subdivision
+    }
+    
+    // For original cells, check if they should subdivide based on visibility and zoom
+    // For child cells, check if they have children and zoom level is sufficient
+    if (!isChildCell && xScale && yScale && transform && svgNode) {
+      if (!shouldCellSubdivide(cell, zoom, xScale, yScale, transform, svgNode)) {
+        return []; // Don't subdivide this cell if not visible or too far
+      }
+    } else if (!isChildCell) {
+      // Fallback: if we don't have transform info, use old logic
+      const focused = focusedCellRef.current;
+      if (focused) {
+        const dx = Math.abs(cell.x - focused.x);
+        const dy = Math.abs(cell.y - focused.y);
+        const distance = Math.max(dx, dy);
+        const maxDistance = Math.floor((zoom - 1) / 10);
+        if (distance > maxDistance) {
+          return [];
+        }
+      } else {
+        return []; // No focus, don't subdivide
+      }
+    }
+    
+    const children = [];
+    const allChildData = [];
+    
+    // For original cells, include the original cell texture as the first child
+    // This makes the original cell texture part of the subdivision, not just background
+    if (!isChildCell) {
+      // Only add region if it's not ocean (ocean cells are skipped entirely)
+      if (cell.region && cell.region.type !== "Ocean") {
+        allChildData.push({ 
+          type: "region", 
+          data: cell.region,
+          isOriginalCell: true 
+        });
+      }
+      
+      // Then collect all other child data (only if they exist)
+      // Show elements one by one, not all at once when threshold is reached
+      if (cell.sites && cell.sites.length > 0 && isLevelVisible("site")) {
+        // Calculate how many sites to show progressively (one by one)
+        const siteLevel = HIERARCHY_LEVELS.find(l => l.name === "site");
+        const siteZoomFactor = 3; // +1 site every 3 zoom levels
+        const siteBaseCount = 1; // Start with 1 site
+        const siteAdditionalCount = Math.floor((zoom - (siteLevel?.minZoom || 5)) / siteZoomFactor);
+        const visibleSiteCount = Math.min(cell.sites.length, siteBaseCount + Math.max(0, siteAdditionalCount));
+        cell.sites.slice(0, visibleSiteCount).forEach(site => allChildData.push({ type: "site", data: site }));
+      }
+      if (cell.undergroundRegions && cell.undergroundRegions.length > 0 && isLevelVisible("undergroundRegion")) {
+        // Calculate how many underground regions to show progressively
+        const ugLevel = HIERARCHY_LEVELS.find(l => l.name === "undergroundRegion");
+        const ugZoomFactor = 3;
+        const ugBaseCount = 1;
+        const ugAdditionalCount = Math.floor((zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor);
+        const visibleUgCount = Math.min(cell.undergroundRegions.length, ugBaseCount + Math.max(0, ugAdditionalCount));
+        cell.undergroundRegions.slice(0, visibleUgCount).forEach(ug => allChildData.push({ type: "undergroundRegion", data: ug }));
+      }
+      if (cell.historical_figures && cell.historical_figures.length > 0 && isLevelVisible("cellFigure")) {
+        // Calculate how many cell figures to show progressively
+        const cfLevel = HIERARCHY_LEVELS.find(l => l.name === "cellFigure");
+        const cfZoomFactor = 3;
+        const cfBaseCount = 1;
+        const cfAdditionalCount = Math.floor((zoom - (cfLevel?.minZoom || 8)) / cfZoomFactor);
+        const visibleCfCount = Math.min(cell.historical_figures.length, cfBaseCount + Math.max(0, cfAdditionalCount));
+        cell.historical_figures.slice(0, visibleCfCount).forEach(hf => allChildData.push({ type: "cellFigure", data: hf }));
+      }
+      if (cell.written_contents && cell.written_contents.length > 0 && isLevelVisible("writtenContent")) {
+        // Calculate how many written contents to show progressively
+        const wcLevel = HIERARCHY_LEVELS.find(l => l.name === "writtenContent");
+        const wcZoomFactor = 3;
+        const wcBaseCount = 1;
+        const wcAdditionalCount = Math.floor((zoom - (wcLevel?.minZoom || 10)) / wcZoomFactor);
+        const visibleWcCount = Math.min(cell.written_contents.length, wcBaseCount + Math.max(0, wcAdditionalCount));
+        cell.written_contents.slice(0, visibleWcCount).forEach(wc => allChildData.push({ type: "writtenContent", data: wc }));
+      }
+    } else {
+      // Child cell - check its type and collect children accordingly
+      // Subdivision continues only if this child has its own children
+      // Show elements one by one, not all at once
+      if (cell.childType === "site" && cell.childData) {
+        const structures = normalizeToArray(cell.childData.structures?.structure);
+        if (structures.length > 0 && isLevelVisible("structure")) {
+          // Calculate how many structures to show progressively (one by one)
+          const structLevel = HIERARCHY_LEVELS.find(l => l.name === "structure");
+          const structZoomFactor = 4; // +1 structure every 4 zoom levels
+          const structBaseCount = 1; // Start with 1 structure
+          const structAdditionalCount = Math.floor((zoom - (structLevel?.minZoom || 15)) / structZoomFactor);
+          const visibleStructCount = Math.min(structures.length, structBaseCount + Math.max(0, structAdditionalCount));
+          structures.slice(0, visibleStructCount).forEach(struct => allChildData.push({ type: "structure", data: struct }));
+        }
+        // If no structures, this site is a leaf - subdivision stops here
+      } else if (cell.childType === "structure" && cell.childData) {
+        // Structures can have figures as children
+        if (cell.childData.inhabitants && cell.childData.inhabitants.length > 0 && isLevelVisible("figure")) {
+          // Calculate how many figures to show progressively (one by one)
+          const figLevel = HIERARCHY_LEVELS.find(l => l.name === "figure");
+          const figZoomFactor = 4; // +1 figure every 4 zoom levels
+          const figBaseCount = 1; // Start with 1 figure
+          const figAdditionalCount = Math.floor((zoom - (figLevel?.minZoom || 40)) / figZoomFactor);
+          const visibleFigCount = Math.min(cell.childData.inhabitants.length, figBaseCount + Math.max(0, figAdditionalCount));
+          cell.childData.inhabitants.slice(0, visibleFigCount).forEach(hf => allChildData.push({ type: "figure", data: hf }));
+        }
+        // If no inhabitants, this structure is a leaf - subdivision stops here
+      }
+      // For other types (region, undergroundRegion, writtenContent, figure, cellFigure):
+      // They are leaf nodes - no further subdivision
+    }
+    
+    // Stop subdivision if no children - this is a leaf node
+    if (allChildData.length === 0) return [];
+    
+    // Progressive subdivision: show more children as zoom increases
+    // Start with 2, then 3, 4, 5, etc. - smooth progression
+    const totalChildren = allChildData.length;
+    const currentLevel = isChildCell ? (cell.level || 1) : 0;
+    const visibleCount = getVisibleChildCount(totalChildren, zoom, currentLevel);
+    
+    // Show only the first N children (progressive reveal)
+    // Each child represents an object from JSON with its own texture
+    const visibleChildData = allChildData.slice(0, visibleCount);
+    
+    // Create child cells for visible children - each is an object with its own texture
+    visibleChildData.forEach((childData, idx) => {
+      // Calculate grid positions based on visible count - children fill entire parent space
+      const gridPos = calculateGridPositions(
+        idx,
+        visibleCount, // Use visible count for grid - ensures proper tiling
+        parentBbox.width,
+        parentBbox.height
+      );
+      
+      const childCell = {
+        key: `${cell.key}-child-${childData.type}-${idx}`,
+        level: (isChildCell ? cell.level + 1 : 1),
+        parent: cell,
+        originalCell: cell.originalCell || cell,
+        childType: childData.type,
+        childData: childData.data,
+        isOriginalCell: childData.isOriginalCell || false,
+        bbox: {
+          x: gridPos.x,
+          y: gridPos.y,
+          width: gridPos.width,
+          height: gridPos.height,
+        },
+        children: [],
+      };
+      
+      // Recursively build children for this child cell ONLY if it has children
+      // Subdivision stops when there are no more children (leaf node)
+      // Each child represents an object from JSON - if it has no children, it's a leaf
+      const childBbox = {
+        x: 0,
+        y: 0,
+        width: gridPos.width,
+        height: gridPos.height,
+      };
+      
+      // Try to build children for this child cell
+      // buildCellChildren will return [] if this child has no children (leaf node)
+      // This ensures subdivision stops naturally when there are no more objects
+      const grandChildren = buildCellChildren(childCell, zoom, childBbox, true);
+      childCell.children = grandChildren; // Will be [] if no children (leaf node)
+      
+      children.push(childCell);
     });
-
-    // figures
-    const figPatternSize = (CELL_SIZE * 0.6) / k;
-
-    figureKindsRef.current.forEach((kind) => {
-      const texUrl =
-        kind === "default" ? FIGURE_TEXTURES.default || DEFAULT_TEXTURE : null;
-      if (!texUrl) return;
-      const pid = getPatternId("fig", kind);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", figPatternSize)
-        .attr("height", figPatternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", figPatternSize)
-        .attr("height", figPatternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
+    
+    return children;
   };
 
   // 1) build map & markers
   useEffect(() => {
     if (!worldData || !worldData.cells?.length) return;
 
-    // --- generic renderer for sites / structures / figures ---
-    function drawEntityLayer({
-      markers,
-      rectClass,
-      labelClass,
-      size, // can be number or (d, parentBBox) => number
-      keyFn,
-      getFill,
-      baseStroke,
-      baseStrokeWidth,
-      labelFontSize, // can be number or (renderSize, d, parentBBox) => number
-      labelFill,
-      getLabelText,
-      getTitleText,
-      composeEntity,
-      getZoomParams,
-      getBoundingBox, // optional (d) => { x, y, width, height }
-    }) {
-      if (!markers || !markers.length) {
-        g.selectAll(`rect.${rectClass}`).remove();
-        g.selectAll(`text.${labelClass}`).remove();
-        return;
-      }
-
-      const resolveParentBox = (d) =>
-        (getBoundingBox && getBoundingBox(d)) || {
-          x: xScale(d.cell.y),
-          y: yScale(d.cell.x),
-          width: CELL_SIZE,
-          height: CELL_SIZE,
-        };
-
-      const resolveSize = (d, parentBox) =>
-        typeof size === "function" ? size(d, parentBox) : size;
-
-      const resolveFontSize = (renderSize, d, parentBox) =>
-        typeof labelFontSize === "function"
-          ? labelFontSize(renderSize, d, parentBox)
-          : labelFontSize;
-
-      // --- rects ---
-      const rectSel = g.selectAll(`rect.${rectClass}`).data(markers, keyFn);
-
-      const rectEnter = rectSel
-        .enter()
-        .append("rect")
-        .attr("class", rectClass)
-        .style("cursor", "pointer");
-
-      rectEnter
-        .merge(rectSel)
-        .attr("x", (d) => {
-          const parentBox = resolveParentBox(d);
-          const s = resolveSize(d, parentBox);
-          const { x } = calculateGridPositions(
-            d.idx,
-            d.count,
-            s,
-            parentBox.width,
-            parentBox.height
-          );
-          const finalX = parentBox.x + x;
-
-          d._bbox = d._bbox || {};
-          d._bbox.x = finalX;
-          d._bbox.width = s;
-          d._renderSize = s;
-
-          return finalX;
-        })
-        .attr("y", (d) => {
-          const parentBox = resolveParentBox(d);
-          const s = d._renderSize ?? resolveSize(d, parentBox);
-          const { y } = calculateGridPositions(
-            d.idx,
-            d.count,
-            s,
-            parentBox.width,
-            parentBox.height
-          );
-          const finalY = parentBox.y + y;
-
-          d._bbox = d._bbox || {};
-          d._bbox.y = finalY;
-          d._bbox.height = s;
-          d._renderSize = s;
-
-          return finalY;
-        })
-        .attr("width", (d) => d._renderSize || CELL_SIZE * 0.3)
-        .attr("height", (d) => d._renderSize || CELL_SIZE * 0.3)
-        .each(function (d) {
-          const rect = d3.select(this);
-          const fill = getFill ? getFill(d) : "#9ca3af";
-          rect.style("fill", fill);
-          if (baseStroke != null) {
-            rect
-              .style("stroke", baseStroke)
-              .style("stroke-width", baseStrokeWidth ?? 0.1);
-          }
-        });
-
-      // tooltips
-      rectEnter
-        .append("title")
-        .text((d) => (getTitleText ? getTitleText(d) : ""));
-
-      // --- labels ---
-      const labelSel = g.selectAll(`text.${labelClass}`).data(markers, keyFn);
-
-      const labelEnter = labelSel
-        .enter()
-        .append("text")
-        .attr("class", labelClass)
-        .attr("text-anchor", "start")
-        .style("pointer-events", "auto");
-
-      labelEnter
-        .merge(labelSel)
-        .attr("x", (d) => {
-          const bb = d._bbox || {
-            x: xScale(d.cell.y),
-            y: yScale(d.cell.x),
-          };
-          return bb.x;
-        })
-        .attr("y", (d) => {
-          const bb = d._bbox || {
-            x: xScale(d.cell.y),
-            y: yScale(d.cell.x),
-          };
-          return bb.y;
-        })
-        .style("font-size", (d) => {
-          const parentBox = resolveParentBox(d);
-          const s = d._renderSize || resolveSize(d, parentBox);
-          const fs = resolveFontSize(s, d, parentBox);
-          return `${fs}px`;
-        })
-        .style("fill", labelFill ?? "#fff")
-        .text((d) => (getLabelText ? getLabelText(d) : ""));
-
-      // --- shared click handler (rect + label) ---
-      const handleClick = (event, d) => {
-        event.stopPropagation();
-        onCellClick?.(null);
-
-        if (composeEntity) {
-          const composed = composeEntity(d);
-          if (composed) onEntityClick?.(composed);
-        }
-
-        if (getZoomParams) {
-          const { cx, cy, k } = getZoomParams(d) || {};
-          if (cx != null && cy != null) {
-            zoomToPoint(cx, cy, k);
-          }
-        }
-      };
-
-      rectEnter.on("click", handleClick);
-      labelEnter.on("click", handleClick);
-
-      rectSel.exit().remove();
-      labelSel.exit().remove();
-    }
+    // All rendering is done through renderRecursiveCell - no old marker system needed
 
     const cells = worldData.cells;
 
@@ -424,124 +1156,9 @@ function WorldMap({
       .domain([minX, maxX])
       .range([CELL_GAP, height - CELL_GAP - CELL_SIZE]);
 
-    const getSiteBox = (cell, siteIdx, siteCount) => {
-      const baseX = xScale(cell.y);
-      const baseY = yScale(cell.x);
-
-      const siteSize = computeChildSize(
-        CELL_SIZE,
-        CELL_SIZE,
-        siteCount || 1,
-        0.85
-      );
-      const pos = calculateGridPositions(
-        siteIdx,
-        siteCount || 1,
-        siteSize,
-        CELL_SIZE,
-        CELL_SIZE
-      );
-
-      return {
-        x: baseX + pos.x,
-        y: baseY + pos.y,
-        width: siteSize,
-        height: siteSize,
-      };
-    };
-
-    const getStructureBox = (
-      cell,
-      siteIdx,
-      siteCount,
-      structIdx,
-      structCount
-    ) => {
-      const siteBox = getSiteBox(cell, siteIdx, siteCount);
-      const structSize = computeChildSize(
-        siteBox.width,
-        siteBox.height,
-        structCount || 1,
-        0.8
-      );
-      const pos = calculateGridPositions(
-        structIdx,
-        structCount || 1,
-        structSize,
-        siteBox.width,
-        siteBox.height
-      );
-
-      return {
-        x: siteBox.x + pos.x,
-        y: siteBox.y + pos.y,
-        width: structSize,
-        height: structSize,
-      };
-    };
-
-    const getFigureBox = (
-      cell,
-      siteIdx,
-      siteCount,
-      structIdx,
-      structCount,
-      figIdx,
-      figCount
-    ) => {
-      // if no structure, figures live directly in the site box
-      if (structIdx == null || structCount === 0) {
-        const siteBox = getSiteBox(cell, siteIdx, siteCount);
-        const figSize = computeChildSize(
-          siteBox.width,
-          siteBox.height,
-          figCount || 1,
-          0.8
-        );
-        const pos = calculateGridPositions(
-          figIdx,
-          figCount || 1,
-          figSize,
-          siteBox.width,
-          siteBox.height
-        );
-
-        return {
-          x: siteBox.x + pos.x,
-          y: siteBox.y + pos.y,
-          width: figSize,
-          height: figSize,
-        };
-      }
-
-      const structBox = getStructureBox(
-        cell,
-        siteIdx,
-        siteCount,
-        structIdx,
-        structCount
-      );
-      const figSize = computeChildSize(
-        structBox.width,
-        structBox.height,
-        figCount || 1,
-        0.8
-      );
-      const pos = calculateGridPositions(
-        figIdx,
-        figCount || 1,
-        figSize,
-        structBox.width,
-        structBox.height
-      );
-
-      return {
-        x: structBox.x + pos.x,
-        y: structBox.y + pos.y,
-        width: figSize,
-        height: figSize,
-      };
-    };
+    // Store scales for use in zoom handler
+    xScaleRef.current = xScale;
+    yScaleRef.current = yScale;
 
     const regionTypesWithTextures = Array.from(
       new Set(
@@ -568,649 +1185,51 @@ function WorldMap({
     siteTypesRef.current = uniqueSiteTypesWithTextures;
     figureKindsRef.current = ["default"];
 
-    createOrUpdatePatterns(defs, 1);
+    // Patterns are now created dynamically per cell - no need to pre-create them
 
-    // cells
-    const cellsSelection = g.selectAll("rect.cell").data(cells, (d) => d.key);
+    // Set initial zoom and clear focused cell
+    currentZoomRef.current = 1;
+    focusedCellRef.current = null;
 
-    const cellsEnter = cellsSelection
-      .enter()
-      .append("rect")
-      .attr("class", "cell")
-      .attr("x", (d) => xScale(d.y))
-      .attr("y", (d) => yScale(d.x))
-      .attr("width", CELL_SIZE)
-      .attr("height", CELL_SIZE)
-      .style("cursor", "pointer");
+    // Clear all existing cells
+    g.selectAll("rect.cell").remove();
 
-    cellsEnter.merge(cellsSelection).each(function (d) {
-      const texUrl = getRegionTex(d.region?.type);
-      const rect = d3.select(this);
-
-      if (texUrl) {
-        const pid = getPatternId("region", d.region?.type);
-        rect.style("fill", `url(#${pid})`);
-      } else {
-        rect.style("fill", "#1f2933");
-      }
-    });
-
-    cellsEnter
-      .append("title")
-      .text(
-        (d) =>
-          `(${d.x}, ${d.y})` +
-          (d.region?.type ? `\nRegion: ${d.region.type}` : "") +
-          `\nSites: ${d.sites?.length || 0}` +
-          `\nWritten contents: ${d.written_contents?.length || 0}`
-      );
-
-    cellsEnter.on("click", (_, d) => {
-      onCellClick?.(d);
-      onCellClick?.(null);
-
-      console.log("clicks celle", d);
-
-      const regionType = d.region?.type || null;
-      const regionTextureUrl = getRegionTex(regionType);
-
-      const composed = {
-        kind: "cell",
-        name: d.region?.name,
-        type: regionType,
-        textureUrl: regionTextureUrl,
-        cellCoords: { x: d.x, y: d.y },
-
-        cell: d,
-        region: d.region,
-
-        historical_figures: d.historical_figures || [],
-      };
-
-      onEntityClick?.(composed);
-
-      const svg = d3.select(svgRef.current);
-      const g = svg.select("g");
-      if (!g.empty()) {
-        // xScale/yScale are in scope in this effect
-        const cx = xScale(d.y) + CELL_SIZE / 2;
-        const cy = yScale(d.x) + CELL_SIZE / 2;
-        zoomToPoint(cx, cy, 20); //
-      }
-    });
-
-    cellsSelection.exit().remove();
-
-    const siteMarkers = [];
+    // Render cells recursively - each cell can subdivide into child cells (skip ocean cells)
     cells.forEach((cell) => {
-      if (cell.sites && cell.sites.length) {
-        cell.sites.forEach((site, idx) => {
-          siteMarkers.push({
-            kind: "site",
-            cell,
-            site,
-            idx,
-            count: cell.sites.length,
-          });
-        });
-      }
-    });
-
-    drawEntityLayer({
-      markers: siteMarkers,
-      rectClass: "site-marker",
-      labelClass: "site-label",
-
-      // size based on CELL_SIZE & sites-in-cell
-      size: (d, parentBox) =>
-        computeChildSize(parentBox.width, parentBox.height, d.count, 0.85),
-
-      keyFn: (d) => `${d.cell.key}-site-${d.site.id || d.idx}`,
-
-      getFill: (d) => {
-        const type =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-        const texUrl = getSiteTex(type);
-        if (texUrl) {
-          const pid = getPatternId("site", type);
-          return `url(#${pid})`;
-        }
-        return "#9ca3af";
-      },
-
-      baseStroke: siteColor,
-      baseStrokeWidth: 0.1,
-
-      // font size depends on rendered rect size
-      labelFontSize: (s) => Math.max(2, s * 0.01),
-      labelFill: siteColor,
-
-      getLabelText: (d) =>
-        d.site?.fromFile2?.name ||
-        d.site?.fromFile1?.name ||
-        d.site?.name ||
-        "",
-
-      getTitleText: (d) => {
-        const name =
-          d.site?.fromFile2?.name ||
-          d.site?.fromFile1?.name ||
-          d.site?.name ||
-          "Site";
-        const type =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "";
-        return `${name}${type ? ` (${type})` : ""}`;
-      },
-
-      composeEntity: (d) => {
-        const siteType =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-
-        const siteName =
-          d.site?.fromFile2?.name ||
-          d.site?.fromFile1?.name ||
-          d.site?.name ||
-          "Unknown site";
-
-        const siteTextureUrl = getSiteTex(siteType);
-        const regionType = d.cell.region?.type || null;
-        const regionTextureUrl = getRegionTex(regionType);
-
-        return {
-          kind: "site",
-          name: siteName,
-          type: siteType,
-          textureUrl: siteTextureUrl,
-          regionTextureUrl,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          historical_figures: d.site.historical_figures || [],
-          inhabitants: d.site.inhabitants || [],
-          written_contents: d.site.written_contents || [],
-        };
-      },
-
-      getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        return { cx, cy, k: 20 };
-      },
-
-      // parent box defaults to whole cell, so no getBoundingBox here
-    });
-
-    const structureMarkers = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site, siteIdx) => {
-        const raw = site.structures?.structure;
-        const structures = normalizeToArray(raw);
-        structures.forEach((structure, idx) => {
-          structureMarkers.push({
-            kind: "structure",
-            cell,
-            site,
-            structure,
-            idx,
-            count: structures.length,
-            parentSiteIdx: siteIdx,
-            parentSiteCount: (cell.sites || []).length,
-          });
-        });
-      });
-    });
-
-    drawEntityLayer({
-      markers: structureMarkers,
-      rectClass: "structure-marker",
-      labelClass: "structure-label",
-
-      // size based on the *site* bbox and structures-in-site
-      size: (d, parentBox) =>
-        computeChildSize(parentBox.width, parentBox.height, d.count, 0.8),
-
-      keyFn: (d) =>
-        `${d.cell.key}-site-${d.site.id}-structure-${
-          d.structure.id || d.structure.local_id || d.idx
-        }`,
-
-      getFill: () => "#6b7280",
-      baseStroke: structureColor,
-      baseStrokeWidth: 0.3,
-
-      labelFontSize: (s) => Math.max(1.2, s * 0.1),
-      labelFill: structureColor,
-
-      getLabelText: (d) => d.structure.name || d.structure.type || "",
-      getTitleText: (d) => d.structure.name || d.structure.type || "Structure",
-
-      composeEntity: (d) => {
-        const name = d.structure.name || d.structure.type || "Structure";
-
-        const inhabitantIds = normalizeToArray(d.structure.inhabitant);
-        const structureInhabitants = (d.site.historical_figures || []).filter(
-          (hf) => inhabitantIds.includes(hf.id)
-        );
-
-        return {
-          kind: "structure",
-          name,
-          type: d.structure.type || null,
-          textureUrl: SITE_TEXTURES.default || DEFAULT_TEXTURE,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-
-          structure: d.structure,
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          inhabitants: structureInhabitants,
-          site_historical_figures: d.site.historical_figures || [],
-          site_written_contents: d.site.written_contents || [],
-        };
-      },
-
-      getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        return { cx, cy, k: 50 };
-      },
-
-      // parent bbox = site bbox (inside cell)
-      getBoundingBox: (d) => {
-        const baseX = xScale(d.cell.y);
-        const baseY = yScale(d.cell.x);
-
-        const siteIdx = d.parentSiteIdx;
-        const siteCount = d.parentSiteCount || 1;
-
-        const siteSize = computeChildSize(
-          CELL_SIZE,
-          CELL_SIZE,
-          siteCount,
-          0.85
-        );
-        const sitePos = calculateGridPositions(
-          siteIdx,
-          siteCount,
-          siteSize,
-          CELL_SIZE,
-          CELL_SIZE
-        );
-
-        return {
-          x: baseX + sitePos.x,
-          y: baseY + sitePos.y,
-          width: siteSize,
-          height: siteSize,
-        };
-      },
-    });
-
-    // figures
-
-    // --- FIGURES: use structure rect as parent bbox ---
-    // --- FIGURES: nested in structure.inhabitants (or in site if no structures) ---
-
-    const figureMarkers = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site, siteIdx) => {
-        const structures = normalizeToArray(site.structures?.structure);
-
-        if (structures.length) {
-          structures.forEach((structure, structIdx) => {
-            const inhabitants = normalizeToArray(structure.inhabitants);
-
-            inhabitants.forEach((hf, figIdx) => {
-              figureMarkers.push({
-                kind: "figure",
-                cell,
-                site,
-                structure,
-                hf,
-                idx: figIdx,
-                count: inhabitants.length,
-                parentSiteIdx: siteIdx,
-                parentSiteCount: (cell.sites || []).length,
-                parentStructIdx: structIdx,
-                parentStructCount: structures.length,
-                parentFigureIdx: figIdx,
-                parentFigureCount: inhabitants.length,
-              });
-            });
-          });
-        } else {
-          // fallback: figures directly in site if no structures
-          const siteFigures = normalizeToArray(site.historical_figures);
-          siteFigures.forEach((hf, figIdx) => {
-            figureMarkers.push({
-              kind: "figure",
-              cell,
-              site,
-              structure: null,
-              hf,
-              idx: figIdx,
-              count: siteFigures.length,
-              parentSiteIdx: siteIdx,
-              parentSiteCount: (cell.sites || []).length,
-              parentStructIdx: null,
-              parentStructCount: 0,
-              parentFigureIdx: figIdx,
-              parentFigureCount: siteFigures.length,
-            });
-          });
-        }
-      });
-    });
-
-    drawEntityLayer({
-      markers: figureMarkers,
-      rectClass: "figure-marker",
-      labelClass: "figure-label",
-
-      // size based on the *structure* or *site* bbox and figures-in-parent
-      size: (d, parentBox) =>
-        computeChildSize(parentBox.width, parentBox.height, d.count, 0.8),
-
-      keyFn: (d) =>
-        `${d.cell.key}-hf-${d.hf.id || d.idx}-struct-${
-          d.structure?.id || d.structure?.local_id || "none"
-        }`,
-
-      getFill: (d) => {
-        const texUrl = getFigureTex(d.hf);
-        if (texUrl) {
-          const pid = getPatternId("fig", "default");
-          return `url(#${pid})`;
-        }
-        return "#e5e7eb";
-      },
-
-      baseStroke: figureColor,
-      baseStrokeWidth: 0.1,
-
-      labelFontSize: 0.2,
-      labelFill: figureColor,
-
-      getLabelText: (d) => d.hf.name || "",
-      getTitleText: (d) => {
-        const name = d.hf.name || d.hf.id || "Figure";
-        const race = d.hf.race || "";
-        return `${name}${race ? ` (${race})` : ""}`;
-      },
-
-      composeEntity: (d) => {
-        const hfName = d.hf.name || d.hf.id || "Unknown figure";
-        const figureTextureUrl = getFigureTex(d.hf);
-
-        const siteType =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-        const siteTextureUrl = getSiteTex(siteType);
-        const regionType = d.cell.region?.type || null;
-        const regionTextureUrl = getRegionTex(regionType);
-
-        return {
-          kind: "figure",
-          name: hfName,
-          textureUrl: figureTextureUrl,
-          siteTextureUrl,
-          regionTextureUrl,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-
-          figure: d.hf,
-          structure: d.structure,
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          site_historical_figures: d.site.historical_figures || [],
-          cell_historical_figures: d.cell.historical_figures || [],
-          site_written_contents: d.site.written_contents || [],
-          cell_written_contents: d.cell.written_contents || [],
-        };
-      },
-
-      getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        return { cx, cy, k: 80 };
-      },
-
-      // parent bbox = figure's parent (structure or site)
-      getBoundingBox: (d) =>
-        getFigureBox(
-          d.cell,
-          d.parentSiteIdx,
-          d.parentSiteCount,
-          d.parentStructIdx,
-          d.parentStructCount,
-          d.parentFigureIdx,
-          d.parentFigureCount
-        ),
-    });
-
-    // --- BOOKS: nested inside inhabitant.books, parent = figure box ---
-
-    const bookMarkers = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site, siteIdx) => {
-        const structures = normalizeToArray(site.structures?.structure);
-
-        if (structures.length) {
-          structures.forEach((structure, structIdx) => {
-            const inhabitants = normalizeToArray(structure.inhabitants);
-
-            inhabitants.forEach((inhabitant, figIdx) => {
-              const books = normalizeToArray(inhabitant.books);
-              books.forEach((book, bookIdx) => {
-                bookMarkers.push({
-                  kind: "book",
-                  cell,
-                  site,
-                  structure,
-                  inhabitant,
-                  book,
-                  idx: bookIdx,
-                  count: books.length, // siblings per figure
-                  parentSiteIdx: siteIdx,
-                  parentSiteCount: (cell.sites || []).length,
-                  parentStructIdx: structIdx,
-                  parentStructCount: structures.length,
-                  parentFigureIdx: figIdx,
-                  parentFigureCount: inhabitants.length,
-                });
-              });
-            });
-          });
-        } else {
-          // optional: books from site-level figures if you ever need it
-        }
-      });
-    });
-
-    function drawBookLayer() {
-      const keyFn = (d) =>
-        `${d.cell.key}-book-${d.book.id || d.book.title || d.idx}-inh-${
-          d.inhabitant.id || d.parentFigureIdx
-        }`;
-
-      if (!bookMarkers.length) {
-        g.selectAll("foreignObject.book-fo").remove();
+      // Skip ocean cells - don't render them
+      if (cell.region?.type === "Ocean") {
         return;
       }
+      
+      const baseBbox = {
+        x: xScale(cell.y),
+        y: yScale(cell.x),
+        width: CELL_SIZE,
+        height: CELL_SIZE,
+      };
+      
+      // Get current transform for visibility calculation
+      const currentTransform = d3.zoomTransform(svg.node());
+      
+      // Build children for this cell (pass transform and svgNode for visibility check)
+      const cellWithChildren = {
+        ...cell,
+        children: buildCellChildren(cell, currentZoomRef.current, baseBbox, false, xScale, yScale, currentTransform, svg.node()),
+      };
+      
+      // Render this cell and its children recursively
+      renderRecursiveCell(cellWithChildren, baseBbox, g, xScale, yScale, 0);
+    });
 
-      const foSel = g
-        .selectAll("foreignObject.book-fo")
-        .data(bookMarkers, keyFn);
-
-      const foEnter = foSel
-        .enter()
-        .append("foreignObject")
-        .attr("class", "book-fo")
-        .attr("requiredExtensions", "http://www.w3.org/1999/xhtml")
-        .style("cursor", "pointer");
-
-      foEnter
-        .merge(foSel)
-        .each(function (d) {
-          // parent = figure box
-          const figBox = getFigureBox(
-            d.cell,
-            d.parentSiteIdx,
-            d.parentSiteCount,
-            d.parentStructIdx,
-            d.parentStructCount,
-            d.parentFigureIdx,
-            d.parentFigureCount
-          );
-
-          // size of each book inside the figure
-          const bookSize = computeChildSize(
-            figBox.width,
-            figBox.height,
-            d.count,
-            0.4
-          );
-          const pos = calculateGridPositions(
-            d.idx,
-            d.count,
-            bookSize,
-            figBox.width,
-            figBox.height
-          );
-
-          const x = figBox.x + pos.x;
-          const y = figBox.y + pos.y;
-
-          d._bookBox = {
-            x,
-            y,
-            width: bookSize,
-            height: bookSize,
-          };
-
-          d3.select(this)
-            .attr("x", x)
-            .attr("y", y)
-            .attr("width", bookSize)
-            .attr("height", bookSize);
-        })
-        .html((d) => {
-          const book = d.book || {};
-          const title = book.title || `Book ${d.idx + 1}`;
-          const text_content =
-            book.raw.text_content || `book default content ${d.idx + 1}`;
-          const html =
-            book.html ||
-            book.content_html ||
-            book.text ||
-            book.raw_html ||
-            `<p>${title}</p><p>${text_content}</p>`;
-
-          // small styled HTML card with links preserved
-          return `
-        <div xmlns="http://www.w3.org/1999/xhtml"
-             style="
-               width: 100%;
-               height: 100%;
-               box-sizing: border-box;
-       
-              //  background: rgba(15,23,42,0.9);
-              //  border: 0.5px solid ${bookColor};
-               color: #e5e7eb;
-               font-size: 1px;
-               line-height: 1.2;
-               overflow: hidden;
-               overflow-y:
-               text-overflow: ellipsis;
-               display: -webkit-box;
-
-               -webkit-line-clamp: 4;
-               -webkit-box-orient: vertical;
-             ">
-          ${html}
-        </div>
-      `;
-        });
-
-      // click handler: foreignObject itself
-      foEnter.on("click", function (event, d) {
-        event.stopPropagation();
-        onCellClick?.(null);
-
-        const book = d.book || {};
-        const bookTitle = book.title || "Book";
-        const bookHtml =
-          book.html ||
-          book.content_html ||
-          book.text ||
-          book.raw_html ||
-          `<p>${bookTitle}</p>`;
-
-        const siteType =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-        const siteTextureUrl = getSiteTex(siteType);
-        const regionType = d.cell.region?.type || null;
-        const regionTextureUrl = getRegionTex(regionType);
-
-        const composed = {
-          kind: "book",
-          name: bookTitle,
-          html: bookHtml,
-          book,
-          inhabitant: d.inhabitant,
-          structure: d.structure,
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          siteTextureUrl,
-          regionTextureUrl,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-        };
-
-        onEntityClick?.(composed);
-
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        zoomToPoint(cx, cy, 120);
-      });
-
-      foSel.exit().remove();
-    }
-
-    // finally call it:
-    drawBookLayer();
+    // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
   }, [worldData]);
 
   // zoom
   useEffect(() => {
     if (!worldData || !worldData.cells?.length) return;
 
-    const svg = d3.select(svgRef.current);
-    const g = svg.select("g");
+      const svg = d3.select(svgRef.current);
+      const g = svg.select("g");
     const defs = svg.select("defs");
 
     if (g.empty()) return;
@@ -1219,21 +1238,127 @@ function WorldMap({
       .zoom()
       .scaleExtent([MIN_ZOOM, MAX_ZOOM])
       .filter((event) => {
+        // Always allow wheel for zooming
         if (event.type === "wheel") return true;
+        // Always allow touch events for pan/zoom
         if (event.type === "touchstart" || event.type === "touchmove")
           return true;
-        if (event.type === "mousedown" && event.button === 0) return true;
+        // For mouse events: always allow panning with click and drag
+        // Even on cells - we'll detect if it's a drag vs click in the cell handler
+        if (event.type === "mousedown") {
+          // Always allow panning with left mouse button (even on cells)
+          // The cell click handler will check if it was a drag or click
+          return event.button === 0;
+        }
         return false;
       })
       .on("zoom", (event) => {
         const { x, y, k } = event.transform;
         g.attr("transform", `translate(${x},${y}) scale(${k})`);
-        createOrUpdatePatterns(defs, k);
+        // Patterns are fixed size, no need to update them on zoom
+        
+        // Update zoom level
+        const oldZoom = currentZoomRef.current;
+        currentZoomRef.current = k;
+        
+        // Calculate which cell is at the viewport center (focused cell)
+        const svgNode = svgRef.current;
+        const xScale = xScaleRef.current;
+        const yScale = yScaleRef.current;
+        
+        if (svgNode && worldData && worldData.cells && xScale && yScale) {
+          const viewBox = svgNode.viewBox.baseVal;
+          const viewportCenterX = viewBox.width / 2;
+          const viewportCenterY = viewBox.height / 2;
+          
+          // Transform viewport coordinates to world coordinates
+          const worldX = (viewportCenterX - x) / k;
+          const worldY = (viewportCenterY - y) / k;
+          
+          // Find which cell contains this point
+          const cells = worldData.cells;
+          let focusedCell = null;
+          
+          for (const cell of cells) {
+            const cellX = xScale(cell.y);
+            const cellY = yScale(cell.x);
+            if (
+              worldX >= cellX &&
+              worldX <= cellX + CELL_SIZE &&
+              worldY >= cellY &&
+              worldY <= cellY + CELL_SIZE
+            ) {
+              focusedCell = cell;
+              break;
+            }
+          }
+          
+          // Update focused cell
+          const oldFocused = focusedCellRef.current;
+          focusedCellRef.current = focusedCell;
+          
+          // Check if we crossed any threshold that would change visibility
+          const zoomChanged = HIERARCHY_LEVELS.some((level) => {
+            const wasVisible = oldZoom >= level.minZoom;
+            const isVisible = k >= level.minZoom;
+            return wasVisible !== isVisible;
+          });
+          
+          const focusChanged = !oldFocused || !focusedCell || oldFocused.key !== focusedCell.key;
+          
+          // More progressive updates: rebuild more frequently but smoothly
+          // Use smaller threshold for smoother subdivision transitions
+          const significantZoomChange = Math.abs(oldZoom - k) > 0.2; // Reduced from 0.5 for smoother updates
+          const transform = event.transform;
+          
+          // Always update on zoom/pan to recalculate visibility
+          // Use requestAnimationFrame for smoother updates
+          requestAnimationFrame(() => {
+            // Rebuild recursive cells - only render visible cells
+            const cells = worldData.cells;
+            
+            // Clear existing cells
+            g.selectAll("rect.cell").remove();
+            
+            // Rebuild and render cells recursively (skip ocean cells, only visible ones)
+            const svgNode = svgRef.current;
+    cells.forEach((cell) => {
+              // Skip ocean cells - don't render them
+              if (cell.region?.type === "Ocean") {
+                return;
+              }
+              
+              // Check if cell is visible before rendering
+              if (!isCellVisible(cell, xScale, yScale, transform, svgNode)) {
+                return; // Skip cells outside viewport for performance
+              }
+              
+              const baseBbox = {
+                x: xScale(cell.y),
+                y: yScale(cell.x),
+                width: CELL_SIZE,
+                height: CELL_SIZE,
+              };
+              
+              // Build children with transform and svgNode for visibility-based subdivision
+              const cellWithChildren = {
+                ...cell,
+                children: buildCellChildren(cell, k, baseBbox, false, xScale, yScale, transform, svgNode),
+              };
+              
+              renderRecursiveCell(cellWithChildren, baseBbox, g, xScale, yScale, 0);
+            });
+          });
+        }
       });
 
+    // Enable pan with click and drag (left mouse button)
     svg.call(zoom);
     zoomBehaviorRef.current = zoom;
     svg.on("dblclick.zoom", null);
+    
+    // Enable panning: click and drag to move the map
+    // D3 zoom already handles this, but we ensure it works smoothly
 
     const initialTransform = d3.zoomIdentity.translate(0, 0).scale(1);
     svg.call(zoom.transform, initialTransform);
@@ -1243,79 +1368,35 @@ function WorldMap({
     };
   }, [worldData]);
 
-  // highlight selected entity (site / figure)
+  // highlight selected entity - optimized for recursive cells only
   useEffect(() => {
+    if (!selectedEntity) return;
+    
     const svg = d3.select(svgRef.current);
+    if (svg.empty()) return;
 
-    const celleRects = svg.selectAll("rect.cell");
-    const siteRects = svg.selectAll("rect.site-marker");
-    const structureRects = svg.selectAll("rect.structure-marker");
-    const figureRects = svg.selectAll("rect.figure-marker");
-
-    celleRects.each(function (d) {
+    // Highlight based on selected entity - works with recursive cell system
+    const allCellRects = svg.selectAll("rect.cell");
+    
+    allCellRects.each(function (d) {
       const rect = d3.select(this);
-
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "cell" &&
-        selectedEntity.cell.region.id === d.region.id;
-
-      if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 5);
-      } else {
-        rect.style("stroke", celleRects).style("stroke-width", 0);
+      let isSelected = false;
+      
+      // Check if this cell matches the selected entity
+      if (selectedEntity.kind === "cell" && d.originalCell && 
+          selectedEntity.cell && selectedEntity.cell.key === d.originalCell.key) {
+        isSelected = true;
+      } else if (selectedEntity.kind === d.childType && d.childData) {
+        // Check if child data matches
+        if (selectedEntity.childData && d.childData.id === selectedEntity.childData.id) {
+          isSelected = true;
+        }
       }
-    });
-    // sites
-    siteRects.each(function (d) {
-      const rect = d3.select(this);
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "site" &&
-        selectedEntity.site &&
-        d.site &&
-        selectedEntity.site.id === d.site.id;
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        rect.style("stroke", "#f97316").style("stroke-width", 2);
       } else {
-        rect.style("stroke", siteRects).style("stroke-width", 0.1);
-      }
-    });
-
-    structureRects.each(function (d) {
-      const rect = d3.select(this);
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "structure" &&
-        selectedEntity.structure &&
-        d.structure &&
-        ((selectedEntity.structure.id &&
-          selectedEntity.structure.id === d.structure.id) ||
-          (selectedEntity.structure.local_id &&
-            selectedEntity.structure.local_id === d.structure.local_id));
-
-      if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
-      } else {
-        rect.style("stroke", structureColor).style("stroke-width", 0.1);
-      }
-    });
-
-    // figures
-    figureRects.each(function (d) {
-      const rect = d3.select(this);
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "figure" &&
-        selectedEntity.figure &&
-        d.hf &&
-        selectedEntity.figure.id === d.hf.id;
-
-      if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
-      } else {
-        rect.style("stroke", figureColor).style("stroke-width", 0);
+        rect.style("stroke", null).style("stroke-width", 0);
       }
     });
   }, [selectedEntity]);

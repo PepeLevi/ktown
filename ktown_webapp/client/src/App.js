@@ -128,6 +128,7 @@ function App() {
   };
 
   const handleEntityClick = (entity) => {
+    console.log("handleEntityClick", entity);
     setSelectedEntity(entity); // site or figure composed object
     setSelectedCell(null); // 🔸 clear cell highlight when clicking inside
   };
@@ -226,6 +227,10 @@ function EntityDetailsView({ entity }) {
       <h3>
         {kind === "site" && "Site"}
         {kind === "figure" && "Historical Figure"}
+        {kind === "structure" && "Structure"}
+        {kind === "undergroundRegion" && "Underground Region"}
+        {kind === "writtenContent" && "Written Content"}
+        {kind === "cell" && "Cell"}
         {!kind && "Entity"}
       </h3>
 
@@ -253,6 +258,28 @@ function EntityDetailsView({ entity }) {
         )}
       </div>
 
+      {kind === "cell" && (
+        <>
+          <h4>Cell Data</h4>
+          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+
+          <h4>Region</h4>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
+
+          <h4>Sites</h4>
+          <pre>{JSON.stringify(entity.sites || [], null, 2)}</pre>
+
+          <h4>Underground Regions</h4>
+          <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
+
+          <h4>Historical Figures</h4>
+          <pre>{JSON.stringify(entity.historical_figures || [], null, 2)}</pre>
+
+          <h4>Written Contents</h4>
+          <pre>{JSON.stringify(entity.written_contents || [], null, 2)}</pre>
+        </>
+      )}
+
       {kind === "site" && (
         <>
           <h4>Site object</h4>
@@ -262,7 +289,7 @@ function EntityDetailsView({ entity }) {
           <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
 
           <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region, null, 2)}</pre>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
 
           <h4>Underground Regions</h4>
           <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
@@ -275,19 +302,32 @@ function EntityDetailsView({ entity }) {
         </>
       )}
 
+      {kind === "structure" && (
+        <>
+          <h4>Structure object</h4>
+          <pre>{JSON.stringify(entity.structure, null, 2)}</pre>
+
+          <h4>Cell</h4>
+          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+
+          <h4>Region</h4>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
+        </>
+      )}
+
       {kind === "figure" && (
         <>
           <h4>Figure</h4>
           <pre>{JSON.stringify(entity.figure, null, 2)}</pre>
 
           <h4>Site</h4>
-          <pre>{JSON.stringify(entity.site, null, 2)}</pre>
+          <pre>{JSON.stringify(entity.site || null, null, 2)}</pre>
 
           <h4>Cell</h4>
           <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
 
           <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region, null, 2)}</pre>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
 
           <h4>Underground Regions</h4>
           <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
@@ -311,6 +351,32 @@ function EntityDetailsView({ entity }) {
           <pre>
             {JSON.stringify(entity.cell_written_contents || [], null, 2)}
           </pre>
+        </>
+      )}
+
+      {kind === "undergroundRegion" && (
+        <>
+          <h4>Underground Region object</h4>
+          <pre>{JSON.stringify(entity.undergroundRegion, null, 2)}</pre>
+
+          <h4>Cell</h4>
+          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+
+          <h4>Region</h4>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
+        </>
+      )}
+
+      {kind === "writtenContent" && (
+        <>
+          <h4>Written Content object</h4>
+          <pre>{JSON.stringify(entity.writtenContent, null, 2)}</pre>
+
+          <h4>Cell</h4>
+          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+
+          <h4>Region</h4>
+          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
         </>
       )}
     </div>
