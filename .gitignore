@@ -20,3 +20,6 @@ stderr.txt
 stderr.log
 stdout.txt
 stdout.log
+
+ktown_webapp/node_modules
+ktown_webapp/client/node_modules
