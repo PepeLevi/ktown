@@ -1,11 +1,12 @@
 import sys
 import json
 import os
-import requests
+import asyncio
+import aiohttp
 from pathlib import Path
 
 # Testing limit - set to a small number for testing, or None to process all
-TEST_LIMIT = 350
+TEST_LIMIT = 5
 
 # Batch size for API calls
 BATCH_SIZE = 5
@@ -18,6 +19,10 @@ MAX_WORDS = 300
 
 # SKIPPING_WORK_TYPES = []
 SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
+
+# Rate limiting - adjust based on API limits
+MAX_CONCURRENT_REQUESTS = 5
+REQUEST_DELAY = 0.1  # seconds between requests
 
 def load_api_config():
     """Load API configuration from config_api.json in repo root"""
@@ -125,7 +130,10 @@ def build_prompt(book_entry, all_books_data, config):
                         if ref_id_str in all_books_data:
                             if all_books_data[ref_id_str].get('text_content', '') == '':
                                 print("oops generating necessary reference first: ", ref_id_str)
-                                generate_entry(ref_id_str, all_books_data[ref_id_str], all_books_data, config)
+                                # Note: first i made this already get the reference.
+                                # now im making it wait so it first does all the books without 
+                                # written content references and then it takes the rest in a next pass.
+                                return(False)
                             written_content_refs.append([ref_id_str, all_books_data[ref_id_str]])
     
     # Add information about referenced written works
@@ -237,69 +245,85 @@ def build_prompt(book_entry, all_books_data, config):
     
     return "\n".join(prompt_parts)
 
-def call_deepseek_api(prompt, config):
-    """Make an API call to DeepSeek to generate book content"""
-    try:
-        headers = {
-            "Content-Type": "application/json",
-        }
-        
-        # Add API key to headers if provided
-        if config.get('deepseek_api_key'):
-            headers["Authorization"] = f"Bearer {config['deepseek_api_key']}"
-        
-        payload = {
-            "model": config.get('deepseek_model', 'deepseek-chat'),
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": 0.7,
-            "max_tokens": MAX_TOKENS
-        }
-        
-        response = requests.post(
-            config.get('deepseek_base_url'),
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            if 'choices' in result and len(result['choices']) > 0:
-                content = result['choices'][0]['message']['content']
-                return content.strip()
-            else:
-                print(f"Unexpected API response format: {result}")
-                return None
-        else:
-            print(f"API call failed with status {response.status_code}: {response.text}")
-            return None
+async def call_deepseek_api(session, prompt, config, semaphore):
+    """Make an async API call to DeepSeek to generate book content"""
+    async with semaphore:
+        try:
+            headers = {
+                "Content-Type": "application/json",
+            }
             
-    except Exception as e:
-        print(f"Error calling DeepSeek API: {e}")
-        return None
-    
-def generate_entry(key, book_entry, data, config):
-    print(f"  Generating content for book {key}: '{book_entry.get('title', 'Untitled')}'")
-    
-    prompt = build_prompt(book_entry, data, config)
-    print(prompt)
-    content = call_deepseek_api(prompt, config)
-    
-    if content:
-        data[key]['text_content'] = content
-        # processed_count += 1
-        print(f"    ✓ Success")
-    else:
-        # failed_count += 1
-        print(f"    ✗ Failed to generate content")
+            # Add API key to headers if provided
+            if config.get('deepseek_api_key'):
+                headers["Authorization"] = f"Bearer {config['deepseek_api_key']}"
+            
+            payload = {
+                "model": config.get('deepseek_model', 'deepseek-chat'),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0.7,
+                "max_tokens": MAX_TOKENS
+            }
+            
+            async with session.post(
+                config.get('deepseek_base_url'),
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as response:
+                
+                if response.status == 200:
+                    result = await response.json()
+                    if 'choices' in result and len(result['choices']) > 0:
+                        content = result['choices'][0]['message']['content']
+                        return content.strip()
+                    else:
+                        print(f"Unexpected API response format: {result}")
+                        return None
+                else:
+                    print(f"API call failed with status {response.status}: {await response.text()}")
+                    return None
+                    
+        except Exception as e:
+            print(f"Error calling DeepSeek API: {e}")
+            return None
+        finally:
+            # Small delay to respect rate limits
+            await asyncio.sleep(REQUEST_DELAY)
 
-def process_books(json_path, config):
-    """Process books in the JSON file, generating content for those with empty text_content"""
+async def process_batch(session, batch, data, config, semaphore):
+    """Process a batch of books concurrently"""
+    tasks = []
+    
+    for key, book_entry, prompt in batch:
+        print(f"  Generating content for book {key}: '{book_entry.get('title', 'Untitled')}'")
+        print(prompt)
+        
+        task = call_deepseek_api(session, prompt, config, semaphore)
+        tasks.append((key, task))
+    
+    # Wait for all API calls to complete
+    results = []
+    for key, task in tasks:
+        content = await task
+        results.append((key, content))
+    
+    # Update data with results
+    for key, content in results:
+        if content:
+            data[key]['text_content'] = content
+            print(f"    ✓ Success for {key}")
+        else:
+            print(f"    ✗ Failed to generate content for {key}")
+    
+    return len([r for r in results if r[1] is not None]), len([r for r in results if r[1] is None])
+
+async def process_books_async(json_path, config):
+    """Process books in the JSON file asynchronously, generating content for those with empty text_content"""
     # Load the JSON file
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
@@ -327,37 +351,60 @@ def process_books(json_path, config):
     
     # Apply test limit if set
     if TEST_LIMIT:
-        books_to_process = books_to_process[len(books_to_process)-TEST_LIMIT:]
+        # books_to_process = books_to_process[len(books_to_process)-TEST_LIMIT:]
+        books_to_process = books_to_process[:TEST_LIMIT]
         print(f"Processing {len(books_to_process)} books (TEST_LIMIT={TEST_LIMIT})")
     
-    # # Process books in batches
-    # processed_count = 0
-    # failed_count = 0
+    # Build prompts for all books first
+    print("Building prompts for all books...")
+    books_with_prompts = []
+    for key, book_entry in books_to_process:
+        if data['data'][key].get('text_content', '') != '':
+            print(f"Book {key} already filled, skipping")
+            continue
+        prompt = build_prompt(book_entry, data['data'], config)
+
+        # if it relies on an unwritten reference im telling it to skip for now
+        if not prompt: 
+            continue
+
+        books_with_prompts.append((key, book_entry, prompt))
     
-    for i in range(0, len(books_to_process), BATCH_SIZE):
-        batch = books_to_process[i:i + BATCH_SIZE]
-        print(f"\nProcessing batch {i // BATCH_SIZE + 1} ({len(batch)} books)...")
-        
-        for key, book_entry in batch:
-            if data['data'][key].get('text_content', '') != '':
-                print("book already filled")
-                continue
-            generate_entry(key, book_entry, data['data'], config)
-        
-        # Save after each batch to avoid losing progress
-        try:
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            with open('enhanced_books_backup.json', 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            print(f"  Saved progress after batch")
-        except Exception as e:
-            print(f"  Error saving JSON: {e}")
+    # Set up semaphore for rate limiting
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     
-    # print(f"\nCompleted: {processed_count} successful, {failed_count} failed")
+    # Process books in batches
+    total_processed = 0
+    total_failed = 0
+    
+    async with aiohttp.ClientSession() as session:
+        for i in range(0, len(books_with_prompts), BATCH_SIZE):
+            batch = books_with_prompts[i:i + BATCH_SIZE]
+            print(f"\nProcessing batch {i // BATCH_SIZE + 1} ({len(batch)} books)...")
+            
+            processed, failed = await process_batch(session, batch, data['data'], config, semaphore)
+            total_processed += processed
+            total_failed += failed
+            
+            # Save after each batch to avoid losing progress
+            try:
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                with open('enhanced_books_backup.json', 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                print(f"  Saved progress after batch")
+            except Exception as e:
+                print(f"  Error saving JSON: {e}")
+    
+    print(f"\nCompleted: {total_processed} successful, {total_failed} failed, out of {len(books_to_process)} total books")
+
+    if(len(books_to_process) > total_processed):
+        print("doing another recursion for references")
+        await process_books_async(json_path, config)
+
     return True
 
-def main():
+async def main_async():
     if len(sys.argv) < 2:
         print("Usage: python request_book_content.py <save_path>")
         return
@@ -379,8 +426,12 @@ def main():
         print("Failed to load API configuration")
         return
     
-    # Process the books
-    process_books(json_path, config)
+    # Process the books asynchronously
+    await process_books_async(json_path, config)
+
+def main():
+    # Run the async main function
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()
