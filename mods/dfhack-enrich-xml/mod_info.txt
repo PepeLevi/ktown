@@ -1,0 +1,6 @@
+[object:identity]
+    [ID:identity]
+        name:Enrich XML
+        version:1.0
+        author:david
+        description:Adds enhanced books functionality
