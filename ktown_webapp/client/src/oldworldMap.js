@@ -19,7 +19,15 @@ const CELL_GAP = 0;
 
 // zoom limits
 const MIN_ZOOM = 1;
-const MAX_ZOOM = 500;
+const MAX_ZOOM = 1500;
+
+const ZOOM_BY_KIND = {
+  cell: 20,
+  site: 20,
+  structure: 50,
+  figure: 80,
+  book: 120,
+};
 
 function calculateGridPositions(
   index,
@@ -587,12 +595,14 @@ function WorldMap({
       const texUrl = getRegionTex(d.region?.type);
       const rect = d3.select(this);
 
-      if (texUrl && d.sites.length) {
-        const pid = getPatternId("region", d.region?.type);
-        rect.style("fill", `url(#${pid})`);
-      } else {
-        rect.style("fill", "#1f2933");
-      }
+      // if (texUrl && d.sites.length) {
+      //   const pid = getPatternId("region", d.region?.type);
+      //   rect.style("fill", `url(#${pid})`);
+      // } else {
+      //   rect.style("fill", "#1f2933");
+      // }
+      const pid = getPatternId("region", d.region?.type);
+      rect.style("fill", `url(#${pid})`);
     });
 
     cellsEnter
@@ -756,7 +766,7 @@ function WorldMap({
     const structureMarkers = [];
     cells.forEach((cell) => {
       (cell.sites || []).forEach((site, siteIdx) => {
-        const raw = site.structures?.structure;
+        const raw = site.structures;
         const structures = normalizeToArray(raw);
         structures.forEach((structure, idx) => {
           structureMarkers.push({
@@ -869,11 +879,11 @@ function WorldMap({
     const figureMarkers = [];
     cells.forEach((cell) => {
       (cell.sites || []).forEach((site, siteIdx) => {
-        const structures = normalizeToArray(site.structures?.structure);
+        const structures = normalizeToArray(site.structures);
 
         if (structures.length) {
           structures.forEach((structure, structIdx) => {
-            const inhabitants = normalizeToArray(structure.inhabitants);
+            const inhabitants = normalizeToArray(structure.inhabitant);
 
             inhabitants.forEach((hf, figIdx) => {
               figureMarkers.push({
@@ -1244,59 +1254,94 @@ function WorldMap({
   }, [worldData]);
 
   // highlight selected entity (site / figure)
+  // highlight + zoom to selected entity
   useEffect(() => {
-    const svg = d3.select(svgRef.current);
+    const svgNode = svgRef.current;
+    if (!svgNode) return;
 
-    const celleRects = svg.selectAll("rect.cell");
+    const svg = d3.select(svgNode);
+
+    const cellRects = svg.selectAll("rect.cell");
     const siteRects = svg.selectAll("rect.site-marker");
     const structureRects = svg.selectAll("rect.structure-marker");
     const figureRects = svg.selectAll("rect.figure-marker");
+    const bookFOs = svg.selectAll("foreignObject.book-fo");
 
-    celleRects.each(function (d) {
+    let didZoom = false;
+
+    const zoomOnElementCenter = (el, kind) => {
+      if (!el || didZoom || !selectedEntity) return;
+
+      const x = parseFloat(el.attr("x")) || 0;
+      const y = parseFloat(el.attr("y")) || 0;
+      const w = parseFloat(el.attr("width")) || 0;
+      const h = parseFloat(el.attr("height")) || 0;
+
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const k = ZOOM_BY_KIND[selectedEntity.kind] ?? 20;
+
+      zoomToPoint(cx, cy, k);
+      didZoom = true;
+    };
+
+    // cells
+    cellRects.each(function (d) {
       const rect = d3.select(this);
 
       const isSelected =
         selectedEntity &&
         selectedEntity.kind === "cell" &&
-        selectedEntity.cell.region.id === d.region.id;
+        // preferred: use selectedEntity.id
+        ((selectedEntity.id != null &&
+          (selectedEntity.id === d.id || selectedEntity.id === d.region?.id)) ||
+          // fallback: older shape with selectedEntity.cell.region.id
+          (selectedEntity.cell &&
+            selectedEntity.cell.region &&
+            selectedEntity.cell.region.id === d.region?.id));
 
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 5);
+        zoomOnElementCenter(rect, "cell");
       } else {
-        rect.style("stroke", celleRects).style("stroke-width", 0);
+        rect.style("stroke", "none").style("stroke-width", 0);
       }
     });
+
     // sites
     siteRects.each(function (d) {
       const rect = d3.select(this);
+
       const isSelected =
         selectedEntity &&
         selectedEntity.kind === "site" &&
-        selectedEntity.site &&
         d.site &&
-        selectedEntity.site.id === d.site.id;
+        ((selectedEntity.id != null && selectedEntity.id === d.site.id) ||
+          (selectedEntity.site && selectedEntity.site.id === d.site.id));
 
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        zoomOnElementCenter(rect, "site");
       } else {
-        rect.style("stroke", siteRects).style("stroke-width", 0.1);
+        rect.style("stroke", siteColor).style("stroke-width", 0.1);
       }
     });
 
+    // structures
     structureRects.each(function (d) {
       const rect = d3.select(this);
+
       const isSelected =
         selectedEntity &&
         selectedEntity.kind === "structure" &&
-        selectedEntity.structure &&
         d.structure &&
-        ((selectedEntity.structure.id &&
-          selectedEntity.structure.id === d.structure.id) ||
-          (selectedEntity.structure.local_id &&
-            selectedEntity.structure.local_id === d.structure.local_id));
+        ((selectedEntity.id != null && selectedEntity.id === d.structure.id) ||
+          (selectedEntity.structure &&
+            selectedEntity.structure.id === d.structure.id));
 
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        zoomOnElementCenter(rect, "structure");
       } else {
         rect.style("stroke", structureColor).style("stroke-width", 0.1);
       }
@@ -1305,17 +1350,38 @@ function WorldMap({
     // figures
     figureRects.each(function (d) {
       const rect = d3.select(this);
+
       const isSelected =
         selectedEntity &&
         selectedEntity.kind === "figure" &&
-        selectedEntity.figure &&
         d.hf &&
-        selectedEntity.figure.id === d.hf.id;
+        ((selectedEntity.id != null && selectedEntity.id === d.hf.id) ||
+          (selectedEntity.figure && selectedEntity.figure.id === d.hf.id));
 
       if (isSelected) {
         rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        zoomOnElementCenter(rect, "figure");
       } else {
         rect.style("stroke", figureColor).style("stroke-width", 0);
+      }
+    });
+
+    // books (foreignObject)
+    bookFOs.each(function (d) {
+      const fo = d3.select(this);
+
+      const isSelected =
+        selectedEntity &&
+        selectedEntity.kind === "book" &&
+        d.book &&
+        ((selectedEntity.id != null && selectedEntity.id === d.book.id) ||
+          (selectedEntity.book && selectedEntity.book.id === d.book.id));
+
+      if (isSelected) {
+        fo.style("filter", "drop-shadow(0 0 1px #f97316)");
+        zoomOnElementCenter(fo, "book");
+      } else {
+        fo.style("filter", null);
       }
     });
   }, [selectedEntity]);

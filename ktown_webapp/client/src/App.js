@@ -1,6 +1,15 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
 import WorldMap from "./oldworldMap";
+import JourneyVerticalProgress from "./progressBar";
+
+function createSelectedEntity(kind, payload) {
+  return {
+    kind,
+    [kind]: payload,
+    id: payload?.id ?? null,
+  };
+}
 
 function App() {
   const [worldData, setWorldData] = useState(null);
@@ -9,6 +18,7 @@ function App() {
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [figures, setFigures] = useState([]);
   const [books, setBooks] = useState([]);
+  const [level, setLevel] = React.useState(5);
 
   // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
@@ -41,15 +51,33 @@ function App() {
       let temp_figures = [];
       let temp_books = [];
       wd.cells.forEach((cell) => {
-        if (cell.written_contents && cell.written_contents.length > 0) {
-          console.log("has cell with book", cell);
+        if (cell.sites.length > 0) {
+          console.log("CELL", cell);
 
-          for (let index = 0; index < cell.written_contents.length; index++) {
-            temp_books.push(cell.written_contents[index]);
+          for (let si = 0; si < cell.sites.length; si++) {
+            const site = cell.sites[si];
+
+            if (site.structures) {
+              for (let sti = 0; sti < site.structures.length; sti++) {
+                const structure = site.structures[sti];
+
+                if (structure.inhabitant.length > 0) {
+                  for (let ii = 0; ii < structure.inhabitant.length; ii++) {
+                    const figure = structure.inhabitant[ii];
+
+                    temp_figures.push(figure);
+
+                    if (figure.books) {
+                      for (let bi = 0; bi < figure.books.length; bi++) {
+                        const book = figure.books[bi];
+                        temp_books.push(book);
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
-        }
-        for (let index = 0; index < cell.historical_figures.length; index++) {
-          temp_figures.push(cell.historical_figures[index]);
         }
       });
 
@@ -74,10 +102,31 @@ function App() {
   const handleEntityClick = (entity) => {
     setSelectedEntity(entity);
     setSelectedCell(null);
+
+    if (entity.kind === "cell") {
+      setLevel(5);
+    }
+    if (entity.kind === "site") {
+      setLevel(4);
+    }
+    if (entity.kind === "structure") {
+      setLevel(3);
+    }
+    if (entity.kind === "figure") {
+      setLevel(1);
+    }
+    if (entity.kind === "book") {
+      setLevel(0);
+    }
+
+    console.log("click entity", entity, level);
   };
 
   return (
     <div className="app">
+      <div className="progressBar">
+        <JourneyVerticalProgress level={level} />
+      </div>
       <main className="layout">
         <section className="map-panel">
           {worldData ? (
@@ -151,105 +200,167 @@ function FigureDetailView({
       <p>{figure.associated_type}</p>
 
       {figure.sphere && (
-        <div className="flex-row-full">
-          {Array.isArray(figure.sphere) &&
-            figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
-        </div>
-      )}
-
-      {figure.hf_link && isTopLevel && (
-        <div className="flex-column subFigures">
-          {figure.hf_link.map((s, i) => (
-            <>
-              {figures[s.hfid] ? (
-                <div key={i} className={s.link_type + " subFigure"}>
-                  <p>{s.link_type}</p>
-                  <FigureDetailView
-                    figure={figures[s.hfid]}
-                    isTopLevel={false}
-                  />
-                </div>
-              ) : (
-                <p>
-                  {s.link_type}
-                  {s.hfid}
-                </p>
-              )}
-            </>
-          ))}
-        </div>
+        <>
+          <p className="cat_headline">figure sphere</p>
+          <div className="flex-row-full">
+            {Array.isArray(figure.sphere) &&
+              figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
+          </div>
+        </>
       )}
 
       {figure.books && isTopLevel && (
         <>
+          <p className="cat_headline">books</p>
           {figure.books.map((b, i) => (
             <div key={i}>
-              <BookDetailView book={b} isTopLevel={false} />
+              <BookDetailView
+                book={b}
+                isTopLevel={false}
+                figures={figures}
+                books={books}
+                handleEntityClick={handleEntityClick}
+              />
             </div>
           ))}
+        </>
+      )}
+
+      {figure.hf_link && isTopLevel && (
+        <>
+          <p className="cat_headline">connections</p>
+          <div className="flex-column subFigures">
+            {figure.hf_link.length &&
+              figure.hf_link?.map((s, i) => (
+                <>
+                  {figures[s.hfid] ? (
+                    <button
+                      onClick={() => {
+                        handleEntityClick(
+                          createSelectedEntity("figure", figures[s.hfid])
+                        );
+                      }}
+                      key={i}
+                      className={s.link_type + " subFigure"}
+                    >
+                      <p>{s.link_type}</p>
+                      <FigureDetailView
+                        figure={figures[s.hfid]}
+                        isTopLevel={false}
+                        figures={figures}
+                        books={books}
+                        handleEntityClick={handleEntityClick}
+                      />
+                    </button>
+                  ) : null}
+                </>
+              ))}
+          </div>
         </>
       )}
     </div>
   );
 }
-function BookDetailView({ book, isTopLevel, figures, books }) {
+function BookDetailView({
+  book,
+  isTopLevel,
+  figures,
+  books,
+  handleEntityClick,
+}) {
   if (!book) {
     return;
   }
-
   return (
     <div className="book">
-      <div className="flex-row-full"></div>
-      <p>{book.title}</p>
-      <p>{book.raw.text_content}</p>
+      <button
+        className="flex-row-full"
+        onClick={() => {
+          handleEntityClick(createSelectedEntity("book", book));
+        }}
+      >
+        <p>{book.title}</p>
+        <p>is a book</p>
+      </button>
 
-      {book.author_hfid && isTopLevel && (
+      <p className="cat_headline">book content:</p>
+      <p>{book?.raw?.text_content}</p>
+
+      {figures[book.author_hfid] && isTopLevel && (
         <>
+          <p className="cat_headline">book author:</p>
           <FigureDetailView
             figure={figures[book.author_hfid]}
             isTopLevel={false}
+            figures={figures}
+            books={books}
           />
         </>
       )}
     </div>
   );
 }
-function StructureDetailView({ structure, handleEntityClick }) {
+function StructureDetailView({ structure, handleEntityClick, books, figures }) {
   return (
     <div>
       <button
         onClick={() => {
-          handleEntityClick(structure);
+          handleEntityClick(createSelectedEntity("structure", structure));
         }}
       >
         {structure.name}
       </button>
+
+      {structure.inhabitant && (
+        <>
+          <p className="cat_headline">structure inhabitant:</p>
+          {structure.inhabitant &&
+            structure.inhabitant.map((si, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  handleEntityClick(createSelectedEntity("figure", si));
+                }}
+              >
+                <FigureDetailView
+                  figure={si}
+                  figures={figures}
+                  isTopLevel={true}
+                  books={books}
+                  handleEntityClick={handleEntityClick}
+                />
+              </button>
+            ))}
+        </>
+      )}
     </div>
   );
 }
-function SiteDetailView({ site, handleEntityClick }) {
-  console.log("CLICK ON SITE", site);
-
+function SiteDetailView({ site, handleEntityClick, figures, books }) {
   return (
     <div>
       <p>{site.fromFile2.name}</p>
-      {site.structures?.structure && (
+      {site.structures && (
         <>
-          {Array.isArray(site.structures?.structure) ? (
-            site.structures?.structure.map((s, i) => (
+          {Array.isArray(site.structures) ? (
+            site.structures.map((s, i) => (
               <div key={i}>
                 <StructureDetailView
                   structure={s}
                   isTopLevel={false}
                   handleEntityClick={handleEntityClick}
+                  figures={figures}
+                  books={books}
                 />
               </div>
             ))
           ) : (
             <StructureDetailView
               handleEntityClick={handleEntityClick}
-              structure={site.structures?.structure}
+              structure={site.structures}
               isTopLevel={false}
+              figures={figures}
+              books={books}
             />
           )}
         </>
@@ -304,7 +415,7 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
 
       <div className="flex-row-full"></div>
       <div className="specs">
-        {figure && (
+        {kind === "figure" && (
           <FigureDetailView
             figure={figure}
             figures={figures}
@@ -314,7 +425,7 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
           />
         )}
 
-        {book && (
+        {kind === "book" && (
           <BookDetailView
             book={book}
             isTopLevel={true}
@@ -324,9 +435,19 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
           />
         )}
 
-        {site && (
+        {kind === "site" && (
           <SiteDetailView
             site={site}
+            isTopLevel={true}
+            figures={figures}
+            books={books}
+            handleEntityClick={handleEntityClick}
+          />
+        )}
+
+        {kind === "structure" && (
+          <StructureDetailView
+            structure={structure}
             isTopLevel={true}
             figures={figures}
             books={books}
