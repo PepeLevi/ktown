@@ -69,6 +69,16 @@ function isEnabled()
     return state.enabled
 end
 
+local function get_name_custom(name)
+    word = ""
+    for k, v in pairs(name.words) do
+        if v > -1 then
+            word = word .. string.sub(df.language_word.find(v).str[0].value, 7,-2)
+        end
+    end 
+    return word
+end
+
 local function persist_state()
     if not is_world_available() then return end
     local entry = ensure_state_entry()
@@ -168,14 +178,16 @@ local function get_hf_info(hfid)
     if hf.civ_id and hf.civ_id ~= -1 then
         local civ_ent = df.historical_entity.find(hf.civ_id)
         if civ_ent and civ_ent.name then
-            civ = civ_ent.name.has_name and dfhack.TranslateName(civ_ent.name) or "UNKNOWN_CIV"
+            -- civ = civ_ent.name.has_name and dfhack.TranslateName(civ_ent.name) or "UNKNOWN_CIV"
+            civ = civ_ent.name.has_name and get_name_custom(civ_ent.name) or "UNKNOWN_CIV"
             civilization_id = hf.civ_id
         end
     end
     
     -- Get author name safely
     if hf.name then
-        name = dfhack.TranslateName(hf.name) or "UNKNOWN"
+        -- name = dfhack.TranslateName(hf.name) or "UNKNOWN"
+        name = get_name_custom(hf.name) or "UNKNOWN"
     end
     
     return {
@@ -200,7 +212,8 @@ local function get_site(site_id)
     -- end -- theres a lot here i can also do civilization, population, buildings, year founded
 
     return {
-        site_name = site ~= nil and dfhack.TranslateName(site.name) or "UNKNOWN",
+        -- site_name = site ~= nil and dfhack.TranslateName(site.name) or "UNKNOWN",
+        site_name = site ~= nil and get_name_custom(site.name) or "UNKNOWN",
         id = site_id
     }
 end
@@ -361,7 +374,8 @@ local function get_poetic_form(poetic_form_id)
     poetic_form = df.global.world.poetic_forms.all[poetic_form_id]
 
     poetic_form_features = {
-        name =  dfhack.TranslateName(poetic_form.name)  or "UNKNOWN",
+        -- name =  dfhack.TranslateName(poetic_form.name)  or "UNKNOWN",
+        name =  get_name_custom(poetic_form.name)  or "UNKNOWN",
         poetic_form_id = poetic_form_id,
         feet_per_line = poetic_form.each_line_feet > -1 and poetic_form.each_line_feet,
         pattern_per_line = poetic_form.each_line_pattern > -1 and poetic_form.each_line_pattern,

@@ -5,24 +5,29 @@ import asyncio
 import aiohttp
 from pathlib import Path
 
-# Testing limit - set to a small number for testing, or None to process all
-TEST_LIMIT = 60
-
-# Batch size for API calls
-BATCH_SIZE = 30
-
-# Rate limiting - adjust based on API limits
-MAX_CONCURRENT_REQUESTS = 30
-REQUEST_DELAY = 0.1  # seconds between requests
+# Testing limit - this is the amount of books the script will request content for everytime it is called. 
+# Note that it is called multiple times during the generation process (right now around 6 times)
+TEST_LIMIT = 20
 
 # max tokens per call. limits cost and time
-MAX_TOKENS = 500 # default was 2000
+MAX_TOKENS = 300 # default was 2000
 
 # amount of words the model should aim for. decrease so it doesnt cut the text off when it runs out of tokens
-MAX_WORDS = 300
+MAX_WORDS = 150
+
+# The maximum amount of API requests it is allowed to make at once.
+MAX_CONCURRENT_REQUESTS = 100
+
+REQUEST_DELAY = 0.1  # seconds between requests
+
+# Batch size for API calls
+BATCH_SIZE = MAX_CONCURRENT_REQUESTS
+
 
 SKIPPING_WORK_TYPES = []
 # SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
+
+total_books_processed = 0
 
 
 def load_api_config():
@@ -130,7 +135,7 @@ def build_prompt(book_entry, all_books_data, config):
                         ref_id_str = str(written_content_id)
                         if ref_id_str in all_books_data:
                             if all_books_data[ref_id_str].get('text_content', '') == '':
-                                print("oops generating necessary reference first: ", ref_id_str)
+                                print("oops cant generate this boy yet: ", ref_id_str)
                                 # Note: first i made this already get the reference.
                                 # now im making it wait so it first does all the books without 
                                 # written content references and then it takes the rest in a next pass.
@@ -301,27 +306,32 @@ async def process_batch(session, batch, data, config, semaphore):
     tasks = []
     
     for key, book_entry, prompt in batch:
-        print(f"  Generating content for book {key}: '{book_entry.get('title', 'Untitled')}'")
-        print(prompt)
+        print(f"  Queueing content for book {key}: '{book_entry.get('title', 'Untitled')}'")
+        # print(prompt)  # Comment this out to reduce output spam
         
         task = call_deepseek_api(session, prompt, config, semaphore)
         tasks.append((key, task))
     
-    # Wait for all API calls to complete
-    results = []
-    for key, task in tasks:
-        content = await task
-        results.append((key, content))
+    # Wait for ALL API calls to complete concurrently
+    print(f"  Making {len(tasks)} API calls concurrently...")
+    results = await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
     
     # Update data with results
-    for key, content in results:
-        if content:
-            data[key]['text_content'] = content
+    successful = 0
+    for (key, _), result in zip(tasks, results):
+        if isinstance(result, Exception):
+            print(f"    ✗ Exception for {key}: {result}")
+            continue
+            
+        if result:
+            data[key]['text_content'] = result
+            successful += 1
             print(f"    ✓ Success for {key}")
         else:
             print(f"    ✗ Failed to generate content for {key}")
     
-    return len([r for r in results if r[1] is not None]), len([r for r in results if r[1] is None])
+    print(f"  Batch completed: {successful}/{len(batch)} successful")
+    return successful, len(batch) - successful
 
 async def process_books_async(json_path, config):
     """Process books in the JSON file asynchronously, generating content for those with empty text_content"""
@@ -353,7 +363,7 @@ async def process_books_async(json_path, config):
     # Apply test limit if set
     if TEST_LIMIT:
         # books_to_process = books_to_process[len(books_to_process)-TEST_LIMIT:]
-        books_to_process = books_to_process[:TEST_LIMIT]
+        books_to_process = books_to_process[:TEST_LIMIT - total_books_processed]
         print(f"Processing {len(books_to_process)} books (TEST_LIMIT={TEST_LIMIT})")
     
     # Build prompts for all books first
@@ -365,6 +375,8 @@ async def process_books_async(json_path, config):
             continue
         prompt = build_prompt(book_entry, data['data'], config)
 
+        print(prompt)
+
         # if it relies on an unwritten reference im telling it to skip for now
         if not prompt: 
             continue
@@ -375,7 +387,7 @@ async def process_books_async(json_path, config):
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     
     # Process books in batches
-    total_processed = 0
+    books_processed = 0
     total_failed = 0
     
     async with aiohttp.ClientSession() as session:
@@ -384,7 +396,7 @@ async def process_books_async(json_path, config):
             print(f"\nProcessing batch {i // BATCH_SIZE + 1} ({len(batch)} books)...")
             
             processed, failed = await process_batch(session, batch, data['data'], config, semaphore)
-            total_processed += processed
+            books_processed += processed
             total_failed += failed
             
             # Save after each batch to avoid losing progress
@@ -397,10 +409,11 @@ async def process_books_async(json_path, config):
             except Exception as e:
                 print(f"  Error saving JSON: {e}")
     
-    print(f"\nCompleted: {total_processed} successful, {total_failed} failed, out of {len(books_to_process)} total books")
+    print(f"\nCompleted: {books_processed} successful, {total_failed} failed, out of {len(books_to_process)} total books")
 
-    if(len(books_to_process) > total_processed):
+    if(len(books_to_process) > books_processed):
         print("doing another recursion for references")
+        total_books_processed += books_processed
         await process_books_async(json_path, config)
 
     return True
