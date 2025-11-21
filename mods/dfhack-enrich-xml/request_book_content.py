@@ -5,13 +5,19 @@ import requests
 from pathlib import Path
 
 # Testing limit - set to a small number for testing, or None to process all
-TEST_LIMIT = 20
+TEST_LIMIT = 350
 
 # Batch size for API calls
 BATCH_SIZE = 5
 
-SKIPPING_WORK_TYPES = []
-# SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
+# max tokens per call. limits cost and time
+MAX_TOKENS = 500 # default was 2000
+
+# amount of words the model should aim for. decrease so it doesnt cut the text off when it runs out of tokens
+MAX_WORDS = 300
+
+# SKIPPING_WORK_TYPES = []
+SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
 
 def load_api_config():
     """Load API configuration from config_api.json in repo root"""
@@ -39,10 +45,12 @@ def build_prompt(book_entry, all_books_data, config):
     if author:
         author_name = author.get('name', 'Unknown')
         author_race = author.get('race', 'Unknown')
+        author_id = book_entry.get('author_hfid', 'Unknown')
         author_civ = author.get('civilization', 'Unknown')
-        prompt_parts.append(f"Author: {author_name} ({author_race})")
+        author_civ_id = author.get('civilization_id', 'Unknown')
+        prompt_parts.append(f"Author: {author_name} ({author_race}), historical_figure_id:{author_id})")
         if author_civ and author_civ != 'UNKNOWN':
-            prompt_parts.append(f"Civilization: {author_civ}")
+            prompt_parts.append(f"Civilization: {author_civ}, civilization_id:{author_civ_id}")
     
     # Add page count
     page_count = context.get('page_count', 1)
@@ -118,17 +126,17 @@ def build_prompt(book_entry, all_books_data, config):
                             if all_books_data[ref_id_str].get('text_content', '') == '':
                                 print("oops generating necessary reference first: ", ref_id_str)
                                 generate_entry(ref_id_str, all_books_data[ref_id_str], all_books_data, config)
-                            written_content_refs.append(all_books_data[ref_id_str])
+                            written_content_refs.append([ref_id_str, all_books_data[ref_id_str]])
     
     # Add information about referenced written works
     if written_content_refs:
         prompt_parts.append("\nThis work references the following written work(s):")
         for ref_work in written_content_refs:
-            ref_context = ref_work.get('context_points', {})
-            ref_title = ref_work.get('title', 'Untitled')
+            ref_context = ref_work[1].get('context_points', {})
+            ref_title = ref_work[1].get('title', 'Untitled')
             ref_work_type = ref_context.get('work_type', 'Unknown')
             
-            ref_info = [f"  - '{ref_title}' ({ref_work_type})"]
+            ref_info = [f"  - '{ref_title}' ({ref_work_type}) written_work_id:{ref_work[0]}"]
             
             # Add referenced work's author
             ref_author = ref_context.get('author', {})
@@ -189,7 +197,7 @@ def build_prompt(book_entry, all_books_data, config):
             prompt_parts.append("\n".join(ref_info))
             
             # Add referenced work's text content if available
-            ref_text_content = ref_work.get('text_content', '')
+            ref_text_content = ref_work[1].get('text_content', '')
             if ref_text_content and ref_text_content.strip():
                 prompt_parts.append(f"    Full text of '{ref_title}':")
                 prompt_parts.append(f"    {ref_text_content}")
@@ -212,9 +220,9 @@ def build_prompt(book_entry, all_books_data, config):
                     for topic_key, topic in ref_data.get('topics', 'unknown').items():
                         prompt_parts.append(topic + ', ')
                 elif ref_type == 'historical event':
-                    prompt_parts.append("\nThe work references a historical event in the year " + str(ref_data.get('event').get('year', 'unkown')) if  ref_data.get('event', False) else 'Unknown')
+                    prompt_parts.append("\nThe work references a historical event in the year " + str(ref_data.get('event').get('year', 'unkown')) if  ref_data.get('event', False) else 'Unknown' + '. historical_event_id:' + str(ref_data.get('event').get('id', 'unkown')))
                 elif ref_type == 'site':
-                    prompt_parts.append("\nThe work references the location " + ref_data.get('site','unkown'))
+                    prompt_parts.append("\nThe work references the location " + ref_data.get('site').get('site_name')  + '. site_id:' + str(ref_data.get('site').get('id')))
                 elif ref_type == 'value level':
                     level = 'strongly' if ref_data.get('level', 0) > 25 else 'mildly' 
                     prompt_parts.append("\nThe work " + level + " emphasizes the value of " + ref_data.get('value','unkown'))
@@ -225,7 +233,7 @@ def build_prompt(book_entry, all_books_data, config):
         # if has_other_refs:
         #     prompt_parts.append("\nThe work may also reference historical events, sites, or other knowledge.")
     
-    prompt_parts.append("\nGenerate the complete text content for this work, matching the style and length appropriate for the given context.")
+    prompt_parts.append(f"\nGenerate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to {MAX_WORDS} words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href=\"historical_figure_id/456\">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.")
     
     return "\n".join(prompt_parts)
 
@@ -249,7 +257,7 @@ def call_deepseek_api(prompt, config):
                 }
             ],
             "temperature": 0.7,
-            "max_tokens": 2000
+            "max_tokens": MAX_TOKENS
         }
         
         response = requests.post(
@@ -281,7 +289,6 @@ def generate_entry(key, book_entry, data, config):
     prompt = build_prompt(book_entry, data, config)
     print(prompt)
     content = call_deepseek_api(prompt, config)
-    content = False
     
     if content:
         data[key]['text_content'] = content
@@ -320,7 +327,7 @@ def process_books(json_path, config):
     
     # Apply test limit if set
     if TEST_LIMIT:
-        books_to_process = books_to_process[len(books_to_process)-TEST_LIMIT-1:TEST_LIMIT]
+        books_to_process = books_to_process[len(books_to_process)-TEST_LIMIT:]
         print(f"Processing {len(books_to_process)} books (TEST_LIMIT={TEST_LIMIT})")
     
     # # Process books in batches

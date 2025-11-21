@@ -151,11 +151,12 @@ local function get_hf_info(hfid)
     
     local hf = df.historical_figure.find(hfid)
     if not hf then
-        return {race = "UNKNOWN", civilization = "UNKNOWN", name = "UNKNOWN"}
+        return {race = "UNKNOWN", civilization = "UNKNOWN", civilization_id="UNKNOWN", name = "UNKNOWN", hf_id = "UNKNOWN"}
     end
     
     local race = "UNKNOWN"
     local civ = "UNKNOWN"
+    local civilization_id = "UNKNOWN"
     local name = "UNKNOWN"
     
     -- Get race name safely
@@ -167,7 +168,8 @@ local function get_hf_info(hfid)
     if hf.civ_id and hf.civ_id ~= -1 then
         local civ_ent = df.historical_entity.find(hf.civ_id)
         if civ_ent and civ_ent.name then
-            civ = civ_ent.name.has_name and civ_ent.name.first_name or "UNKNOWN_CIV"
+            civ = civ_ent.name.has_name and dfhack.TranslateName(civ_ent.name) or "UNKNOWN_CIV"
+            civilization_id = hf.civ_id
         end
     end
     
@@ -180,7 +182,8 @@ local function get_hf_info(hfid)
         race = race,
         civilization = civ,
         name = name,
-        hf_id = author_hfid
+        civilization_id = civilization_id,
+        hf_id = hfid
     }
 end
 
@@ -196,7 +199,10 @@ local function get_site(site_id)
     --     print(k, v)
     -- end -- theres a lot here i can also do civilization, population, buildings, year founded
 
-    return dfhack.TranslateName(site.name)  or "UNKNOWN"
+    return {
+        site_name = site ~= nil and dfhack.TranslateName(site.name) or "UNKNOWN",
+        id = site_id
+    }
 end
 
 local function get_historical_event(event_id)
@@ -231,7 +237,8 @@ local function get_historical_event(event_id)
     
     return {
         year = event_object.year,
-        type = tostring(event_object._type)
+        type = tostring(event_object._type),
+        id = event_id
     }
 end
 
@@ -355,6 +362,7 @@ local function get_poetic_form(poetic_form_id)
 
     poetic_form_features = {
         name =  dfhack.TranslateName(poetic_form.name)  or "UNKNOWN",
+        poetic_form_id = poetic_form_id,
         feet_per_line = poetic_form.each_line_feet > -1 and poetic_form.each_line_feet,
         pattern_per_line = poetic_form.each_line_pattern > -1 and poetic_form.each_line_pattern,
         caesura_position_on_line = poetic_form.every_line_caesura_position > -1 and poetic_form.every_line_caesura_position,
