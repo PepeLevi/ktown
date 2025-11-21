@@ -6,10 +6,14 @@ import aiohttp
 from pathlib import Path
 
 # Testing limit - set to a small number for testing, or None to process all
-TEST_LIMIT = 5
+TEST_LIMIT = 60
 
 # Batch size for API calls
-BATCH_SIZE = 5
+BATCH_SIZE = 30
+
+# Rate limiting - adjust based on API limits
+MAX_CONCURRENT_REQUESTS = 30
+REQUEST_DELAY = 0.1  # seconds between requests
 
 # max tokens per call. limits cost and time
 MAX_TOKENS = 500 # default was 2000
@@ -17,12 +21,9 @@ MAX_TOKENS = 500 # default was 2000
 # amount of words the model should aim for. decrease so it doesnt cut the text off when it runs out of tokens
 MAX_WORDS = 300
 
-# SKIPPING_WORK_TYPES = []
-SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
+SKIPPING_WORK_TYPES = []
+# SKIPPING_WORK_TYPES = ['Poem', 'MusicalComposition', 'Choreography']
 
-# Rate limiting - adjust based on API limits
-MAX_CONCURRENT_REQUESTS = 5
-REQUEST_DELAY = 0.1  # seconds between requests
 
 def load_api_config():
     """Load API configuration from config_api.json in repo root"""
