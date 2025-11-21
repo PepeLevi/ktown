@@ -23,5 +23,6 @@ stdout.log
 
 ktown_webapp/node_modules
 ktown_webapp/client/node_modules
-ktown_webapp\public\json_big_xml_plus.json
-ktown_webapp\public\json_big_xml.json
+ktown_webapp/public/json_big_xml_plus.json
+ktown_webapp/public/json_big_xml.json
+Dwarf Fortress 0.47.05.zip
