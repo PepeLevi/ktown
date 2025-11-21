@@ -1,3 +1,52 @@
+Here's some examples of what the current prompts look like with corresponding data input and output as of 21/11/2025. You can use this to rewrite the book generation prompts. Since all the strings for prompt generation are spread throughout request_book_content.py, I would suggest you rewrite them by CTRL-F-ing the specific part of the text you want to change. I didn't get any examples with written_content references but those put in the entire text and some context basically.
+
+
+------
+
+DATA INPUT:
+    "198": {
+      "author_hfid": 349,
+      "context_points": {
+        "author": {
+          "civilization": "the trace of the absolutely Other in the face:the ethical relation that interrupts my ego's spontaneityThe stubborn refusal of matter to yield to human meaning:The quiet dignity of the condemned consciousness",
+          "civilization_id": 102,
+          "hf_id": 349,
+          "name": "mäâîuçGaüti:rIòHPmERB:Matter resists the creative impulse of life through its tendency toward spatialization and repetition:The intellect analyzes reality by breaking it into discrete elements while intuition synthesizes through immediate sympathy:Duration manifests as the indivisible qualitative multiplicity wherein past states permeate current awareness",
+          "race": "The book is an assemblage and as such is unattributable"
+        },
+        "page_count": 1,
+        "poetic_form": {
+          "caesura_position_on_line": false,
+          "features": {
+            "0": "Consonance"
+          },
+          "feet_per_line": 8,
+          "mood": "Macabre",
+          "name": "the ethical interruption of the conatus essendi:the trace of transcendence in the facethe tragic comedy of human existence where reason serves only to illuminate the absurdity of our condition and the inevitability of suffering:the fundamental delusion that happiness can be attained through worldly pursuits in this miserable vale of tears",
+          "pattern_per_line": 7,
+          "poetic_form_id": 17
+        },
+        "references": [],
+        "styles": {
+          "0": {
+            "strength": 2,
+            "style": "Vicious"
+          },
+          "1": {
+            "strength": 2,
+            "style": "Ornate"
+          }
+        },
+        "work_type": "Poem"
+      },
+      "text_content": "",
+      "title": "The Vermilion Bird's Fiery Essence That Purifies All Corruption jkK àöV70Pì PcWè",
+      "type": "Poem",
+      "written_content_id": 198
+    },
+
+
+RESULTING PROMPT:
 Generate the full text content for a Poem titled 'The Vermilion Bird's Fiery Essence That Purifies All Corruption jkK àöV70Pì PcWè'.
 Author: mäâîuçGaüti:rIòHPmERB:Matter resists the creative impulse of life through its tendency toward spatialization and repetition:The intellect analyzes reality by breaking it into discrete elements while intuition synthesizes through immediate sympathy:Duration manifests as the indivisible qualitative multiplicity wherein past states permeate current awareness (The book is an assemblage and as such is unattributable), historical_figure_id:349)
 Civilization: the trace of the absolutely Other in the face:the ethical relation that interrupts my ego's spontaneityThe stubborn refusal of matter to yield to human meaning:The quiet dignity of the condemned consciousness, civilization_id:102
@@ -7,7 +56,52 @@ Writing styles: Vicious (strength: 2), Ornate (strength: 2)
 
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
+TEXT OUTPUT:
+A vermilion shriek, a feathered flame,\nIt sears the air from whence it came.\nThis <a href=\"civilization_id/102\">civilization</a>'s gilded trace,\nA cold and unforgiving face,\nInterrupts the conatus will,\nAnd leaves the striving spirit still.\nThe <a href=\"historical_figure_id/349\">intellect</a> dissects the day,\nAnd turns all living flux to clay,\nA spatialized and deadened scheme,\nA bureaucrat’s pathetic dream.\nWhile matter, stubborn, will not yield\nTo meanings that our fictions wield.\n\nO, macabre dance of bone and breath,\nWhere reason illuminates our death!\nThe condemned consciousness, so grand,\nStands silent in the wasted land.\nIts quiet dignity, a sneer\nAt all we manufacture here.\nThis vile, ornate, and vicious lie,\nThat we might grasp and never die,\nIs purified to ash and cinder,\nBy this celestial reminder.
 
+------
+
+DATA INPUT:
+    "199": {
+      "author_hfid": 550,
+      "context_points": {
+        "author": {
+          "civilization": "The intricate networks of fungal decomposition in forest floors:The branching patterns of mineral veins in geological formationsThe essence of modern metaphysics as the forgetting of the ontological difference:The leap into the abyss that marks the crossing to the other beginning",
+          "civilization_id": 38,
+          "hf_id": 550,
+          "name": "the slave morality that poisons the wells of human excellence:the twilight of the idols that precedes the dawn of new valuesThe clinical institution as a site for the production of medical knowledge:The penal system as a laboratory for new techniques of power",
+          "race": "The body without organs is the field of immanent desire"
+        },
+        "page_count": 1,
+        "poetic_form": {
+          "caesura_position_on_line": false,
+          "features": {
+            "0": "Alliteration",
+            "1": "Simile",
+            "2": "Metonymy"
+          },
+          "feet_per_line": 0,
+          "mood": "Macabre",
+          "name": "The careful analysis of the relationship between sense-data and physical objects through rigorous epistemological inquiry:The systematic framework for examining propositional functions and their logical implicationsthe understanding that external circumstances cannot disturb the tranquil soul:the recognition that fortune favors the prepared mind",
+          "pattern_per_line": false,
+          "poetic_form_id": 21
+        },
+        "references": [],
+        "styles": {
+          "0": {
+            "strength": 1,
+            "style": "Ornate"
+          }
+        },
+        "work_type": "Poem"
+      },
+      "text_content": "",
+      "title": "Y4SVêú0 The Sands Will Tell",
+      "type": "Poem",
+      "written_content_id": 199
+    },
+
+RESULTING PROMPT:
 
 Generate the full text content for a Poem titled 'Y4SVêú0 The Sands Will Tell'.
 Author: the slave morality that poisons the wells of human excellence:the twilight of the idols that precedes the dawn of new valuesThe clinical institution as a site for the production of medical knowledge:The penal system as a laboratory for new techniques of power (The body without organs is the field of immanent desire), historical_figure_id:550)
@@ -19,8 +113,56 @@ Writing styles: Ornate (strength: 1)
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
 
+TEXT OUTPUT:
+The sterile, silvered silence sings a psalm,\nWhere saline solutions seek to still the screams.\nThe body, <a href=\"historical_figure_id/550\">a patient slate</a>, is scraped of dreams,\nA territory traced by tremor-teams.\nThe penal panopticon, a prism’s gleam,\nRefracts the will to power, raw and real,\nA laboratory’s cold, diagnostic zeal\nThat maps the meat, a desiccated scheme.\n\nThe <a href=\"civilization_id/38\">ancient networks</a>, fungal, fine, and deep,\nNow mimic veins where mineral whispers creep.\nThis clinical cathedral, vast and vaulted,\nHolds truth in tubes and data, never faulted.\nA macabre machine, a grisly grace,\nEtches new morals on the human face.\nThe tranquil soul, a concept left for dead,\nAs new gods rise from hospital and bed.\nThe sands will tell of this, our grim design,\nWhen all our branching, brilliant paths align.
 
+------
 
+DATA INPUT:
+    "200": {
+      "author_hfid": 713,
+      "context_points": {
+        "author": {
+          "civilization": "The intricate networks of plant-pollinator relationships:The branching patterns of watershed boundaries in mountainous terrainthe development of human faculties:the progress of arts and sciencesThe helm of darkness that renders Hades invisible:The golden apples of the Hesperides guarded by the dragon Ladon",
+          "civilization_id": 28,
+          "hf_id": 713,
+          "name": "the eternal struggle between the individual will and the universal will that guarantees perpetual conflict and suffering:the blind, irrational force that drives all phenomena toward inevitable disappointment and painThe limits of my language mean the limits of my world:Logic is not a theory but a reflexion of the world",
+          "race": "The book is an assemblage and as such is unattributable"
+        },
+        "page_count": 1,
+        "poetic_form": {
+          "caesura_position_on_line": false,
+          "features": {
+            "0": "Metonymy"
+          },
+          "feet_per_line": 6,
+          "mood": false,
+          "name": "The law of motion of modern society discovered through critique of political economy:The real subsumption of labor under capital that transforms the entire labor processthe anthropotechnic revolution that transforms humans into self-designing projects:the foam structure of contemporary society where micro-worlds float in fragile proximity",
+          "pattern_per_line": false,
+          "poetic_form_id": 26
+        },
+        "references": {
+          "0": {
+            "level": 0,
+            "reference_type": "value level",
+            "value": "PERSEVERENCE"
+          }
+        },
+        "styles": {
+          "0": {
+            "strength": 2,
+            "style": "Witty"
+          }
+        },
+        "work_type": "Poem"
+      },
+      "text_content": "",
+      "title": "The Dirt Can Say",
+      "type": "Poem",
+      "written_content_id": 200
+    },
+
+RESULTING PROMPT:
 Generate the full text content for a Poem titled 'The Dirt Can Say'.
 Author: the eternal struggle between the individual will and the universal will that guarantees perpetual conflict and suffering:the blind, irrational force that drives all phenomena toward inevitable disappointment and painThe limits of my language mean the limits of my world:Logic is not a theory but a reflexion of the world (The book is an assemblage and as such is unattributable), historical_figure_id:713)
 Civilization: The intricate networks of plant-pollinator relationships:The branching patterns of watershed boundaries in mountainous terrainthe development of human faculties:the progress of arts and sciencesThe helm of darkness that renders Hades invisible:The golden apples of the Hesperides guarded by the dragon Ladon, civilization_id:28
@@ -32,8 +174,15 @@ The work mildly emphasizes the value of PERSEVERENCE
 
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
+TEXT OUTPUT:
+"The dirt can say, this clod of <a href=\"civilization_id/28\">Athenian</a> clay,\nThat logic is a reflexion of the day’s\nRelentless grind. The universal will\nIs just the factory’s hum, the silent drill\nThat carves the watershed, a branching vein\nOf capital, a systematic pain.\n\nThe helm of darkness isn't some god's art,\nBut the sheer number on the profit chart.\nThe dragon Ladon, guarding golden fruit,\nIs the stalled system, putting down its root\nIn every breath. The fragile, floating spheres\nOf social foam confirm our deepest fears.\n\nYet still, the dirt can say, the stubborn weed\nPushes through cracks, fulfilling its own creed.\nA witless, metonymic, grinding fight—\nA bit of grit that blunts the infinite night.\nThe dirt can say it perseveres. It stays.\nAnd turns the whole machine, another day.
 
 
+------
+
+DATA INPUT:
+
+RESULTING PROMPT:
 Generate the full text content for a Manual titled 'KZAnùPp ém Daylight and the Seasons'.
 Author: the creative impulse that drives life beyond mechanical explanation:the qualitative progression of psychic states that constitutes true durationThe chambered structure of the castle's organic defense network:The dendritic patterns of moisture and air flow (The book is an assemblage and as such is unattributable), historical_figure_id:873)
 Civilization: The intricate networks of plant-pollinator relationships:The branching patterns of watershed boundaries in mountainous terrainthe development of human faculties:the progress of arts and sciencesThe helm of darkness that renders Hades invisible:The golden apples of the Hesperides guarded by the dragon Ladon, civilization_id:28
@@ -46,7 +195,13 @@ astronomy_daylight_variation_with_solar_year,
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
 
+TEXT OUTPUT:
 
+------
+
+DATA INPUT:
+
+RESULTING PROMPT:
 Generate the full text content for a Manual titled '9Càìq Effect'.
 Author: The passageways that curve like mammalian intestines:The domed chambers that swell like fungal fruiting bodiesPHïê (The book is an assemblage and as such is unattributable), historical_figure_id:340)
 Civilization: here's something deeply concerning about a universe that creates both the capacity for existential dread and the irresistible urge to knock things off shelvesThe encephalographic analysis reveals neural architectures that process temperature gradients through specialized thermoreceptive circuits:These cerebral patterns show remarkable sensitivity to thermal microenvironments, civilization_id:36
@@ -60,8 +215,13 @@ Generate the complete text content for this work, matching the style and length 
 oops cant generate this boy yet:  204
 False
 
+TEXT OUTPUT:
 
+------
 
+DATA INPUT:
+
+RESULTING PROMPT:
 Generate the full text content for a Poem titled 'The Fetishism Of Commodities That Mystifies The Real Social Relations Between Producers úóf áQs The Blind, Irrational Will That Drives All Creation Toward Inevitable Disappointment And Pain'.
 Author: ERB:iteratively generates its own textual representation:constructively demonstrates its own existence through output:procedurally creates an exact copy of its source codeThe political importance of storytelling:The modern loss of authority (The logic of the rhizome is precisely this connection between heterogeneous terms), historical_figure_id:292)
 Civilization: the perfect emptiness of absolute space:the complete void of non-beingthe space between memory and the physical evidence that remains:e9UHsb, civilization_id:30
@@ -71,9 +231,13 @@ Writing styles: Disjointed (strength: 0), SelfIndulgent (strength: 0)
 
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
+TEXT OUTPUT:
 
+------
 
+DATA INPUT:
 
+RESULTING PROMPT:
 Generate the full text content for a Poem titled 'Y4SVêú0 Only Nothing Foretells'.
 Author: the transcendental synthesis of imagination as the faculty that connects sensibility and understanding:the dignity of rational nature as that which has no equivalent and no priceThe transformation of labor power into a commodity marking capitalist production's beginning:The tendency of profit rate to fall expressing capitalist development's growing contradiction (The book is an assemblage and as such is unattributable), historical_figure_id:1235)
 Civilization: nfused with the gentle rhythm of seasons changingthe sacred instruments of forbidden pleasure:the ritual tools of carnal awakening, civilization_id:49
@@ -83,8 +247,13 @@ Writing styles: SelfIndulgent (strength: 0)
 
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
+TEXT OUTPUT:
 
+------
 
+DATA INPUT:
+
+RESULTING PROMPT:
 Generate the full text content for a Poem titled 'The Wise Weep'.
 Author: the logistics of military perception:the dromocratic revolution of transportationThe distinction between intuition and deduction in the acquisition of knowledge:The separation of immediate intellectual grasp from discursive reasoning (The book is an assemblage and as such is unattributable), historical_figure_id:556)
 Civilization: the trace of the absolutely Other in the face:the ethical relation that interrupts my ego's spontaneityThe stubborn refusal of matter to yield to human meaning:The quiet dignity of the condemned consciousness, civilization_id:102
@@ -93,10 +262,15 @@ Poetic form: The space of appearance where freedom becomes tangible:The laboring
 Writing styles: SelfIndulgent (strength: 2)
 
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
-G
 
+TEXT OUTPUT:
 
-enerate the full text content for a Poem titled 'Quiet jè6 DFû The Terrifying Normalization Of Ideological Thinking The Understanding That Virtue Is The Only Genuine Good'.
+------
+
+DATA INPUT:
+
+RESULTING PROMPT:
+Generate the full text content for a Poem titled 'Quiet jè6 DFû The Terrifying Normalization Of Ideological Thinking The Understanding That Virtue Is The Only Genuine Good'.
 Author: The jar of Pandora from which all evils and hope escaped:The sword of Damocles that hangs by a single horsehairThe distaff of the Fates that measures the length of mortal life:The golden bough that grants passage to the underworld (The logic of the rhizome is precisely this connection between heterogeneous terms), historical_figure_id:667)
 Civilization: the perfect emptiness of absolute space:the complete void of non-beingthe space between memory and the physical evidence that remains:e9UHsb, civilization_id:30
 Length: 1 page(s)
@@ -107,8 +281,13 @@ The work mildly emphasizes the value of TRANQUILITY
 
 Generate the complete text content for this work, matching the style and length appropriate for the given context. Only write the text itself, and try to stick to 150 words: for longer works write only an excerpt or preface. Whenever mentioning information that has an associated ID, create a hyperlink in the text using HTML syntax mentioning the type of reference (historical figure, civilization, written work, etc.) and the corresponding ID, for example: <a href="historical_figure_id/456">Alex Jones</a>. Do not make up hyperlinks with IDs that are not explicitly in the prompt.
 
+TEXT OUTPUT:
 
+------
 
+DATA INPUT:
+
+RESULTING PROMPT:
 Generate the full text content for a Manual titled '8öé ôF4 P7Id Rá the Center'.
 Author: the bronze gates of Tartarus that contain the souls of the damned:the ivory chariot of Aurora that brings the dawn each morningthe hostage structure of the self:the face as the origin of ethics (The book is an assemblage and as such is unattributable), historical_figure_id:638)
 Civilization: here's something deeply concerning about a universe that creates both the capacity for existential dread and the irresistible urge to knock things off shelvesThe encephalographic analysis reveals neural architectures that process temperature gradients through specialized thermoreceptive circuits:These cerebral patterns show remarkable sensitivity to thermal microenvironments, civilization_id:36
