@@ -8,9 +8,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "big/map_plus.json";
-const map_location = "big/map.json";
-const book_location = "big/books.json";
+const map_plus_location = "json_big_xml_plus.json";
+const map_location = "json_big_xml.json";
+const book_location = "big/books.json"; // Optional - can be missing
 
 // Serve public directory (for file1.json/file2.json etc.)
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -24,9 +24,9 @@ function loadDefaultFiles() {
 
   const hasFile1 = fs.existsSync(file1Path);
   const hasFile2 = fs.existsSync(file2Path);
-  const hasBooks = fs.existsSync(booksPath); // NEW
+  const hasBooks = fs.existsSync(booksPath); // Optional
 
-  if (!hasFile1 || !hasFile2 || !hasBooks) {
+  if (!hasFile1 || !hasFile2) {
     throw new Error(
       `Default files missing. json_big_xml_plus.json: ${hasFile1}, json_big_xml.json: ${hasFile2}, books.json: ${hasBooks}`
     );
@@ -34,11 +34,11 @@ function loadDefaultFiles() {
 
   const file1Raw = fs.readFileSync(file1Path, "utf8");
   const file2Raw = fs.readFileSync(file2Path, "utf8");
-  const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
+  const booksRaw = hasBooks ? fs.readFileSync(booksPath, "utf8") : null; // Optional
 
   const file1 = JSON.parse(file1Raw);
   const file2 = JSON.parse(file2Raw);
-  const books = JSON.parse(booksRaw); // NEW
+  const books = booksRaw ? JSON.parse(booksRaw) : null; // Optional
 
   return { file1, file2, books }; // UPDATED
 }
@@ -53,7 +53,7 @@ app.get("/api/default-files", (req, res) => {
   const hasFile2 = fs.existsSync(file2Path);
   const hasBooks = fs.existsSync(booksPath); // NEW
 
-  if (!hasFile1 || !hasFile2 || !hasBooks) {
+  if (!hasFile1 || !hasFile2) {
     return res.json({
       hasDefaults: false,
       hasFile1,
@@ -65,17 +65,17 @@ app.get("/api/default-files", (req, res) => {
   try {
     const file1Raw = fs.readFileSync(file1Path, "utf8");
     const file2Raw = fs.readFileSync(file2Path, "utf8");
-    const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
+    const booksRaw = hasBooks ? fs.readFileSync(booksPath, "utf8") : null; // Optional
 
     const file1 = JSON.parse(file1Raw);
     const file2 = JSON.parse(file2Raw);
-    const books = JSON.parse(booksRaw); // NEW
+    const books = booksRaw ? JSON.parse(booksRaw) : null; // Optional
 
     return res.json({
       hasDefaults: true,
       file1,
       file2,
-      books, // NEW
+      books, // Optional
     });
   } catch (err) {
     console.error("Error reading default JSON files:", err);
@@ -416,12 +416,13 @@ app.post("/api/world-data", (req, res) => {
 
     const { file1, file2, books } = loadDefaultFiles();
 
-    if (!file1 || !file2) {
-      return res.status(400).json({
-        error:
-          "Both file1 and file2 JSON must be provided in the request body.",
-      });
-    }
+    // Books file is optional - can be null
+    // if (!file1 || !file2) {
+    //   return res.status(400).json({
+    //     error:
+    //       "Both file1 and file2 JSON must be provided in the request body.",
+    //   });
+    // }
 
     const worldData = buildWorldData(file1, file2, books);
 
