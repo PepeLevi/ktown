@@ -241,7 +241,7 @@ function WorldMap({
     return currentZoomRef.current >= level.minZoom;
   };
 
-  // Optimize visible cells - combine into blocks based on zoom level
+  // Procedurally combine adjacent cells into blocks like cells dividing
   // Progressive subdivision: larger blocks at low zoom, smaller at high zoom
   const optimizeVisibleCells = (visibleCells, zoom) => {
     if (!visibleCells || visibleCells.length === 0) return [];
@@ -250,23 +250,24 @@ function WorldMap({
     const validCells = visibleCells.filter(c => c && c.region?.type !== "Ocean");
     if (validCells.length === 0) return [];
     
-    // Calculate block size based on zoom - progressive subdivision
-    let blockSize = 8; // Start with 8x8 blocks (64 cells) at low zoom
+    // Calculate target block size based on zoom - progressive subdivision
+    // Determines how many cells per block we want
+    let targetCellsPerBlock = 64; // Start with ~8x8 blocks (64 cells) at low zoom
     if (zoom >= 10) {
-      blockSize = 1; // Individual cells at high zoom
+      targetCellsPerBlock = 1; // Individual cells at high zoom
     } else if (zoom >= 7) {
-      blockSize = 2; // 2x2 blocks (4 cells)
+      targetCellsPerBlock = 4; // 2x2 blocks (4 cells)
     } else if (zoom >= 4) {
-      blockSize = 4; // 4x4 blocks (16 cells)
+      targetCellsPerBlock = 16; // 4x4 blocks (16 cells)
     }
-    // zoom < 4: blockSize = 8 (8x8 blocks, 64 cells)
+    // zoom < 4: targetCellsPerBlock = 64 (8x8 blocks, 64 cells)
     
     // If we should use individual cells, return them
-    if (blockSize === 1 || validCells.length <= LOD_CONFIG.maxCellsToRender) {
+    if (targetCellsPerBlock === 1 || validCells.length <= LOD_CONFIG.maxCellsToRender) {
       return validCells.map(cell => ({ type: 'individual', cell }));
     }
     
-    // Too many cells or low zoom - combine into blocks
+    // Procedurally combine adjacent cells into blocks
     // Create a map of cells by coordinates
     const cellMap = new Map();
     validCells.forEach(cell => {
@@ -275,60 +276,97 @@ function WorldMap({
     
     const blocks = [];
     const cellsInBlocks = new Set();
-    const blocksGrid = new Map(); // Track blocks by grid position to avoid overlaps
     
-    // Create blocks in a grid pattern to avoid overlaps
-    // Group cells into blocks based on their grid position
-    validCells.forEach(cell => {
-      const cellKey = `${cell.x},${cell.y}`;
-      if (cellsInBlocks.has(cellKey)) return; // Already in a block
-      
-      // Calculate which block grid position this cell belongs to
-      const blockGridX = Math.floor(cell.x / blockSize);
-      const blockGridY = Math.floor(cell.y / blockSize);
-      const blockGridKey = `${blockGridX},${blockGridY}`;
-      
-      // Get or create block for this grid position
-      let block = blocksGrid.get(blockGridKey);
-      if (!block) {
-        block = {
-          type: 'block',
-          cells: [],
-          gridX: blockGridX,
-          gridY: blockGridY,
-          minX: Infinity,
-          maxX: -Infinity,
-          minY: Infinity,
-          maxY: -Infinity,
-        };
-        blocksGrid.set(blockGridKey, block);
-        blocks.push(block);
-      }
-      
-      // Add cell to block if it fits in the grid
-      const expectedX = blockGridX * blockSize;
-      const expectedY = blockGridY * blockSize;
-      
-      if (cell.x >= expectedX && cell.x < expectedX + blockSize &&
-          cell.y >= expectedY && cell.y < expectedY + blockSize) {
-        block.cells.push(cell);
-        block.minX = Math.min(block.minX, cell.x);
-        block.maxX = Math.max(block.maxX, cell.x);
-        block.minY = Math.min(block.minY, cell.y);
-        block.maxY = Math.max(block.maxY, cell.y);
-        cellsInBlocks.add(cellKey);
-      }
+    // Sort cells by position for consistent grouping
+    const sortedCells = [...validCells].sort((a, b) => {
+      if (a.x !== b.x) return a.x - b.x;
+      return a.y - b.y;
     });
     
-    // Filter out blocks with too few cells (should be individual)
-    const validBlocks = blocks.filter(block => block.cells.length > 1 && block.cells.length <= LOD_CONFIG.maxCellsPerBlock);
+    // Procedurally group adjacent cells into blocks
+    // Each block grows by adding nearby cells until it reaches target size
+    for (const startCell of sortedCells) {
+      const cellKey = `${startCell.x},${startCell.y}`;
+      if (cellsInBlocks.has(cellKey)) continue; // Already in a block
+      
+      // Start a new block with this cell
+      const blockCells = [startCell];
+      cellsInBlocks.add(cellKey);
+      
+      // Calculate block bounds
+      let blockMinX = startCell.x;
+      let blockMaxX = startCell.x;
+      let blockMinY = startCell.y;
+      let blockMaxY = startCell.y;
+      
+      // Grow block by adding adjacent cells
+      // Add cells in expanding radius until we reach target size
+      const maxRadius = Math.ceil(Math.sqrt(targetCellsPerBlock));
+      
+      for (let radius = 1; radius <= maxRadius && blockCells.length < targetCellsPerBlock; radius++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          for (let dy = -radius; dy <= radius; dy++) {
+            // Only check cells on the perimeter of current radius
+            if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+            
+            const x = startCell.x + dx;
+            const y = startCell.y + dy;
+            const key = `${x},${y}`;
+            
+            if (cellsInBlocks.has(key)) continue; // Already in a block
+            
+            const cell = cellMap.get(key);
+            if (cell) {
+              // Check if cell is adjacent to current block (touching at least one cell in block)
+              const isAdjacent = blockCells.some(blockCell => {
+                const distX = Math.abs(cell.x - blockCell.x);
+                const distY = Math.abs(cell.y - blockCell.y);
+                return (distX === 1 && distY === 0) || (distX === 0 && distY === 1);
+              });
+              
+              if (isAdjacent && blockCells.length < targetCellsPerBlock) {
+                blockCells.push(cell);
+                cellsInBlocks.add(key);
+                blockMinX = Math.min(blockMinX, cell.x);
+                blockMaxX = Math.max(blockMaxX, cell.x);
+                blockMinY = Math.min(blockMinY, cell.y);
+                blockMaxY = Math.max(blockMaxY, cell.y);
+              }
+            }
+          }
+        }
+      }
+      
+      // Only create block if it has multiple cells (otherwise render individually)
+      if (blockCells.length > 1 && blockCells.length <= LOD_CONFIG.maxCellsPerBlock) {
+        // Calculate block center for positioning
+        const centerX = (blockMinX + blockMaxX) / 2;
+        const centerY = (blockMinY + blockMaxY) / 2;
+        
+        blocks.push({
+          type: 'block',
+          cells: blockCells,
+          minX: blockMinX,
+          maxX: blockMaxX,
+          minY: blockMinY,
+          maxY: blockMaxY,
+          centerX: centerX,
+          centerY: centerY,
+        });
+      } else {
+        // Block too small or large - return cells to be rendered individually
+        blockCells.forEach(cell => {
+          cellsInBlocks.delete(`${cell.x},${cell.y}`);
+        });
+      }
+    }
     
     // All cells not in blocks stay as individual
     const individualCells = validCells
       .filter(cell => !cellsInBlocks.has(`${cell.x},${cell.y}`))
       .map(cell => ({ type: 'individual', cell }));
     
-    return [...individualCells, ...validBlocks.map(block => ({ type: 'block', block }))];
+    return [...individualCells, ...blocks.map(block => ({ type: 'block', block }))];
   };
   
   // Get representative cell for a block (for texture/color)
@@ -355,30 +393,62 @@ function WorldMap({
     return closestCell;
   };
   
-  // Get representative texture for a block - use cell at top-left corner for consistency
+  // Get combined texture for a block - procedurally combines multiple cell textures
+  // Uses the most common region type in the block for the texture
   const getBlockTexture = (block, xScale, yScale) => {
     if (!block || !block.cells || block.cells.length === 0) return null;
     
-    // Use the cell at the top-left corner of the block for consistent texture per block
-    // This ensures each block position has its own texture, not overlapping
-    const topLeftCell = block.cells.find(cell => 
-      cell.x === block.minX && cell.y === block.minY
-    ) || block.cells[0]; // Fallback to first cell if top-left not found
+    // Find the most common region type in the block
+    const regionCounts = new Map();
+    block.cells.forEach(cell => {
+      const regionType = cell.region?.type || 'Unknown';
+      regionCounts.set(regionType, (regionCounts.get(regionType) || 0) + 1);
+    });
     
-    if (!topLeftCell) return null;
+    // Get most common region type
+    let mostCommonType = null;
+    let maxCount = 0;
+    regionCounts.forEach((count, type) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonType = type;
+      }
+    });
     
-    // Use unique key based on block grid position for consistent texture
-    const blockKey = `block-${block.gridX}-${block.gridY}`;
-    const cellKey = topLeftCell.key || blockKey;
-    return getRegionTex(topLeftCell.region?.type, cellKey);
+    // Use the cell closest to block center with the most common region type
+    let representativeCell = block.cells.find(c => c.region?.type === mostCommonType) || block.cells[0];
+    
+    // Find cell closest to center with most common type
+    const centerX = block.centerX || (block.minX + block.maxX) / 2;
+    const centerY = block.centerY || (block.minY + block.maxY) / 2;
+    
+    let minDistance = Infinity;
+    block.cells.forEach(cell => {
+      if (cell.region?.type === mostCommonType) {
+        const dx = cell.x - centerX;
+        const dy = cell.y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < minDistance) {
+          minDistance = distance;
+          representativeCell = cell;
+        }
+      }
+    });
+    
+    if (!representativeCell) return null;
+    
+    // Use unique key based on block bounds for consistent texture
+    const blockKey = `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
+    const cellKey = representativeCell.key || blockKey;
+    return getRegionTex(representativeCell.region?.type, cellKey);
   };
   
-  // Render a single block - respects grid, no overlaps, uses correct coordinates
+  // Render a single block - procedurally combined cells, respects original positions
   const renderSingleBlock = (block, xScale, yScale, g) => {
     if (!block || !block.cells || block.cells.length === 0) return;
     
-    // Calculate block bounds in screen space - respect original cell grid
-    // Use actual cell positions, not grid-aligned rectangles (avoids overlaps)
+    // Calculate block bounds in screen space using actual cell positions
+    // This ensures the block covers exactly the area of its cells (no overlaps)
     const blockMinX = Math.min(...block.cells.map(c => xScale(c.y)));
     const blockMaxX = Math.max(...block.cells.map(c => xScale(c.y + 1)));
     const blockMinY = Math.min(...block.cells.map(c => yScale(c.x)));
@@ -395,12 +465,13 @@ function WorldMap({
     const representativeCell = getBlockRepresentativeCell(block);
     if (!representativeCell) return;
     
-    // Use unique block key based on grid position
-    const blockKey = `block-${block.gridX}-${block.gridY}`;
+    // Use unique block key based on actual cell bounds
+    const blockKey = `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
     const texUrl = getBlockTexture(block, xScale, yScale);
     const patternKey = `block-${sanitizeForSelector(blockKey)}`;
     
-    // Create rect for block - exact size based on contained cells
+    // Create rect for block - covers exactly the cells in the block
+    // This maintains the original map structure
     const rect = g.append("rect")
       .attr("class", `cell block`)
       .attr("x", blockMinX)
@@ -410,7 +481,7 @@ function WorldMap({
       .style("cursor", "pointer")
       .style("pointer-events", "auto");
     
-    // Apply texture
+    // Apply texture - procedurally combined from block cells
     if (texUrl) {
       const defs = d3.select(svgRef.current).select("defs");
       const pid = getOrCreatePattern(defs, patternKey, texUrl);
@@ -441,7 +512,7 @@ function WorldMap({
       event.stopPropagation();
       const composed = {
         kind: "cell",
-        name: `Block (${block.minX},${block.minY} to ${block.maxX},${block.maxY})`,
+        name: `Block (${block.cells.length} cells: ${block.minX},${block.minY} to ${block.maxX},${block.maxY})`,
         type: representativeCell.region?.type || null,
         cellCoords: { x: block.minX, y: block.minY },
         cell: blockCell,
