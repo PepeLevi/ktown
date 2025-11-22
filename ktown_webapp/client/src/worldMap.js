@@ -426,7 +426,7 @@ function WorldMap({
       height: blockMaxY - blockMinY,
     };
     
-    // Check if block is visible in viewport
+    // Check if block is visible in viewport (with padding for smooth transitions)
     if (transform && svgNode) {
       const { x, y, k } = transform;
       const viewBox = svgNode.viewBox.baseVal;
@@ -436,32 +436,37 @@ function WorldMap({
       const blockTop = blockMinY * k + y;
       const blockBottom = blockMaxY * k + y;
       
-      // Skip if block is completely outside viewport
-      if (blockRight < 0 || blockLeft > viewBox.width || 
-          blockBottom < 0 || blockTop > viewBox.height) {
+      // Add padding to viewport check for smoother transitions
+      const padding = 100; // pixels
+      
+      // Skip if block is completely outside viewport (with padding)
+      if (blockRight < -padding || blockLeft > viewBox.width + padding || 
+          blockBottom < -padding || blockTop > viewBox.height + padding) {
         return;
       }
     }
     
-    // Decide whether to render children or this block based on zoom and visibility
-    // Progressive subdivision: only show children when zoomed in enough
+    // Decide whether to render children or this block based on zoom and block size
+    // Progressive subdivision: blocks subdivide 1->2->4->8->16->individual cells as zoom increases
     if (block.children && block.children.length > 0 && block.type !== 'individual') {
-      // Calculate how many cells are in this block vs its children
-      const blockCellCount = block.cells ? block.cells.length : 0;
-      const avgChildrenCells = block.children.reduce((sum, child) => 
-        sum + (child.cells ? child.cells.length : 0), 0) / block.children.length;
+      // Calculate block size in pixels - larger blocks should subdivide earlier
+      const blockWidth = blockMaxX - blockMinX;
+      const blockHeight = blockMaxY - blockMinY;
+      const blockPixelSize = Math.max(blockWidth, blockHeight) * (transform?.k || 1);
       
-      // Subdivide if zoomed in enough - children are significantly smaller
-      // This creates the progressive 1->2->4->8->16->individual subdivision
-      const shouldShowChildren = blockCellCount > LOD_CONFIG.minBlockCells && 
-                                 avgChildrenCells < blockCellCount * 0.75;
+      // Subdivision threshold: subdivide when block is large enough on screen
+      // As zoom increases, smaller blocks become visible, triggering subdivision
+      const subdivideThreshold = 1000 / zoom; // Threshold decreases as zoom increases
+      const shouldSubdivide = blockPixelSize > subdivideThreshold && 
+                              block.cells && block.cells.length > LOD_CONFIG.minBlockCells;
       
-      if (shouldShowChildren) {
+      if (shouldSubdivide) {
         // Render children recursively - creates visible subdivision
+        // Each child block represents a subdivision of the parent
         block.children.forEach(child => {
           renderBlocks(child, xScale, yScale, zoom, transform, svgNode, g, level + 1);
         });
-        return; // Don't render parent block - children replace it
+        return; // Don't render parent block - children replace it (visible subdivision)
       }
       // If not zoomed in enough, render as single block (no subdivision visible yet)
     }
