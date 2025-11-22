@@ -237,9 +237,9 @@ function WorldMap({
     return currentZoomRef.current >= level.minZoom;
   };
 
-  // Optimize visible cells - combine SOME adjacent cells into small blocks when too many visible
-  // Maintains map structure - only combines adjacent cells, keeps most as individual
-  const optimizeVisibleCells = (visibleCells, zoom, minX, maxX, minY, maxY) => {
+  // Simple optimization: combine adjacent cells into blocks when too many visible
+  // Returns array of {type: 'individual'|'block', cell|block}
+  const optimizeVisibleCells = (visibleCells, zoom) => {
     if (!visibleCells || visibleCells.length === 0) return [];
     
     // Filter out ocean cells
@@ -247,74 +247,54 @@ function WorldMap({
     if (validCells.length === 0) return [];
     
     // If we have few enough cells, render them all individually
-    if (validCells.length <= LOD_CONFIG.minCellsToCombine) {
+    if (validCells.length <= LOD_CONFIG.maxCellsToRender) {
       return validCells.map(cell => ({ type: 'individual', cell }));
     }
     
-    // Too many cells - combine SOME adjacent cells into small blocks (like Google Maps)
-    // Strategy: Most cells stay individual, only combine adjacent cells when needed
-    // Blocks should be small (2x2 to 6x6, max ~40 cells) to maintain map structure
-    
-    const targetCount = LOD_CONFIG.maxCellsToRender;
-    const cellsToReduce = validCells.length - targetCount;
-    
-    // Calculate how many cells to combine - keep most individual
-    // Combine only what's necessary to stay under target
-    const maxBlocks = Math.ceil(cellsToReduce / LOD_CONFIG.maxCellsPerBlock);
-    
-    // Create a spatial grid to group adjacent cells
+    // Too many cells - combine adjacent cells into blocks
+    // Create a map of cells by coordinates
     const cellMap = new Map();
     validCells.forEach(cell => {
       cellMap.set(`${cell.x},${cell.y}`, cell);
     });
     
-    // Group adjacent cells into small blocks (2x2 to 4x4 = 4-16 cells)
-    // Only combine cells that are truly adjacent, maintaining map structure
     const blocks = [];
     const cellsInBlocks = new Set();
+    const blockSize = 4; // 4x4 = 16 cells per block
     let blockId = 0;
     
-    // Try to create blocks of 4x4 (16 cells) or smaller
-    const blockSize = 4; // 4x4 = 16 cells per block (well under 40 limit)
-    
-    // Sort cells by position for consistent grouping
+    // Sort cells by position
     const sortedCells = [...validCells].sort((a, b) => {
       if (a.x !== b.x) return a.x - b.x;
       return a.y - b.y;
     });
     
-    // Create blocks from adjacent cells
-    for (let i = 0; i < sortedCells.length && blocks.length < maxBlocks; i++) {
-      const startCell = sortedCells[i];
-      const cellKey = `${startCell.x},${startCell.y}`;
-      
-      if (cellsInBlocks.has(cellKey)) continue; // Already in a block
+    // Combine cells into blocks until we're under the limit
+    const targetCount = LOD_CONFIG.maxCellsToRender;
+    let combinedCount = 0;
+    
+    for (const startCell of sortedCells) {
+      if (validCells.length - combinedCount <= targetCount) break;
+      if (cellsInBlocks.has(`${startCell.x},${startCell.y}`)) continue;
       
       // Try to create a block starting from this cell
       const blockCells = [];
-      const blockMinX = startCell.x;
-      const blockMaxX = startCell.x;
-      const blockMinY = startCell.y;
-      const blockMaxY = startCell.y;
-      
-      // Collect adjacent cells in a small square region
-      for (let dx = 0; dx < blockSize && blockCells.length < LOD_CONFIG.maxCellsPerBlock; dx++) {
-        for (let dy = 0; dy < blockSize && blockCells.length < LOD_CONFIG.maxCellsPerBlock; dy++) {
+      for (let dx = 0; dx < blockSize; dx++) {
+        for (let dy = 0; dy < blockSize; dy++) {
           const x = startCell.x + dx;
           const y = startCell.y + dy;
-          const adjKey = `${x},${y}`;
+          const key = `${x},${y}`;
           
-          if (cellsInBlocks.has(adjKey)) continue; // Already in a block
-          
-          const adjCell = cellMap.get(adjKey);
-          if (adjCell) {
-            blockCells.push(adjCell);
-            cellsInBlocks.add(adjKey);
+          if (cellsInBlocks.has(key)) continue;
+          const cell = cellMap.get(key);
+          if (cell) {
+            blockCells.push(cell);
+            cellsInBlocks.add(key);
           }
         }
       }
       
-      // Only create block if it has at least 4 cells (2x2 minimum)
+      // Only create block if it has enough cells
       if (blockCells.length >= 4 && blockCells.length <= LOD_CONFIG.maxCellsPerBlock) {
         const blockMinX = Math.min(...blockCells.map(c => c.x));
         const blockMaxX = Math.max(...blockCells.map(c => c.x));
@@ -329,10 +309,10 @@ function WorldMap({
           minY: blockMinY,
           maxY: blockMaxY,
           blockId: blockId++,
-          blockSize: blockSize,
         });
-      } else if (blockCells.length > 0) {
-        // If block is too small, return cells to be rendered individually
+        combinedCount += blockCells.length - 1; // -1 because block counts as 1 item
+      } else {
+        // Block too small, return cells
         blockCells.forEach(cell => {
           cellsInBlocks.delete(`${cell.x},${cell.y}`);
         });
@@ -1452,38 +1432,29 @@ function WorldMap({
     // Clear all existing cells
     g.selectAll("rect.cell").remove();
 
-    // Get all visible cells (check viewport)
+    // Get ONLY visible cells in viewport
     const currentTransform = d3.zoomTransform(svg.node());
-    const allVisibleCells = cells.filter(cell => {
+    const visibleCells = cells.filter(cell => {
       if (!cell || cell.region?.type === "Ocean") return false;
-      // Check if cell is visible in viewport
       return isCellVisible(cell, xScale, yScale, currentTransform, svg.node());
     });
     
-    // Optimize visible cells - combine SOME adjacent cells into small blocks when too many visible
-    // Maintains map structure - most cells stay individual, only some combined for performance
-    const optimizedItems = optimizeVisibleCells(
-      allVisibleCells,
-      currentZoomRef.current,
-      minX,
-      maxX,
-      minY,
-      maxY
-    );
+    // Optimize: combine some cells into blocks if too many visible
+    const optimizedItems = optimizeVisibleCells(visibleCells, currentZoomRef.current);
     
-    // Render optimized items - mix of individual cells and small blocks
+    // Render items - respecting original cell coordinates
     optimizedItems.forEach(item => {
       if (item.type === 'individual') {
-        // Render individual cell - maintains map structure
+        // Render individual cell at its original coordinates
         const cell = item.cell;
         const cellBbox = {
-          x: xScale(cell.y),
-          y: yScale(cell.x),
+          x: xScale(cell.y),  // cell.y -> x position
+          y: yScale(cell.x),  // cell.x -> y position
           width: CELL_SIZE,
           height: CELL_SIZE,
         };
         
-        // Build children for individual cell (fractal subdivision)
+        // Build children for fractal subdivision
         const cellWithChildren = {
           ...cell,
           children: buildCellChildren(cell, currentZoomRef.current, cellBbox, false, xScale, yScale, currentTransform, svg.node()),
@@ -1491,9 +1462,8 @@ function WorldMap({
         
         renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
       } else if (item.type === 'block') {
-        // Render small block (max 40 cells) - only when necessary for performance
-        const block = item.block;
-        renderSingleBlock(block, xScale, yScale, g);
+        // Render block at correct coordinates
+        renderSingleBlock(item.block, xScale, yScale, g);
       }
     });
 
@@ -1602,50 +1572,35 @@ function WorldMap({
               
               // Use requestAnimationFrame for smooth rendering
               requestAnimationFrame(() => {
-            // Rebuild cells/blocks based on current zoom and viewport
+            // Rebuild based on current zoom and viewport
             const svgNode = svgRef.current;
             const allCells = worldData.cells;
-            
-            // Recalculate bounds
-            const cellMinX = d3.min(allCells, (d) => d.x) ?? 0;
-            const cellMaxX = d3.max(allCells, (d) => d.x) ?? 0;
-            const cellMinY = d3.min(allCells, (d) => d.y) ?? 0;
-            const cellMaxY = d3.max(allCells, (d) => d.y) ?? 0;
             
             // Clear existing cells
             g.selectAll("rect.cell").remove();
             
-            // Get all visible cells (check viewport)
-            const allVisibleCells = allCells.filter(cell => {
+            // Get ONLY visible cells in viewport
+            const visibleCells = allCells.filter(cell => {
               if (!cell || cell.region?.type === "Ocean") return false;
-              // Check if cell is visible in viewport
               return isCellVisible(cell, xScale, yScale, transform, svgNode);
             });
             
-            // Optimize visible cells - combine SOME adjacent cells into small blocks when too many visible
-            // Maintains map structure - most cells stay individual, only some combined for performance
-            const optimizedItems = optimizeVisibleCells(
-              allVisibleCells,
-              k,
-              cellMinX,
-              cellMaxX,
-              cellMinY,
-              cellMaxY
-            );
+            // Optimize: combine some cells into blocks if too many visible
+            const optimizedItems = optimizeVisibleCells(visibleCells, k);
             
-            // Render optimized items - mix of individual cells and small blocks
+            // Render items - respecting original cell coordinates
             optimizedItems.forEach(item => {
               if (item.type === 'individual') {
-                // Render individual cell - maintains map structure
+                // Render individual cell at its original coordinates
                 const cell = item.cell;
                 const cellBbox = {
-                  x: xScale(cell.y),
-                  y: yScale(cell.x),
+                  x: xScale(cell.y),  // cell.y -> x position
+                  y: yScale(cell.x),  // cell.x -> y position
                   width: CELL_SIZE,
                   height: CELL_SIZE,
                 };
                 
-                // Build children for individual cell (fractal subdivision)
+                // Build children for fractal subdivision
                 const cellWithChildren = {
                   ...cell,
                   children: buildCellChildren(cell, k, cellBbox, false, xScale, yScale, transform, svgNode),
@@ -1653,9 +1608,8 @@ function WorldMap({
                 
                 renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
               } else if (item.type === 'block') {
-                // Render small block (max 40 cells) - only when necessary for performance
-                const block = item.block;
-                renderSingleBlock(block, xScale, yScale, g);
+                // Render block at correct coordinates
+                renderSingleBlock(item.block, xScale, yScale, g);
               }
             });
               });
