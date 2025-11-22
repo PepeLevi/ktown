@@ -20,11 +20,11 @@ const CELL_GAP = 0;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 160;
 
-// Cell clustering configuration - for optimizing large maps
-const CLUSTER_CONFIG = {
-  minZoomForIndividualCells: 5, // Below this zoom, cluster cells into blocks
-  baseBlockSize: 8, // Start with 8x8 cell blocks
-  maxCellsToRender: 2000, // Maximum individual cells to render at once for performance
+// LOD Configuration - for optimizing large maps
+const LOD_CONFIG = {
+  minZoomForIndividualCells: 10, // Below this zoom, use blocks instead of individual cells
+  maxCellsPerBlock: 64, // Maximum cells per block (8x8)
+  minBlockCells: 4, // Minimum cells per block (2x2) before subdividing into individual cells
 };
 
 // Hierarchical zoom thresholds - defines when each level becomes visible
@@ -34,7 +34,7 @@ const CLUSTER_CONFIG = {
 const HIERARCHY_LEVELS = [
   {
     name: "cell",
-    minZoom: CLUSTER_CONFIG.minZoomForIndividualCells, // Show individual cells when zoomed in enough
+    minZoom: 1, // Always visible
     getChildren: (cell) => {
       // Cell can contain: sites, underground regions, cell-level historical figures, written contents
       const children = [];
@@ -233,93 +233,124 @@ function WorldMap({
     return currentZoomRef.current >= level.minZoom;
   };
 
-  // Cluster cells into spatial blocks for performance when zoomed out
-  // Returns an array of cell blocks, where each block represents multiple cells
-  const clusterCellsIntoBlocks = (cells, zoom, xScale, yScale, transform, svgNode) => {
-    if (!cells || cells.length === 0) return [];
+  // Build hierarchical blocks from cells - like a quadtree for efficient rendering
+  // Returns blocks organized in a hierarchy that subdivides as zoom increases
+  const buildHierarchicalBlocks = (cells, minX, maxX, minY, maxY, zoom, depth = 0) => {
+    if (!cells || cells.length === 0) return null;
     
-    // If zoomed in enough, don't cluster - return individual cells
-    if (zoom >= CLUSTER_CONFIG.minZoomForIndividualCells) {
-      return cells.map(cell => ({ type: 'individual', cell, cells: [cell] }));
+    // Filter out ocean cells
+    const validCells = cells.filter(c => c && c.region?.type !== "Ocean");
+    if (validCells.length === 0) return null;
+    
+    // Calculate grid dimensions
+    const gridWidth = maxX - minX + 1;
+    const gridHeight = maxY - minY + 1;
+    const totalCells = validCells.length;
+    
+    // Calculate appropriate block size based on zoom
+    // At low zoom: large blocks (fewer subdivisions)
+    // At high zoom: small blocks (more subdivisions)
+    // At very high zoom: individual cells
+    
+    // Determine if we should subdivide further or use individual cells
+    const shouldUseIndividualCells = zoom >= LOD_CONFIG.minZoomForIndividualCells;
+    const shouldSubdivide = !shouldUseIndividualCells && 
+                           (gridWidth > 2 || gridHeight > 2) && 
+                           totalCells > LOD_CONFIG.minBlockCells;
+    
+    if (shouldUseIndividualCells) {
+      // Return individual cells - each cell becomes a "block" of size 1
+      return {
+        type: 'individual',
+        cells: validCells,
+        minX,
+        maxX,
+        minY,
+        maxY,
+        depth,
+      };
     }
     
-    // Calculate block size based on zoom - larger blocks when more zoomed out
-    // Block size increases exponentially as zoom decreases
-    const zoomFactor = Math.max(1, Math.floor((CLUSTER_CONFIG.minZoomForIndividualCells - zoom) / 2));
-    const blockSize = CLUSTER_CONFIG.baseBlockSize * Math.pow(2, zoomFactor);
+    if (!shouldSubdivide) {
+      // This is a leaf block - represents multiple cells as a single block
+      return {
+        type: 'block',
+        cells: validCells,
+        minX,
+        maxX,
+        minY,
+        maxY,
+        depth,
+        children: null, // No further subdivision
+      };
+    }
     
-    // Create spatial hash map for efficient clustering
-    const blocksMap = new Map();
+    // Subdivide into 4 quadrants (2x2 grid)
+    const midX = Math.floor((minX + maxX) / 2);
+    const midY = Math.floor((minY + maxY) / 2);
     
-    cells.forEach(cell => {
-      // Skip ocean cells - don't include them in blocks
-      if (cell.region?.type === "Ocean") return;
-      
-      // Calculate which block this cell belongs to
-      const blockX = Math.floor(cell.x / blockSize);
-      const blockY = Math.floor(cell.y / blockSize);
-      const blockKey = `${blockX},${blockY}`;
-      
-      if (!blocksMap.has(blockKey)) {
-        blocksMap.set(blockKey, {
-          type: 'block',
-          blockX,
-          blockY,
-          blockSize,
-          cells: [],
-          minX: Infinity,
-          maxX: -Infinity,
-          minY: Infinity,
-          maxY: -Infinity,
-        });
+    // Organize cells into quadrants
+    const quadrants = [
+      { minX, maxX: midX, minY, maxY: midY, cells: [] }, // Top-left
+      { minX: midX + 1, maxX, minY, maxY: midY, cells: [] }, // Top-right
+      { minX, maxX: midX, minY: midY + 1, maxY, cells: [] }, // Bottom-left
+      { minX: midX + 1, maxX, minY: midY + 1, maxY, cells: [] }, // Bottom-right
+    ];
+    
+    // Distribute cells into quadrants
+    validCells.forEach(cell => {
+      for (const quad of quadrants) {
+        if (cell.x >= quad.minX && cell.x <= quad.maxX &&
+            cell.y >= quad.minY && cell.y <= quad.maxY) {
+          quad.cells.push(cell);
+          break;
+        }
       }
-      
-      const block = blocksMap.get(blockKey);
-      block.cells.push(cell);
-      
-      // Track bounds
-      block.minX = Math.min(block.minX, cell.x);
-      block.maxX = Math.max(block.maxX, cell.x);
-      block.minY = Math.min(block.minY, cell.y);
-      block.maxY = Math.max(block.maxY, cell.y);
     });
     
-    // Convert blocks map to array and filter by visibility
-    const blocks = Array.from(blocksMap.values()).filter(block => {
-      // Check if block is visible in viewport (optimization)
-      if (!xScale || !yScale || !transform || !svgNode) return true;
-      
-      // Calculate block bounds in screen space
-      const blockMinX = xScale(block.minY);
-      const blockMaxX = xScale(block.maxY + 1);
-      const blockMinY = yScale(block.minX);
-      const blockMaxY = yScale(block.maxX + 1);
-      
-      const { x, y, k } = transform;
-      const viewBox = svgNode.viewBox.baseVal;
-      
-      // Transform block bounds to viewport coordinates
-      const blockLeft = blockMinX * k + x;
-      const blockRight = blockMaxX * k + x;
-      const blockTop = blockMinY * k + y;
-      const blockBottom = blockMaxY * k + y;
-      
-      // Check if block intersects with viewport
-      return !(blockRight < 0 || blockLeft > viewBox.width || 
-               blockBottom < 0 || blockTop > viewBox.height);
+    // Recursively build children for each non-empty quadrant
+    const children = [];
+    quadrants.forEach(quad => {
+      if (quad.cells.length > 0) {
+        const childBlock = buildHierarchicalBlocks(
+          quad.cells,
+          quad.minX,
+          quad.maxX,
+          quad.minY,
+          quad.maxY,
+          zoom,
+          depth + 1
+        );
+        if (childBlock) {
+          children.push(childBlock);
+        }
+      }
     });
     
-    return blocks;
+    if (children.length === 0) return null;
+    
+    return {
+      type: 'block',
+      cells: validCells, // All cells in this block for texture generation
+      minX,
+      maxX,
+      minY,
+      maxY,
+      depth,
+      children: children.length > 0 ? children : null,
+    };
   };
   
-  // Get representative cell for a block (for texture/color)
-  const getBlockRepresentativeCell = (block) => {
-    if (!block.cells || block.cells.length === 0) return null;
+  // Get representative texture for a block (combines textures from multiple cells)
+  const getBlockTexture = (block, xScale, yScale) => {
+    if (!block || !block.cells || block.cells.length === 0) return null;
     
-    // Use the cell closest to the center of the block
-    const centerX = (block.minX + block.maxX) / 2;
-    const centerY = (block.minY + block.maxY) / 2;
+    // For now, use the cell at the center of the block for texture
+    // In the future, we could combine multiple cell textures into one
+    const centerX = Math.floor((block.minX + block.maxX) / 2);
+    const centerY = Math.floor((block.minY + block.maxY) / 2);
     
+    // Find the cell closest to center
     let closestCell = block.cells[0];
     let minDistance = Infinity;
     
@@ -333,7 +364,142 @@ function WorldMap({
       }
     });
     
-    return closestCell;
+    if (!closestCell) return null;
+    
+    // Use the representative cell's texture
+    const cellKey = closestCell.key || `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
+    return getRegionTex(closestCell.region?.type, cellKey);
+  };
+  
+  // Render blocks hierarchically - only render visible blocks
+  const renderBlocks = (block, xScale, yScale, zoom, transform, svgNode, g, level = 0) => {
+    if (!block) return;
+    
+    // Calculate block bounds in screen space
+    const blockMinX = xScale(block.minY);
+    const blockMaxX = xScale(block.maxY + 1);
+    const blockMinY = yScale(block.minX);
+    const blockMaxY = yScale(block.maxX + 1);
+    
+    const blockBbox = {
+      x: blockMinX,
+      y: blockMinY,
+      width: blockMaxX - blockMinX,
+      height: blockMaxY - blockMinY,
+    };
+    
+    // Check if block is visible in viewport
+    if (transform && svgNode) {
+      const { x, y, k } = transform;
+      const viewBox = svgNode.viewBox.baseVal;
+      
+      const blockLeft = blockMinX * k + x;
+      const blockRight = blockMaxX * k + x;
+      const blockTop = blockMinY * k + y;
+      const blockBottom = blockMaxY * k + y;
+      
+      // Skip if block is completely outside viewport
+      if (blockRight < 0 || blockLeft > viewBox.width || 
+          blockBottom < 0 || blockTop > viewBox.height) {
+        return;
+      }
+    }
+    
+    // If this block has children and we should subdivide, render children instead
+    if (block.children && block.children.length > 0 && block.type !== 'individual') {
+      // Render children recursively
+      block.children.forEach(child => {
+        renderBlocks(child, xScale, yScale, zoom, transform, svgNode, g, level + 1);
+      });
+      return;
+    }
+    
+    // This is a leaf block - render it
+    if (block.type === 'individual') {
+      // Render individual cells
+      block.cells.forEach(cell => {
+        const cellBbox = {
+          x: xScale(cell.y),
+          y: yScale(cell.x),
+          width: CELL_SIZE,
+          height: CELL_SIZE,
+        };
+        
+        // Build children for individual cell (fractal subdivision)
+        const cellWithChildren = {
+          ...cell,
+          children: buildCellChildren(cell, zoom, cellBbox, false, xScale, yScale, transform, svgNode),
+        };
+        
+        renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
+      });
+    } else {
+      // Render as a single block with combined texture
+      const blockKey = `block-${block.minX}-${block.minY}-${block.depth}`;
+      const blockCell = {
+        key: blockKey,
+        x: block.minX,
+        y: block.minY,
+        isBlock: true,
+        block: block,
+        region: block.cells[0]?.region, // Use first cell's region for texture
+      };
+      
+      // Get block texture
+      const texUrl = getBlockTexture(block, xScale, yScale);
+      const patternKey = `block-${sanitizeForSelector(blockKey)}`;
+      
+      // Create rect for block
+      const rect = g.append("rect")
+        .attr("class", `cell block-level-${level}`)
+        .attr("x", blockMinX)
+        .attr("y", blockMinY)
+        .attr("width", blockBbox.width)
+        .attr("height", blockBbox.height)
+        .style("cursor", "pointer")
+        .style("pointer-events", "auto");
+      
+      // Apply texture
+      if (texUrl) {
+        const defs = d3.select(svgRef.current).select("defs");
+        const pid = getOrCreatePattern(defs, patternKey, texUrl);
+        if (pid) {
+          rect.style("fill", `url(#${pid})`).style("opacity", 1);
+        }
+      } else {
+        // Fallback: use first cell's texture
+        if (block.cells[0]) {
+          const fallbackTex = getRegionTex(block.cells[0].region?.type, blockKey);
+          const defs = d3.select(svgRef.current).select("defs");
+          const pid = getOrCreatePattern(defs, `fallback-${patternKey}`, fallbackTex);
+          if (pid) {
+            rect.style("fill", `url(#${pid})`).style("opacity", 1);
+          }
+        }
+      }
+      
+      // Add click handler for blocks
+      rect.on("click", (event) => {
+        event.stopPropagation();
+        // Create entity for block
+        const composed = {
+          kind: "cell",
+          name: `Block (${block.minX},${block.minY} to ${block.maxX},${block.maxY})`,
+          type: block.cells[0]?.region?.type || null,
+          cellCoords: { x: block.minX, y: block.minY },
+          cell: blockCell,
+          region: block.cells[0]?.region,
+          block: block,
+        };
+        
+        if (onEntityClick) {
+          onEntityClick(composed);
+        }
+        if (onCellClick) {
+          onCellClick(blockCell);
+        }
+      });
+    }
   };
 
   // Check if a cell is visible in the current viewport
@@ -723,14 +889,7 @@ function WorldMap({
         
         if (level === 0) {
           // Original cell - use region texture (skip if ocean)
-          if (d.isBlock && d.block) {
-            // Block cell - use representative cell's region texture
-            const repCell = getBlockRepresentativeCell(d.block);
-            if (repCell && repCell.region?.type !== "Ocean") {
-              texUrl = getRegionTex(repCell.region?.type, cellKeyForTexture);
-              patternKey = `block-region-${sanitizeForSelector(cellKeyForTexture)}`;
-            }
-          } else if (d.region?.type !== "Ocean") {
+          if (d.region?.type !== "Ocean") {
             texUrl = getRegionTex(d.region?.type, cellKeyForTexture);
             patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
           }
@@ -748,13 +907,6 @@ function WorldMap({
           const structId = d.childData?.id || d.childData?.local_id || 'default';
           texUrl = getRegionTex(null, `${cellKeyForTexture}-struct-${structId}`); // null type = default palette
           patternKey = `structure-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(structId))}`;
-        } else if (d.childType === "individualFromBlock") {
-          // Individual cell that was subdivided from a block
-          const individualCell = d.childData || d.cell;
-          if (individualCell.region?.type !== "Ocean") {
-            texUrl = getRegionTex(individualCell.region?.type, cellKeyForTexture);
-            patternKey = `individual-${sanitizeForSelector(cellKeyForTexture)}`;
-          }
         } else if (d.childType === "figure" || d.childType === "cellFigure") {
           texUrl = getFigureTex(d.childData, cellKeyForTexture);
           patternKey = `fig-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(d.childData?.id || 'default'))}`;
@@ -981,22 +1133,6 @@ function WorldMap({
             historical_figures: originalCell.historical_figures || [],
             written_contents: originalCell.written_contents || [],
           };
-        } else if (d.childType === "individualFromBlock") {
-          // Individual cell that was subdivided from a block
-          const individualCell = d.childData || d.cell;
-          
-          composed = {
-            kind: "cell",
-            name: `Cell (${individualCell.x}, ${individualCell.y})`,
-            type: individualCell.region?.type || null,
-            cellCoords: { x: individualCell.x, y: individualCell.y },
-            cell: individualCell,
-            region: individualCell.region,
-            sites: individualCell.sites || [],
-            undergroundRegions: individualCell.undergroundRegions || [],
-            historical_figures: individualCell.historical_figures || [],
-            written_contents: individualCell.written_contents || [],
-          };
         }
       }
       
@@ -1077,74 +1213,7 @@ function WorldMap({
   // Build recursive cell structure for a cell (works for both original cells and child cells)
   // Subdivision stops when there are no more children (leaf nodes)
   // Ocean cells are not rendered and don't subdivide
-  // Blocks subdivide into individual cells when zoomed in enough
   const buildCellChildren = (cell, zoom, parentBbox, isChildCell = false, xScale = null, yScale = null, transform = null, svgNode = null) => {
-    // Handle cell blocks - subdivide into individual cells when zoomed in enough
-    if (cell.isBlock && cell.blockCells) {
-      // If zoomed in enough, subdivide block into individual cells
-      if (zoom >= CLUSTER_CONFIG.minZoomForIndividualCells) {
-        // Return individual cells as children - but limit number for performance
-        const visibleCells = cell.blockCells
-          .filter(c => {
-            // Check visibility
-            if (!c || c.region?.type === "Ocean") return false;
-            if (xScale && yScale && transform && svgNode) {
-              if (!isCellVisible(c, xScale, yScale, transform, svgNode)) return false;
-            }
-            return true;
-          })
-          .slice(0, CLUSTER_CONFIG.maxCellsToRender);
-        
-        // Convert to child cells format - these are regular cells that can subdivide further
-        // They're treated as individual cells but were originally part of a block
-        return visibleCells.map((c, idx) => {
-          const gridPos = calculateGridPositions(
-            idx,
-            visibleCells.length,
-            parentBbox.width,
-            parentBbox.height
-          );
-          
-          // Create a cell object that represents the individual cell
-          // This allows it to subdivide using normal fractal logic
-          const individualCell = {
-            key: c.key || `${cell.key}-individual-${c.x}-${c.y}`,
-            x: c.x,
-            y: c.y,
-            region: c.region,
-            sites: c.sites || [],
-            undergroundRegions: c.undergroundRegions || [],
-            historical_figures: c.historical_figures || [],
-            written_contents: c.written_contents || [],
-            originalCell: c,
-            isFromBlock: true, // Mark that this came from a block
-            bbox: {
-              x: gridPos.x,
-              y: gridPos.y,
-              width: gridPos.width,
-              height: gridPos.height,
-            },
-            children: [],
-          };
-          
-          // Recursively build children for this individual cell using normal fractal logic
-          const childBbox = {
-            x: 0,
-            y: 0,
-            width: gridPos.width,
-            height: gridPos.height,
-          };
-          
-          const children = buildCellChildren(individualCell, zoom, childBbox, true, xScale, yScale, transform, svgNode);
-          individualCell.children = children;
-          
-          return individualCell;
-        });
-      }
-      // Not zoomed in enough yet - block stays as single cell
-      return [];
-    }
-    
     // Skip ocean cells - don't render or subdivide them
     if (!isChildCell && cell.region?.type === "Ocean") {
       return []; // Ocean cells are empty - no texture, no subdivision
@@ -1401,77 +1470,14 @@ function WorldMap({
     // Clear all existing cells
     g.selectAll("rect.cell").remove();
 
-    // Get current transform for visibility calculation
+    // Build hierarchical block structure for efficient rendering
     const currentTransform = d3.zoomTransform(svg.node());
+    const rootBlock = buildHierarchicalBlocks(cells, minX, maxX, minY, maxY, currentZoomRef.current);
     
-    // Cluster cells into blocks if zoomed out, or use individual cells if zoomed in
-    const cellBlocks = clusterCellsIntoBlocks(cells, currentZoomRef.current, xScale, yScale, currentTransform, svg.node());
-    
-    // Limit the number of cells/blocks to render for performance
-    const maxToRender = CLUSTER_CONFIG.maxCellsToRender;
-    const cellsToRender = cellBlocks.slice(0, maxToRender);
-    
-    // Render cells/blocks
-    cellsToRender.forEach((item) => {
-      if (item.type === 'individual') {
-        // Render individual cell
-        const cell = item.cell;
-        const baseBbox = {
-          x: xScale(cell.y),
-          y: yScale(cell.x),
-          width: CELL_SIZE,
-          height: CELL_SIZE,
-        };
-        
-        // Build children for this cell
-        const cellWithChildren = {
-          ...cell,
-          children: buildCellChildren(cell, currentZoomRef.current, baseBbox, false, xScale, yScale, currentTransform, svg.node()),
-        };
-        
-        // Render this cell and its children recursively
-        renderRecursiveCell(cellWithChildren, baseBbox, g, xScale, yScale, 0);
-      } else if (item.type === 'block') {
-        // Render cell block as a single larger cell
-        const block = item;
-        const representativeCell = getBlockRepresentativeCell(block);
-        
-        if (!representativeCell) return;
-        
-        // Calculate block bounds
-        const blockMinX = xScale(block.minY);
-        const blockMaxX = xScale(block.maxY + 1);
-        const blockMinY = yScale(block.minX);
-        const blockMaxY = yScale(block.maxX + 1);
-        
-        const blockBbox = {
-          x: blockMinX,
-          y: blockMinY,
-          width: blockMaxX - blockMinX,
-          height: blockMaxY - blockMinY,
-        };
-        
-        // Create a block cell object that represents the cluster
-        const blockCell = {
-          key: `block-${block.blockX}-${block.blockY}`,
-          x: block.minX, // Use block bounds
-          y: block.minY,
-          isBlock: true,
-          block: block,
-          blockCells: block.cells,
-          region: representativeCell.region, // Use representative cell's region for texture
-          // Don't include sites/figures in blocks - only show when subdivided
-        };
-        
-        // Render block as a single cell - it will subdivide into individual cells when zoomed in
-        const blockCellWithChildren = {
-          ...blockCell,
-          children: [], // Blocks don't have children until they subdivide
-        };
-        
-        renderRecursiveCell(blockCellWithChildren, blockBbox, g, xScale, yScale, 0);
-      }
-    });
+    // Render blocks hierarchically (will subdivide as needed based on zoom)
+    if (rootBlock) {
+      renderBlocks(rootBlock, xScale, yScale, currentZoomRef.current, currentTransform, svg.node(), g);
+    }
 
     // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
   }, [worldData]);
@@ -1566,85 +1572,26 @@ function WorldMap({
           // Always update on zoom/pan to recalculate visibility
           // Use requestAnimationFrame for smoother updates
           requestAnimationFrame(() => {
-            // Rebuild recursive cells - only render visible cells
-            const cells = worldData.cells;
+            // Rebuild hierarchical block structure based on current zoom
+            const svgNode = svgRef.current;
+            const allCells = worldData.cells;
+            
+            // Recalculate bounds for blocks
+            const cellMinX = d3.min(allCells, (d) => d.x) ?? 0;
+            const cellMaxX = d3.max(allCells, (d) => d.x) ?? 0;
+            const cellMinY = d3.min(allCells, (d) => d.y) ?? 0;
+            const cellMaxY = d3.max(allCells, (d) => d.y) ?? 0;
             
             // Clear existing cells
             g.selectAll("rect.cell").remove();
             
-            // Rebuild and render cells/blocks recursively using clustering
-            const svgNode = svgRef.current;
+            // Build hierarchical blocks with current zoom level
+            const rootBlock = buildHierarchicalBlocks(allCells, cellMinX, cellMaxX, cellMinY, cellMaxY, k);
             
-            // Cluster cells into blocks if zoomed out
-            const cellBlocks = clusterCellsIntoBlocks(cells, k, xScale, yScale, transform, svgNode);
-            
-            // Limit the number of cells/blocks to render for performance
-            const maxToRender = CLUSTER_CONFIG.maxCellsToRender;
-            const cellsToRender = cellBlocks.slice(0, maxToRender);
-            
-            // Render cells/blocks
-            cellsToRender.forEach((item) => {
-              if (item.type === 'individual') {
-                const cell = item.cell;
-                
-                // Check if cell is visible before rendering
-                if (!isCellVisible(cell, xScale, yScale, transform, svgNode)) {
-                  return; // Skip cells outside viewport for performance
-                }
-                
-                const baseBbox = {
-                  x: xScale(cell.y),
-                  y: yScale(cell.x),
-                  width: CELL_SIZE,
-                  height: CELL_SIZE,
-                };
-                
-                // Build children with transform and svgNode for visibility-based subdivision
-                const cellWithChildren = {
-                  ...cell,
-                  children: buildCellChildren(cell, k, baseBbox, false, xScale, yScale, transform, svgNode),
-                };
-                
-                renderRecursiveCell(cellWithChildren, baseBbox, g, xScale, yScale, 0);
-              } else if (item.type === 'block') {
-                // Render cell block
-                const block = item;
-                const representativeCell = getBlockRepresentativeCell(block);
-                
-                if (!representativeCell) return;
-                
-                // Calculate block bounds
-                const blockMinX = xScale(block.minY);
-                const blockMaxX = xScale(block.maxY + 1);
-                const blockMinY = yScale(block.minX);
-                const blockMaxY = yScale(block.maxX + 1);
-                
-                const blockBbox = {
-                  x: blockMinX,
-                  y: blockMinY,
-                  width: blockMaxX - blockMinX,
-                  height: blockMaxY - blockMinY,
-                };
-                
-                // Create a block cell object
-                const blockCell = {
-                  key: `block-${block.blockX}-${block.blockY}`,
-                  x: block.minX,
-                  y: block.minY,
-                  isBlock: true,
-                  block: block,
-                  blockCells: block.cells,
-                  region: representativeCell.region,
-                };
-                
-                const blockCellWithChildren = {
-                  ...blockCell,
-                  children: buildCellChildren(blockCell, k, blockBbox, false, xScale, yScale, transform, svgNode),
-                };
-                
-                renderRecursiveCell(blockCellWithChildren, blockBbox, g, xScale, yScale, 0);
-              }
-            });
+            // Render blocks hierarchically (will automatically subdivide based on zoom)
+            if (rootBlock) {
+              renderBlocks(rootBlock, xScale, yScale, k, transform, svgNode, g);
+            }
           });
         }
       });
