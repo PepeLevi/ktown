@@ -22,9 +22,10 @@ const MAX_ZOOM = 160;
 
 // LOD Configuration - for optimizing large maps
 const LOD_CONFIG = {
-  minZoomForIndividualCells: 10, // Below this zoom, use blocks instead of individual cells
+  minZoomForIndividualCells: 15, // Below this zoom, use blocks instead of individual cells
   maxCellsPerBlock: 64, // Maximum cells per block (8x8)
   minBlockCells: 4, // Minimum cells per block (2x2) before subdividing into individual cells
+  zoomUpdateThrottle: 50, // Throttle zoom updates (ms) for smoother performance
 };
 
 // Hierarchical zoom thresholds - defines when each level becomes visible
@@ -196,6 +197,8 @@ function WorldMap({
   const focusedCellRef = useRef(null); // Track which cell is currently focused/zoomed into
   const xScaleRef = useRef(null); // Store xScale for zoom calculations
   const yScaleRef = useRef(null); // Store yScale for zoom calculations
+  const zoomUpdateTimeoutRef = useRef(null); // Throttle zoom updates
+  const lastRenderedZoomRef = useRef(1); // Track last rendered zoom level
 
   const regionTypesRef = useRef([]);
   const siteTypesRef = useRef([]);
@@ -233,8 +236,8 @@ function WorldMap({
     return currentZoomRef.current >= level.minZoom;
   };
 
-  // Build hierarchical blocks from cells - like a quadtree for efficient rendering
-  // Returns blocks organized in a hierarchy that subdivides as zoom increases
+  // Build hierarchical blocks from cells - progressive subdivision based on zoom
+  // Blocks subdivide progressively: 1->2->4->8->16->individual cells as zoom increases
   const buildHierarchicalBlocks = (cells, minX, maxX, minY, maxY, zoom, depth = 0) => {
     if (!cells || cells.length === 0) return null;
     
@@ -247,32 +250,39 @@ function WorldMap({
     const gridHeight = maxY - minY + 1;
     const totalCells = validCells.length;
     
-    // Calculate appropriate block size based on zoom
-    // At low zoom: large blocks (fewer subdivisions)
-    // At high zoom: small blocks (more subdivisions)
-    // At very high zoom: individual cells
+    // Progressive subdivision: determine how many subdivisions based on zoom
+    // At zoom 1: 1 block (entire map)
+    // At zoom 3: up to 2x2 blocks
+    // At zoom 5: up to 4x4 blocks  
+    // At zoom 8: up to 8x8 blocks
+    // At zoom 12: up to 16x16 blocks
+    // At zoom 15+: individual cells
     
-    // Determine if we should subdivide further or use individual cells
     const shouldUseIndividualCells = zoom >= LOD_CONFIG.minZoomForIndividualCells;
-    const shouldSubdivide = !shouldUseIndividualCells && 
-                           (gridWidth > 2 || gridHeight > 2) && 
-                           totalCells > LOD_CONFIG.minBlockCells;
     
-    if (shouldUseIndividualCells) {
-      // Return individual cells - each cell becomes a "block" of size 1
-      return {
-        type: 'individual',
-        cells: validCells,
-        minX,
-        maxX,
-        minY,
-        maxY,
-        depth,
-      };
-    }
+    // Calculate max depth based on zoom - progressive subdivision
+    // Each zoom level allows one more level of subdivision
+    const maxDepth = Math.min(
+      Math.floor((zoom - 1) / 2), // Progressive: +1 subdivision every 2 zoom levels
+      Math.ceil(Math.log2(Math.max(gridWidth, gridHeight))) // Don't subdivide beyond cell level
+    );
     
-    if (!shouldSubdivide) {
-      // This is a leaf block - represents multiple cells as a single block
+    // If at max depth or should use individual cells, don't subdivide further
+    if (shouldUseIndividualCells || (depth >= maxDepth && totalCells <= 4)) {
+      // Return individual cells or small final block
+      if (shouldUseIndividualCells && totalCells <= LOD_CONFIG.maxCellsPerBlock) {
+        return {
+          type: 'individual',
+          cells: validCells,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          depth,
+        };
+      }
+      
+      // Final block - represents multiple cells
       return {
         type: 'block',
         cells: validCells,
@@ -281,63 +291,91 @@ function WorldMap({
         minY,
         maxY,
         depth,
-        children: null, // No further subdivision
+        children: null,
       };
     }
     
-    // Subdivide into 4 quadrants (2x2 grid)
-    const midX = Math.floor((minX + maxX) / 2);
-    const midY = Math.floor((minY + maxY) / 2);
-    
-    // Organize cells into quadrants
-    const quadrants = [
-      { minX, maxX: midX, minY, maxY: midY, cells: [] }, // Top-left
-      { minX: midX + 1, maxX, minY, maxY: midY, cells: [] }, // Top-right
-      { minX, maxX: midX, minY: midY + 1, maxY, cells: [] }, // Bottom-left
-      { minX: midX + 1, maxX, minY: midY + 1, maxY, cells: [] }, // Bottom-right
-    ];
-    
-    // Distribute cells into quadrants
-    validCells.forEach(cell => {
-      for (const quad of quadrants) {
-        if (cell.x >= quad.minX && cell.x <= quad.maxX &&
-            cell.y >= quad.minY && cell.y <= quad.maxY) {
-          quad.cells.push(cell);
-          break;
+    // Progressive subdivision: only subdivide if we haven't reached max depth
+    // and have enough cells to make subdivision worthwhile
+    if (depth < maxDepth && totalCells > LOD_CONFIG.minBlockCells && (gridWidth > 2 || gridHeight > 2)) {
+      // Subdivide into 4 quadrants (2x2 grid)
+      const midX = Math.floor((minX + maxX) / 2);
+      const midY = Math.floor((minY + maxY) / 2);
+      
+      // Organize cells into quadrants
+      const quadrants = [
+        { minX, maxX: midX, minY, maxY: midY, cells: [] }, // Top-left
+        { minX: midX + 1, maxX, minY, maxY: midY, cells: [] }, // Top-right
+        { minX, maxX: midX, minY: midY + 1, maxY, cells: [] }, // Bottom-left
+        { minX: midX + 1, maxX, minY: midY + 1, maxY, cells: [] }, // Bottom-right
+      ];
+      
+      // Distribute cells into quadrants
+      validCells.forEach(cell => {
+        for (const quad of quadrants) {
+          if (cell.x >= quad.minX && cell.x <= quad.maxX &&
+              cell.y >= quad.minY && cell.y <= quad.maxY) {
+            quad.cells.push(cell);
+            break;
+          }
         }
-      }
-    });
-    
-    // Recursively build children for each non-empty quadrant
-    const children = [];
-    quadrants.forEach(quad => {
-      if (quad.cells.length > 0) {
-        const childBlock = buildHierarchicalBlocks(
-          quad.cells,
-          quad.minX,
-          quad.maxX,
-          quad.minY,
-          quad.maxY,
-          zoom,
-          depth + 1
-        );
-        if (childBlock) {
-          children.push(childBlock);
+      });
+      
+      // Recursively build children for each non-empty quadrant
+      const children = [];
+      quadrants.forEach(quad => {
+        if (quad.cells.length > 0) {
+          const childBlock = buildHierarchicalBlocks(
+            quad.cells,
+            quad.minX,
+            quad.maxX,
+            quad.minY,
+            quad.maxY,
+            zoom,
+            depth + 1
+          );
+          if (childBlock) {
+            children.push(childBlock);
+          }
         }
+      });
+      
+      if (children.length === 0) {
+        // No valid children - return as leaf block
+        return {
+          type: 'block',
+          cells: validCells,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          depth,
+          children: null,
+        };
       }
-    });
+      
+      return {
+        type: 'block',
+        cells: validCells, // All cells in this block for texture generation
+        minX,
+        maxX,
+        minY,
+        maxY,
+        depth,
+        children: children.length > 0 ? children : null,
+      };
+    }
     
-    if (children.length === 0) return null;
-    
+    // Leaf block - no further subdivision at this zoom level
     return {
       type: 'block',
-      cells: validCells, // All cells in this block for texture generation
+      cells: validCells,
       minX,
       maxX,
       minY,
       maxY,
       depth,
-      children: children.length > 0 ? children : null,
+      children: null,
     };
   };
   
@@ -405,13 +443,27 @@ function WorldMap({
       }
     }
     
-    // If this block has children and we should subdivide, render children instead
+    // Decide whether to render children or this block based on zoom and visibility
+    // Progressive subdivision: only show children when zoomed in enough
     if (block.children && block.children.length > 0 && block.type !== 'individual') {
-      // Render children recursively
-      block.children.forEach(child => {
-        renderBlocks(child, xScale, yScale, zoom, transform, svgNode, g, level + 1);
-      });
-      return;
+      // Calculate how many cells are in this block vs its children
+      const blockCellCount = block.cells ? block.cells.length : 0;
+      const avgChildrenCells = block.children.reduce((sum, child) => 
+        sum + (child.cells ? child.cells.length : 0), 0) / block.children.length;
+      
+      // Subdivide if zoomed in enough - children are significantly smaller
+      // This creates the progressive 1->2->4->8->16->individual subdivision
+      const shouldShowChildren = blockCellCount > LOD_CONFIG.minBlockCells && 
+                                 avgChildrenCells < blockCellCount * 0.75;
+      
+      if (shouldShowChildren) {
+        // Render children recursively - creates visible subdivision
+        block.children.forEach(child => {
+          renderBlocks(child, xScale, yScale, zoom, transform, svgNode, g, level + 1);
+        });
+        return; // Don't render parent block - children replace it
+      }
+      // If not zoomed in enough, render as single block (no subdivision visible yet)
     }
     
     // This is a leaf block - render it
@@ -1563,36 +1615,50 @@ function WorldMap({
           });
           
           const focusChanged = !oldFocused || !focusedCell || oldFocused.key !== focusedCell.key;
-          
-          // More progressive updates: rebuild more frequently but smoothly
-          // Use smaller threshold for smoother subdivision transitions
-          const significantZoomChange = Math.abs(oldZoom - k) > 0.2; // Reduced from 0.5 for smoother updates
           const transform = event.transform;
           
-          // Always update on zoom/pan to recalculate visibility
-          // Use requestAnimationFrame for smoother updates
-          requestAnimationFrame(() => {
-            // Rebuild hierarchical block structure based on current zoom
-            const svgNode = svgRef.current;
-            const allCells = worldData.cells;
-            
-            // Recalculate bounds for blocks
-            const cellMinX = d3.min(allCells, (d) => d.x) ?? 0;
-            const cellMaxX = d3.max(allCells, (d) => d.x) ?? 0;
-            const cellMinY = d3.min(allCells, (d) => d.y) ?? 0;
-            const cellMaxY = d3.max(allCells, (d) => d.y) ?? 0;
-            
-            // Clear existing cells
-            g.selectAll("rect.cell").remove();
-            
-            // Build hierarchical blocks with current zoom level
-            const rootBlock = buildHierarchicalBlocks(allCells, cellMinX, cellMaxX, cellMinY, cellMaxY, k);
-            
-            // Render blocks hierarchically (will automatically subdivide based on zoom)
-            if (rootBlock) {
-              renderBlocks(rootBlock, xScale, yScale, k, transform, svgNode, g);
+          // Throttle zoom updates for smoother performance
+          // Only update if zoom changed significantly (to avoid excessive re-renders)
+          const zoomDelta = Math.abs(k - lastRenderedZoomRef.current);
+          const shouldUpdateBlocks = zoomDelta > 0.5 || zoomChanged; // Update on significant zoom change or hierarchy change
+          
+          // Clear any pending update
+          if (zoomUpdateTimeoutRef.current) {
+            clearTimeout(zoomUpdateTimeoutRef.current);
+          }
+          
+          // Throttle updates - only update after zoom has settled
+          zoomUpdateTimeoutRef.current = setTimeout(() => {
+            // Only update if zoom changed significantly
+            const currentZoomDelta = Math.abs(k - lastRenderedZoomRef.current);
+            if (shouldUpdateBlocks || currentZoomDelta > 0.3) {
+              lastRenderedZoomRef.current = k;
+              
+              // Use requestAnimationFrame for smooth rendering
+              requestAnimationFrame(() => {
+                // Rebuild hierarchical block structure based on current zoom
+                const svgNode = svgRef.current;
+                const allCells = worldData.cells;
+                
+                // Recalculate bounds for blocks
+                const cellMinX = d3.min(allCells, (d) => d.x) ?? 0;
+                const cellMaxX = d3.max(allCells, (d) => d.x) ?? 0;
+                const cellMinY = d3.min(allCells, (d) => d.y) ?? 0;
+                const cellMaxY = d3.max(allCells, (d) => d.y) ?? 0;
+                
+                // Clear existing cells
+                g.selectAll("rect.cell").remove();
+                
+                // Build hierarchical blocks with current zoom level
+                const rootBlock = buildHierarchicalBlocks(allCells, cellMinX, cellMaxX, cellMinY, cellMaxY, k);
+                
+                // Render blocks hierarchically (will automatically subdivide based on zoom)
+                if (rootBlock) {
+                  renderBlocks(rootBlock, xScale, yScale, k, transform, svgNode, g);
+                }
+              });
             }
-          });
+          }, LOD_CONFIG.zoomUpdateThrottle);
         }
       });
 
