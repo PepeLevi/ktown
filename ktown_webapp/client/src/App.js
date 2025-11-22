@@ -1,47 +1,35 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
 import WorldMap from "./worldMap";
-import { REGION_TEXTURES } from "./regionTextures";
+import JourneyVerticalProgress from "./progressBar";
+
+function createSelectedEntity(kind, payload) {
+  return {
+    kind,
+    [kind]: payload,
+    id: payload?.id ?? null,
+  };
+}
 
 function App() {
-  const [file1, setFile1] = useState(null);
-  const [file2, setFile2] = useState(null);
   const [worldData, setWorldData] = useState(null);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
+  const [figures, setFigures] = useState([]);
+  const [books, setBooks] = useState([]);
+  const [level, setLevel] = React.useState(5);
 
-  const [allowUpload, setAllowUpload] = useState(true);
-
+  // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
 
-  const handleFile1Change = (e) => setFile1(e.target.files[0] || null);
-  const handleFile2Change = (e) => setFile2(e.target.files[0] || null);
-
-  function readJsonFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(reader.error);
-      reader.onload = () => {
-        try {
-          const json = JSON.parse(reader.result);
-          resolve(json);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  const buildWorldDataFromJson = async (json1, json2, msgPrefix = "") => {
+  const fetchWorldData = async () => {
     try {
-      setStatus(msgPrefix + "Sending to server...");
+      setStatus("Requesting world data from server...");
 
       const res = await fetch(`${backendUrl}/api/world-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file1: json1, file2: json2 }),
       });
 
       if (!res.ok) {
@@ -50,91 +38,100 @@ function App() {
       }
 
       const data = await res.json();
-      setWorldData(data.worldData);
-      data.worldData.cells.forEach((cell) => {
-        if (cell.written_contents.length > 0) {
-          console.log("has cell with book", cell);
+
+      // Support both { worldData: {...} } and direct worldData payloads
+      const wd = data.worldData || data;
+
+      if (!wd || !wd.cells) {
+        throw new Error("Invalid worldData format from server");
+      }
+
+      setWorldData(wd);
+
+      let temp_figures = [];
+      let temp_books = [];
+      wd.cells.forEach((cell) => {
+        if (cell.sites.length > 0) {
+          console.log("CELL", cell);
+
+          for (let si = 0; si < cell.sites.length; si++) {
+            const site = cell.sites[si];
+
+            if (site.structures) {
+              for (let sti = 0; sti < site.structures.length; sti++) {
+                const structure = site.structures[sti];
+
+                if (structure.inhabitant.length > 0) {
+                  for (let ii = 0; ii < structure.inhabitant.length; ii++) {
+                    const figure = structure.inhabitant[ii];
+
+                    temp_figures.push(figure);
+
+                    if (figure.books) {
+                      for (let bi = 0; bi < figure.books.length; bi++) {
+                        const book = figure.books[bi];
+                        temp_books.push(book);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       });
 
+      setFigures(temp_figures);
+      setBooks(temp_books);
+
       setSelectedCell(null);
       setSelectedEntity(null);
-      setStatus(
-        `${msgPrefix}WorldData built: ${data.worldData.cells.length} cell(s).`
-      );
+      setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
     } catch (err) {
       console.error(err);
-      setStatus("Error building worldData.");
-      alert("Error: " + err.message);
-    }
-  };
-
-  const handleBuild = async () => {
-    if (!file1 || !file2) {
-      alert("Please select both file1.json and file2.json.");
-      return;
-    }
-
-    setStatus("Reading files...");
-
-    try {
-      const [json1, json2] = await Promise.all([
-        readJsonFile(file1),
-        readJsonFile(file2),
-      ]);
-
-      await buildWorldDataFromJson(json1, json2, "");
-    } catch (err) {
-      console.error(err);
-      setStatus("Error reading files.");
+      setStatus("Error loading world data.");
       alert("Error: " + err.message);
     }
   };
 
   useEffect(() => {
-    const checkDefaults = async () => {
-      try {
-        setStatus("Checking for default JSON files...");
-        const res = await fetch(`${backendUrl}/api/default-files`);
-        if (!res.ok) throw new Error("Failed to check default files");
-
-        const data = await res.json();
-
-        console.log("worldData", data);
-
-        if (data.hasDefaults && data.file1 && data.file2) {
-          setAllowUpload(false);
-          setStatus("Default JSON files found. Building map...");
-          await buildWorldDataFromJson(data.file1, data.file2, "Defaults: ");
-        } else {
-          setAllowUpload(true);
-          setStatus("No default JSON files. Please upload your files.");
-        }
-      } catch (err) {
-        console.error(err);
-        setAllowUpload(true);
-        setStatus("Could not check default files. Please upload your files.");
-      }
-    };
-
-    checkDefaults();
+    fetchWorldData();
+    // backendUrl is constant, so no need to add it to deps
   }, []);
-
-  // ---- selection handlers ----
 
   const handleCellClick = (cell) => {
     setSelectedCell(cell);
-    setSelectedEntity(null); // 🔸 only the cell is in focus
+    setSelectedEntity(null);
   };
 
   const handleEntityClick = (entity) => {
-    console.log("handleEntityClick", entity);
-    setSelectedEntity(entity); // site or figure composed object
-    setSelectedCell(null); // 🔸 clear cell highlight when clicking inside
+    setSelectedEntity(entity);
+    setSelectedCell(null);
+
+    if (entity.kind === "cell") {
+      setLevel(5);
+    }
+    if (entity.kind === "site") {
+      setLevel(4);
+    }
+    if (entity.kind === "structure") {
+      setLevel(3);
+    }
+    if (entity.kind === "figure") {
+      setLevel(1);
+    }
+    if (entity.kind === "book") {
+      setLevel(0);
+    }
+
+    console.log("click entity", entity, level);
   };
 
   return (
     <div className="app">
+      <div className="progressBar">
+        <JourneyVerticalProgress level={level} />
+      </div>
       <main className="layout">
         <section className="map-panel">
           {worldData ? (
@@ -143,51 +140,30 @@ function App() {
               onCellClick={handleCellClick}
               onEntityClick={handleEntityClick}
               selectedCell={selectedCell}
-              selectedEntity={selectedEntity} // 🔸 pass down
+              selectedEntity={selectedEntity}
             />
           ) : (
-            <p className="placeholder">Map will appear here.</p>
+            <p className="placeholder">Map will appear here once loaded.</p>
           )}
         </section>
 
         <section className="details-panel">
           <div className="app-header">
-            <p>
-              {allowUpload
-                ? "Upload file1.json & file2.json to build the map."
-                : "ktown: release the ktown files"}
-            </p>
+            <p>KT0WN</p>
           </div>
 
-          <section className="controls">
-            {allowUpload && (
-              <>
-                <div className="file-inputs">
-                  <label>
-                    File 1:
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleFile1Change}
-                    />
-                  </label>
-                  <label>
-                    File 2:
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleFile2Change}
-                    />
-                  </label>
-                </div>
-                <button onClick={handleBuild}>Build Map</button>
-              </>
-            )}
+          {/* <section className="controls">
+            <button onClick={fetchWorldData}>Reload World Data</button>
             <p className="status">{status}</p>
-          </section>
+          </section> */}
 
           {selectedEntity ? (
-            <EntityDetailsView entity={selectedEntity} />
+            <EntityDetailsView
+              entity={selectedEntity}
+              figures={figures}
+              books={books}
+              handleEntityClick={handleEntityClick}
+            />
           ) : null}
         </section>
       </main>
@@ -199,17 +175,207 @@ function App() {
 
 function TexturePreview({ label, src }) {
   if (!src) return null;
+  return <img src={src} alt={label} />;
+}
+
+function FigureDetailView({
+  figure,
+  figures,
+  isTopLevel,
+  books,
+  handleEntityClick,
+}) {
+  if (!figure) {
+    return;
+  }
+
   return (
-    // <div className="texture-preview">
-    //   <div className="texture-label">{label}</div>
-    //   <div className="texture-frame">
-    <img src={src} alt={label} />
-    //   </div>
-    // </div>
+    <div className="figure-detail-view">
+      <div className="flex-row-full">
+        <p>{figure.name}</p>{" "}
+        <p
+          style={{
+            transform: figure.sex === "-1" ? "rotate(90deg)" : "none",
+          }}
+        >
+          {figure.id}
+        </p>
+      </div>
+
+      <p>{figure.race}</p>
+      <p>{figure.associated_type}</p>
+
+      {figure.sphere && (
+        <>
+          <p className="cat_headline">figure sphere</p>
+          <div className="flex-row-full">
+            {Array.isArray(figure.sphere) &&
+              figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
+          </div>
+        </>
+      )}
+
+      {figure.books && isTopLevel && (
+        <>
+          <p className="cat_headline">books</p>
+          {figure.books.map((b, i) => (
+            <div key={i}>
+              <BookDetailView
+                book={b}
+                isTopLevel={false}
+                figures={figures}
+                books={books}
+                handleEntityClick={handleEntityClick}
+              />
+            </div>
+          ))}
+        </>
+      )}
+
+      {figure.hf_link && isTopLevel && (
+        <>
+          <p className="cat_headline">connections</p>
+          <div className="flex-column subFigures">
+            {figure.hf_link.length &&
+              figure.hf_link?.map((s, i) => (
+                <>
+                  {figures[s.hfid] ? (
+                    <button
+                      onClick={() => {
+                        handleEntityClick(
+                          createSelectedEntity("figure", figures[s.hfid])
+                        );
+                      }}
+                      key={i}
+                      className={s.link_type + " subFigure"}
+                    >
+                      <p>{s.link_type}</p>
+                      <FigureDetailView
+                        figure={figures[s.hfid]}
+                        isTopLevel={false}
+                        figures={figures}
+                        books={books}
+                        handleEntityClick={handleEntityClick}
+                      />
+                    </button>
+                  ) : null}
+                </>
+              ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+function BookDetailView({
+  book,
+  isTopLevel,
+  figures,
+  books,
+  handleEntityClick,
+}) {
+  if (!book) {
+    return;
+  }
+  return (
+    <div className="book">
+      <button
+        className="flex-row-full"
+        onClick={() => {
+          handleEntityClick(createSelectedEntity("book", book));
+        }}
+      >
+        <p>{book.title}</p>
+        <p>is a book</p>
+      </button>
+
+      <p className="cat_headline">book content:</p>
+      <p>{book?.raw?.text_content}</p>
+
+      {figures[book.author_hfid] && isTopLevel && (
+        <>
+          <p className="cat_headline">book author:</p>
+          <FigureDetailView
+            figure={figures[book.author_hfid]}
+            isTopLevel={false}
+            figures={figures}
+            books={books}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+function StructureDetailView({ structure, handleEntityClick, books, figures }) {
+  return (
+    <div>
+      <button
+        onClick={() => {
+          handleEntityClick(createSelectedEntity("structure", structure));
+        }}
+      >
+        {structure.name}
+      </button>
+
+      {structure.inhabitant && (
+        <>
+          <p className="cat_headline">structure inhabitant:</p>
+          {structure.inhabitant &&
+            structure.inhabitant.map((si, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  handleEntityClick(createSelectedEntity("figure", si));
+                }}
+              >
+                <FigureDetailView
+                  figure={si}
+                  figures={figures}
+                  isTopLevel={true}
+                  books={books}
+                  handleEntityClick={handleEntityClick}
+                />
+              </button>
+            ))}
+        </>
+      )}
+    </div>
+  );
+}
+function SiteDetailView({ site, handleEntityClick, figures, books }) {
+  return (
+    <div>
+      <p>{site.fromFile2.name}</p>
+      {site.structures && (
+        <>
+          {Array.isArray(site.structures) ? (
+            site.structures.map((s, i) => (
+              <div key={i}>
+                <StructureDetailView
+                  structure={s}
+                  isTopLevel={false}
+                  handleEntityClick={handleEntityClick}
+                  figures={figures}
+                  books={books}
+                />
+              </div>
+            ))
+          ) : (
+            <StructureDetailView
+              handleEntityClick={handleEntityClick}
+              structure={site.structures}
+              isTopLevel={false}
+              figures={figures}
+              books={books}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
-function EntityDetailsView({ entity }) {
+function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
   const {
     kind,
     name,
@@ -218,35 +384,30 @@ function EntityDetailsView({ entity }) {
     regionTextureUrl,
     siteTextureUrl,
     cellCoords,
+    site,
+    structure,
+    figure,
+    book,
   } = entity;
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
 
+  console.log("clicked on entity", entity);
+
   return (
     <div className="details-content">
-      <h3>
-        {kind === "site" && "Site"}
-        {kind === "figure" && "Historical Figure"}
-        {kind === "structure" && "Structure"}
-        {kind === "undergroundRegion" && "Underground Region"}
-        {kind === "writtenContent" && "Written Content"}
-        {kind === "cell" && "Cell"}
-        {!kind && "Entity"}
-      </h3>
-
-      <p>
-        <strong>Name:</strong> {name || "Unknown"}
-      </p>
-      {type && (
-        <p>
-          <strong>Type:</strong> {type}
-        </p>
-      )}
-      {cellCoords && (
-        <p>
-          <strong>Cell:</strong> ({cellCoords.x}, {cellCoords.y})
-        </p>
-      )}
+      <div className="flex-row-full">
+        <p>{name || "Unknown"}</p>
+        {cellCoords && (
+          <p>
+            [{cellCoords.x}, {cellCoords.y}]
+          </p>
+        )}
+      </div>
+      <div className="flex-row-full">
+        {type && <p>**{type}</p>}
+        {kind && <p>{kind}**</p>}
+      </div>
 
       <div className="texture-previews">
         <TexturePreview label="Entity texture" src={mainTexture} />
@@ -258,166 +419,48 @@ function EntityDetailsView({ entity }) {
         )}
       </div>
 
-      {kind === "cell" && (
-        <>
-          <h4>Cell Data</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
+      <div className="flex-row-full"></div>
+      <div className="specs">
+        {kind === "figure" && (
+          <FigureDetailView
+            figure={figure}
+            figures={figures}
+            isTopLevel={true}
+            books={books}
+            handleEntityClick={handleEntityClick}
+          />
+        )}
 
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
+        {kind === "book" && (
+          <BookDetailView
+            book={book}
+            isTopLevel={true}
+            figures={figures}
+            books={books}
+            handleEntityClick={handleEntityClick}
+          />
+        )}
 
-          <h4>Sites</h4>
-          <pre>{JSON.stringify(entity.sites || [], null, 2)}</pre>
+        {kind === "site" && (
+          <SiteDetailView
+            site={site}
+            isTopLevel={true}
+            figures={figures}
+            books={books}
+            handleEntityClick={handleEntityClick}
+          />
+        )}
 
-          <h4>Underground Regions</h4>
-          <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
-
-          <h4>Historical Figures</h4>
-          <pre>{JSON.stringify(entity.historical_figures || [], null, 2)}</pre>
-
-          <h4>Written Contents</h4>
-          <pre>{JSON.stringify(entity.written_contents || [], null, 2)}</pre>
-        </>
-      )}
-
-      {kind === "site" && (
-        <>
-          <h4>Site object</h4>
-          <pre>{JSON.stringify(entity.site, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-
-          <h4>Underground Regions</h4>
-          <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
-
-          <h4>Historical Figures at Site</h4>
-          <pre>{JSON.stringify(entity.historical_figures || [], null, 2)}</pre>
-
-          <h4>Written Contents at Site</h4>
-          <pre>{JSON.stringify(entity.written_contents || [], null, 2)}</pre>
-        </>
-      )}
-
-      {kind === "structure" && (
-        <>
-          <h4>Structure object</h4>
-          <pre>{JSON.stringify(entity.structure, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-        </>
-      )}
-
-      {kind === "figure" && (
-        <>
-          <h4>Figure</h4>
-          <pre>{JSON.stringify(entity.figure, null, 2)}</pre>
-
-          <h4>Site</h4>
-          <pre>{JSON.stringify(entity.site || null, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-
-          <h4>Underground Regions</h4>
-          <pre>{JSON.stringify(entity.undergroundRegions || [], null, 2)}</pre>
-
-          <h4>Figures at Site</h4>
-          <pre>
-            {JSON.stringify(entity.site_historical_figures || [], null, 2)}
-          </pre>
-
-          <h4>Figures in Cell</h4>
-          <pre>
-            {JSON.stringify(entity.cell_historical_figures || [], null, 2)}
-          </pre>
-
-          <h4>Written Contents at Site</h4>
-          <pre>
-            {JSON.stringify(entity.site_written_contents || [], null, 2)}
-          </pre>
-
-          <h4>Written Contents in Cell</h4>
-          <pre>
-            {JSON.stringify(entity.cell_written_contents || [], null, 2)}
-          </pre>
-        </>
-      )}
-
-      {kind === "undergroundRegion" && (
-        <>
-          <h4>Underground Region object</h4>
-          <pre>{JSON.stringify(entity.undergroundRegion, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-        </>
-      )}
-
-      {kind === "writtenContent" && (
-        <>
-          <h4>Written Content object</h4>
-          <pre>{JSON.stringify(entity.writtenContent, null, 2)}</pre>
-
-          <h4>Cell</h4>
-          <pre>{JSON.stringify(entity.cell, null, 2)}</pre>
-
-          <h4>Region</h4>
-          <pre>{JSON.stringify(entity.region || null, null, 2)}</pre>
-        </>
-      )}
-    </div>
-  );
-}
-
-function CellDetailsView({ cell }) {
-  const regionType = cell.region?.type || null;
-  const regionTexture = regionType ? REGION_TEXTURES[regionType] : null;
-
-  return (
-    <div className="details-content">
-      <h3>
-        Cell ({cell.x}, {cell.y})
-      </h3>
-
-      <div className="texture-previews">
-        <TexturePreview label="Region texture" src={regionTexture} />
+        {kind === "structure" && (
+          <StructureDetailView
+            structure={structure}
+            isTopLevel={true}
+            figures={figures}
+            books={books}
+            handleEntityClick={handleEntityClick}
+          />
+        )}
       </div>
-
-      <h4>Region</h4>
-      <pre>{cell.region ? JSON.stringify(cell.region, null, 2) : "None"}</pre>
-
-      <h4>Sites</h4>
-      <pre>
-        {cell.sites?.length ? JSON.stringify(cell.sites, null, 2) : "None"}
-      </pre>
-
-      <h4>Historical Figures in Cell</h4>
-      <pre>
-        {cell.historical_figures?.length
-          ? JSON.stringify(cell.historical_figures, null, 2)
-          : "None"}
-      </pre>
-
-      <h4>Written Contents in Cell</h4>
-      <pre>
-        {cell.written_contents?.length
-          ? JSON.stringify(cell.written_contents, null, 2)
-          : "None"}
-      </pre>
     </div>
   );
 }

@@ -45,20 +45,6 @@ p {
   flex-wrap: wrap;
 }
 
-button {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: none;
-  background: #2563eb;
-  color: white;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-button:hover {
-  background: #1d4ed8;
-}
-
 .status {
   font-size: 0.85rem;
 }
@@ -183,4 +169,76 @@ button:hover {
   height: 100%;
   object-fit: cover;
   mix-blend-mode: exclusion;
+}
+
+.flex-row-full {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--primary-color);
+}
+
+.flex-row-full p {
+  max-width: 80%;
+}
+
+.specs {
+  margin-top: 10px;
+}
+
+.enemy p {
+  color: red !important;
+}
+
+.subFigures {
+  margin: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 3 columns */
+  gap: 1rem; /* space between children */
+}
+
+.subFigure {
+  border: 1px solid var(--primary-color);
+}
+
+button {
+  margin-top: 5px;
+  border: 1px solid var(--primary-color);
+  background-color: rgba(0, 0, 0, 0);
+  color: var(--primary-color);
+  width: 100%;
+  border-radius: 6px;
+  text-align: left;
+}
+
+button p {
+  color: var(--primary-color);
+}
+
+button:hover {
+  background-color: var(--primary-color);
+  color: var(--primary-bg-color);
+}
+
+button:hover p {
+  color: var(--primary-bg-color);
+}
+
+.progressBar {
+  position: fixed;
+  left: 0;
+  margin: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 999999;
+}
+
+.cat_headline {
+  margin-top: 50px;
+  border-top: 2px solid var(--primary-color);
+}
+
+button:hover .cat_headline {
+  margin-top: 50px;
+  border-top: 2px solid var(--primary-bg-color);
 }

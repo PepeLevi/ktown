@@ -6,6 +6,9 @@
 node_modules/
 client/node_modules/
 
+# Big Json Samples
+public/big
+
 # Environment files
 .env
 .env.local

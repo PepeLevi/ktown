@@ -6,11 +6,11 @@ const cors = require("cors");
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "map_plus.json";
-const map_location = "map.json";
-const book_location = "books_hf.json";
+const map_plus_location = "big/map_plus.json";
+const map_location = "big/map.json";
+const book_location = "big/books.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -28,7 +28,7 @@ function loadDefaultFiles() {
 
   if (!hasFile1 || !hasFile2 || !hasBooks) {
     throw new Error(
-      `Default files missing. map_plus.json: ${hasFile1}, map.json: ${hasFile2}, books.json: ${hasBooks}`
+      `Default files missing. json_big_xml_plus.json: ${hasFile1}, json_big_xml.json: ${hasFile2}, books.json: ${hasBooks}`
     );
   }
 
@@ -204,42 +204,22 @@ function collectHistFigIdsForStructure(
   histFigureById,
   booksByAuthor
 ) {
-  const figsById = new Map(); // id (string) -> hf object
-
-  function traverse(val) {
-    if (!val) return;
-
-    if (typeof val === "string" || typeof val === "number") {
-      const key = String(val);
-      const hf = histFigureById[key];
-      if (hf) {
-        figsById.set(key, hf);
+  let tempInhabitants = [];
+  if (structure.inhabitant) {
+    if (Array.isArray(structure.inhabitant)) {
+      for (let index = 0; index < structure.inhabitant.length; index++) {
+        let figure = histFigureById[structure.inhabitant[index]];
+        figure.books = booksByAuthor[structure.inhabitant[index]];
+        tempInhabitants.push(figure);
       }
-    } else if (Array.isArray(val)) {
-      val.forEach(traverse);
-    } else if (typeof val === "object") {
-      Object.values(val).forEach(traverse);
+    } else {
+      let figure = histFigureById[structure.inhabitant];
+      figure.books = booksByAuthor[structure.inhabitant];
+      tempInhabitants.push(figure);
     }
   }
-
-  traverse(structure);
-
-  const inhabitants = Array.from(figsById.values());
-
-  // Attach books to each historical figure if we have the map
-  if (booksByAuthor) {
-    inhabitants.forEach((hf) => {
-      const hid = String(hf.id);
-
-      if (booksByAuthor[hid]) {
-        console.log("books by author", hf.id, booksByAuthor[hid], structure);
-        hf.books = booksByAuthor[hid] || [];
-      }
-    });
-  }
-
-  structure.inhabitants = inhabitants;
-  return inhabitants;
+  structure.inhabitant = tempInhabitants;
+  return;
 }
 
 // ---------- Core: buildWorldData from file1/file2 ----------
@@ -298,24 +278,6 @@ function buildWorldData(file1, file2, booksFile) {
     return cellsMap.get(key);
   }
 
-  function addHistoricalFiguresToCell(cell, hfList) {
-    const existingIds = new Set(cell.historical_figures.map((h) => h.id));
-    hfList.forEach((h) => {
-      if (!h || !h.id || existingIds.has(h.id)) return;
-      cell.historical_figures.push(h);
-      existingIds.add(h.id);
-    });
-  }
-
-  function addWrittenContentsToCell(cell, wcList) {
-    const existingIds = new Set(cell.written_contents.map((w) => w.id));
-    wcList.forEach((w) => {
-      if (!w || !w.id || existingIds.has(w.id)) return;
-      cell.written_contents.push(w);
-      existingIds.add(w.id);
-    });
-  }
-
   // 1) Regions -> create cells
   regions1.forEach((r1) => {
     if (!r1) return;
@@ -352,62 +314,57 @@ function buildWorldData(file1, file2, booksFile) {
     const cell = getOrCreateCell(x, y);
     const s1 = s2.id ? site1ById[s2.id] : null;
 
+    // --- NEW: merge structures from s1 and s2 ---
+    const s1Structs = normalizeToArray(s1?.structures?.structure);
+    const s2Structs = normalizeToArray(s2?.structures?.structure);
+
+    // index file2 structures by id
+    const s2StructById = {};
+    s2Structs.forEach((st) => {
+      if (st && st.id != null) {
+        s2StructById[st.id] = st;
+      }
+    });
+
+    const mergedStructures = [];
+
+    // merge s1 + s2 structures that share the same id
+    s1Structs.forEach((st1) => {
+      if (!st1) return;
+      const st2 = st1.id != null ? s2StructById[st1.id] : null;
+      const mergedStruct = shallowMerge(st1, st2);
+      mergedStructures.push(mergedStruct);
+
+      // we've consumed this one from file2
+      if (st1.id != null) {
+        delete s2StructById[st1.id];
+      }
+    });
+
+    // any structures that exist only in file2
+    Object.values(s2StructById).forEach((st2) => {
+      if (st2) mergedStructures.push(st2);
+    });
+
     const mergedSite = {
       id: s2.id,
       coords: { x, y },
       fromFile1: s1 || null,
       fromFile2: s2 || null,
-      structures: s2.structures || s1?.structures || null,
+      structures: mergedStructures.length ? mergedStructures : null,
       inhabitants: [],
       historical_figures: [],
       written_contents: [],
     };
 
+    // now call collectHistFigIdsForStructure on the *merged* structures
     if (mergedSite.structures) {
-      if (Array.isArray(mergedSite.structures.structure)) {
-        mergedSite.structures.structure.forEach((struct) => {
-          collectHistFigIdsForStructure(struct, histFigureById, booksByAuthor);
-        });
-      } else {
-        collectHistFigIdsForStructure(
-          mergedSite.structures.structure,
-          histFigureById,
-          booksByAuthor
-        );
-      }
+      mergedSite.structures.forEach((struct) => {
+        collectHistFigIdsForStructure(struct, histFigureById, booksByAuthor);
+      });
     }
 
-    // mergedSite.inhabitants = inhabitantIds;
-
-    // const siteHFs = inhabitantIds
-    //   .map((id) => histFigureById[id])
-    //   .filter(Boolean);
-    // mergedSite.historical_figures = siteHFs;
-
-    // const siteWCs = [];
-    // inhabitantIds.forEach((hid) => {
-    //   const wcs = writtenByAuthor[hid] || [];
-    //   wcs.forEach((w) => siteWCs.push(w));
-    // });
-    // mergedSite.written_contents = siteWCs;
-
-    let allINhabitants = [];
-    let allbooksincelle = [];
-
-    mergedSite.structures?.structure?.inhabitants?.forEach((inhabitant) => {
-      allINhabitants.push(inhabitant);
-      if (inhabitant.books) {
-        inhabitant.books.forEach((b) => {
-          allbooksincelle.push(b);
-        });
-      }
-    });
-
     cell.sites.push(mergedSite);
-    // addHistoricalFiguresToCell(cell, allINhabitants);
-    // addWrittenContentsToCell(cell, allbooksincelle);
-    cell.historical_figures = allINhabitants;
-    cell.written_contents = allbooksincelle;
   });
 
   // 4) Sort cells

@@ -22,6 +22,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "canvas": "^3.2.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "stream-chain": "^3.4.0",
