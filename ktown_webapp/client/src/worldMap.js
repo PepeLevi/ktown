@@ -241,8 +241,7 @@ function WorldMap({
     return currentZoomRef.current >= level.minZoom;
   };
 
-  // Procedurally combine adjacent cells into blocks like cells dividing
-  // Progressive subdivision: larger blocks at low zoom, smaller at high zoom
+  // Simple grid-based combination: divide map into regular 5x5 blocks, subdivide on zoom
   const optimizeVisibleCells = (visibleCells, zoom) => {
     if (!visibleCells || visibleCells.length === 0) return [];
     
@@ -250,118 +249,78 @@ function WorldMap({
     const validCells = visibleCells.filter(c => c && c.region?.type !== "Ocean");
     if (validCells.length === 0) return [];
     
-    // Calculate target block size based on zoom - progressive subdivision
-    // Determines how many cells per block we want
-    let targetCellsPerBlock = 64; // Start with ~8x8 blocks (64 cells) at low zoom
+    // Calculate block size based on zoom - simple subdivision
+    let blockSize = 5; // Default 5x5 blocks (25 cells)
     if (zoom >= 10) {
-      targetCellsPerBlock = 1; // Individual cells at high zoom
+      blockSize = 1; // Individual cells at high zoom
     } else if (zoom >= 7) {
-      targetCellsPerBlock = 4; // 2x2 blocks (4 cells)
+      blockSize = 2; // 2x2 blocks (4 cells)
     } else if (zoom >= 4) {
-      targetCellsPerBlock = 16; // 4x4 blocks (16 cells)
+      blockSize = 3; // 3x3 blocks (9 cells)
     }
-    // zoom < 4: targetCellsPerBlock = 64 (8x8 blocks, 64 cells)
+    // zoom < 4: blockSize = 5 (5x5 blocks, 25 cells)
     
-    // If we should use individual cells, return them
-    if (targetCellsPerBlock === 1 || validCells.length <= LOD_CONFIG.maxCellsToRender) {
+    // If individual cells, return them
+    if (blockSize === 1 || validCells.length <= LOD_CONFIG.maxCellsToRender) {
       return validCells.map(cell => ({ type: 'individual', cell }));
     }
     
-    // Procedurally combine adjacent cells into blocks
-    // Create a map of cells by coordinates
+    // Create regular grid of blocks - no overlaps, simple division
     const cellMap = new Map();
     validCells.forEach(cell => {
       cellMap.set(`${cell.x},${cell.y}`, cell);
     });
     
-    const blocks = [];
+    const blocksMap = new Map(); // Key: "gridX,gridY"
     const cellsInBlocks = new Set();
     
-    // Sort cells by position for consistent grouping
-    const sortedCells = [...validCells].sort((a, b) => {
-      if (a.x !== b.x) return a.x - b.x;
-      return a.y - b.y;
+    // Group cells into regular grid blocks
+    validCells.forEach(cell => {
+      const cellKey = `${cell.x},${cell.y}`;
+      if (cellsInBlocks.has(cellKey)) return; // Already assigned
+      
+      // Calculate which block this cell belongs to (regular grid)
+      const blockGridX = Math.floor(cell.x / blockSize);
+      const blockGridY = Math.floor(cell.y / blockSize);
+      const blockKey = `${blockGridX},${blockGridY}`;
+      
+      // Get or create block
+      let block = blocksMap.get(blockKey);
+      if (!block) {
+        block = {
+          type: 'block',
+          cells: [],
+          gridX: blockGridX,
+          gridY: blockGridY,
+          minX: Infinity,
+          maxX: -Infinity,
+          minY: Infinity,
+          maxY: -Infinity,
+        };
+        blocksMap.set(blockKey, block);
+      }
+      
+      // Add cell to block (only if in correct grid position - no overlaps)
+      const expectedMinX = blockGridX * blockSize;
+      const expectedMaxX = (blockGridX + 1) * blockSize - 1;
+      const expectedMinY = blockGridY * blockSize;
+      const expectedMaxY = (blockGridY + 1) * blockSize - 1;
+      
+      if (cell.x >= expectedMinX && cell.x <= expectedMaxX &&
+          cell.y >= expectedMinY && cell.y <= expectedMaxY) {
+        block.cells.push(cell);
+        block.minX = Math.min(block.minX, cell.x);
+        block.maxX = Math.max(block.maxX, cell.x);
+        block.minY = Math.min(block.minY, cell.y);
+        block.maxY = Math.max(block.maxY, cell.y);
+        cellsInBlocks.add(cellKey);
+      }
     });
     
-    // Procedurally group adjacent cells into blocks
-    // Each block grows by adding nearby cells until it reaches target size
-    for (const startCell of sortedCells) {
-      const cellKey = `${startCell.x},${startCell.y}`;
-      if (cellsInBlocks.has(cellKey)) continue; // Already in a block
-      
-      // Start a new block with this cell
-      const blockCells = [startCell];
-      cellsInBlocks.add(cellKey);
-      
-      // Calculate block bounds
-      let blockMinX = startCell.x;
-      let blockMaxX = startCell.x;
-      let blockMinY = startCell.y;
-      let blockMaxY = startCell.y;
-      
-      // Grow block by adding adjacent cells
-      // Add cells in expanding radius until we reach target size
-      const maxRadius = Math.ceil(Math.sqrt(targetCellsPerBlock));
-      
-      for (let radius = 1; radius <= maxRadius && blockCells.length < targetCellsPerBlock; radius++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          for (let dy = -radius; dy <= radius; dy++) {
-            // Only check cells on the perimeter of current radius
-            if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
-            
-            const x = startCell.x + dx;
-            const y = startCell.y + dy;
-            const key = `${x},${y}`;
-            
-            if (cellsInBlocks.has(key)) continue; // Already in a block
-            
-            const cell = cellMap.get(key);
-            if (cell) {
-              // Check if cell is adjacent to current block (touching at least one cell in block)
-              const isAdjacent = blockCells.some(blockCell => {
-                const distX = Math.abs(cell.x - blockCell.x);
-                const distY = Math.abs(cell.y - blockCell.y);
-                return (distX === 1 && distY === 0) || (distX === 0 && distY === 1);
-              });
-              
-              if (isAdjacent && blockCells.length < targetCellsPerBlock) {
-                blockCells.push(cell);
-                cellsInBlocks.add(key);
-                blockMinX = Math.min(blockMinX, cell.x);
-                blockMaxX = Math.max(blockMaxX, cell.x);
-                blockMinY = Math.min(blockMinY, cell.y);
-                blockMaxY = Math.max(blockMaxY, cell.y);
-              }
-            }
-          }
-        }
-      }
-      
-      // Only create block if it has multiple cells (otherwise render individually)
-      if (blockCells.length > 1 && blockCells.length <= LOD_CONFIG.maxCellsPerBlock) {
-        // Calculate block center for positioning
-        const centerX = (blockMinX + blockMaxX) / 2;
-        const centerY = (blockMinY + blockMaxY) / 2;
-        
-        blocks.push({
-          type: 'block',
-          cells: blockCells,
-          minX: blockMinX,
-          maxX: blockMaxX,
-          minY: blockMinY,
-          maxY: blockMaxY,
-          centerX: centerX,
-          centerY: centerY,
-        });
-      } else {
-        // Block too small or large - return cells to be rendered individually
-        blockCells.forEach(cell => {
-          cellsInBlocks.delete(`${cell.x},${cell.y}`);
-        });
-      }
-    }
+    // Convert to array - only blocks with cells
+    const blocks = Array.from(blocksMap.values()).filter(b => b.cells.length > 0);
     
-    // All cells not in blocks stay as individual
+    // All cells not in blocks stay as individual (shouldn't happen with regular grid)
     const individualCells = validCells
       .filter(cell => !cellsInBlocks.has(`${cell.x},${cell.y}`))
       .map(cell => ({ type: 'individual', cell }));
