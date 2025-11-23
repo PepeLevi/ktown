@@ -241,7 +241,8 @@ function WorldMap({
     return currentZoomRef.current >= level.minZoom;
   };
 
-  // Simple grid-based combination: divide map into regular 5x5 blocks, subdivide on zoom
+  // Simple: just return all visible cells individually - no block combining
+  // All cells will be rendered with their fractal subdivision logic
   const optimizeVisibleCells = (visibleCells, zoom) => {
     if (!visibleCells || visibleCells.length === 0) return [];
     
@@ -249,83 +250,9 @@ function WorldMap({
     const validCells = visibleCells.filter(c => c && c.region?.type !== "Ocean");
     if (validCells.length === 0) return [];
     
-    // Calculate block size based on zoom - simple subdivision
-    let blockSize = 5; // Default 5x5 blocks (25 cells)
-    if (zoom >= 10) {
-      blockSize = 1; // Individual cells at high zoom
-    } else if (zoom >= 7) {
-      blockSize = 2; // 2x2 blocks (4 cells)
-    } else if (zoom >= 4) {
-      blockSize = 3; // 3x3 blocks (9 cells)
-    }
-    // zoom < 4: blockSize = 5 (5x5 blocks, 25 cells)
-    
-    // If individual cells, return them
-    if (blockSize === 1 || validCells.length <= LOD_CONFIG.maxCellsToRender) {
-      return validCells.map(cell => ({ type: 'individual', cell }));
-    }
-    
-    // Create regular grid of blocks - no overlaps, simple division
-    const cellMap = new Map();
-    validCells.forEach(cell => {
-      cellMap.set(`${cell.x},${cell.y}`, cell);
-    });
-    
-    const blocksMap = new Map(); // Key: "gridX,gridY"
-    const cellsInBlocks = new Set();
-    
-    // Group cells into regular grid blocks
-    validCells.forEach(cell => {
-      const cellKey = `${cell.x},${cell.y}`;
-      if (cellsInBlocks.has(cellKey)) return; // Already assigned
-      
-      // Calculate which block this cell belongs to (regular grid)
-      const blockGridX = Math.floor(cell.x / blockSize);
-      const blockGridY = Math.floor(cell.y / blockSize);
-      const blockKey = `${blockGridX},${blockGridY}`;
-      
-      // Get or create block
-      let block = blocksMap.get(blockKey);
-      if (!block) {
-        block = {
-          type: 'block',
-          cells: [],
-          gridX: blockGridX,
-          gridY: blockGridY,
-          minX: Infinity,
-          maxX: -Infinity,
-          minY: Infinity,
-          maxY: -Infinity,
-        };
-        blocksMap.set(blockKey, block);
-      }
-      
-      // Add cell to block (only if in correct grid position - no overlaps)
-      const expectedMinX = blockGridX * blockSize;
-      const expectedMaxX = (blockGridX + 1) * blockSize - 1;
-      const expectedMinY = blockGridY * blockSize;
-      const expectedMaxY = (blockGridY + 1) * blockSize - 1;
-      
-      if (cell.x >= expectedMinX && cell.x <= expectedMaxX &&
-          cell.y >= expectedMinY && cell.y <= expectedMaxY) {
-        block.cells.push(cell);
-        block.minX = Math.min(block.minX, cell.x);
-        block.maxX = Math.max(block.maxX, cell.x);
-        block.minY = Math.min(block.minY, cell.y);
-        block.maxY = Math.max(block.maxY, cell.y);
-        cellsInBlocks.add(cellKey);
-      }
-    });
-    
-    // Convert to array - only blocks with cells
-    const blocks = Array.from(blocksMap.values()).filter(b => b.cells.length > 0);
-    
-    // All cells not in blocks stay as individual (shouldn't happen with regular grid)
-    const individualCells = validCells
-      .filter(cell => !cellsInBlocks.has(`${cell.x},${cell.y}`))
-      .map(cell => ({ type: 'individual', cell }));
-    
-    return [...individualCells, ...blocks.map(block => ({ type: 'block', block }))];
+    // Always return individual cells - no block combining
+    // Fractal subdivision logic will handle the zoom detail
+    return validCells.map(cell => ({ type: 'individual', cell }));
   };
   
   // Get representative cell for a block (for texture/color)
@@ -1465,32 +1392,27 @@ function WorldMap({
       return isCellVisible(cell, xScale, yScale, currentTransform, svg.node());
     });
     
-    // Optimize: combine some cells into blocks if too many visible
-    const optimizedItems = optimizeVisibleCells(visibleCells, currentZoomRef.current);
+    // Get individual cells - no block combining, just render all cells with fractal logic
+    const cellsToRender = optimizeVisibleCells(visibleCells, currentZoomRef.current);
     
-    // Render items - respecting original cell coordinates
-    optimizedItems.forEach(item => {
-      if (item.type === 'individual') {
-        // Render individual cell at its original coordinates
-        const cell = item.cell;
-        const cellBbox = {
-          x: xScale(cell.y),  // cell.y -> x position
-          y: yScale(cell.x),  // cell.x -> y position
-          width: CELL_SIZE,
-          height: CELL_SIZE,
-        };
-        
-        // Build children for fractal subdivision
-        const cellWithChildren = {
-          ...cell,
-          children: buildCellChildren(cell, currentZoomRef.current, cellBbox, false, xScale, yScale, currentTransform, svg.node()),
-        };
-        
-        renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
-      } else if (item.type === 'block') {
-        // Render block at correct coordinates
-        renderSingleBlock(item.block, xScale, yScale, g);
-      }
+    // Render all cells individually with fractal subdivision
+    cellsToRender.forEach(item => {
+      // All items are individual cells now
+      const cell = item.cell;
+      const cellBbox = {
+        x: xScale(cell.y),  // cell.y -> x position
+        y: yScale(cell.x),  // cell.x -> y position
+        width: CELL_SIZE,
+        height: CELL_SIZE,
+      };
+      
+      // Build children for fractal subdivision
+      const cellWithChildren = {
+        ...cell,
+        children: buildCellChildren(cell, currentZoomRef.current, cellBbox, false, xScale, yScale, currentTransform, svg.node()),
+      };
+      
+      renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
     });
 
     // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
@@ -1597,32 +1519,27 @@ function WorldMap({
               return isCellVisible(cell, xScale, yScale, transform, svgNode);
             });
             
-            // Optimize: combine some cells into blocks if too many visible
-            const optimizedItems = optimizeVisibleCells(visibleCells, k);
+            // Get individual cells - no block combining, just render all cells with fractal logic
+            const cellsToRender = optimizeVisibleCells(visibleCells, k);
             
-            // Render items - respecting original cell coordinates
-            optimizedItems.forEach(item => {
-              if (item.type === 'individual') {
-                // Render individual cell at its original coordinates
-                const cell = item.cell;
-                const cellBbox = {
-                  x: xScale(cell.y),  // cell.y -> x position
-                  y: yScale(cell.x),  // cell.x -> y position
-                  width: CELL_SIZE,
-                  height: CELL_SIZE,
-                };
-                
-                // Build children for fractal subdivision
-                const cellWithChildren = {
-                  ...cell,
-                  children: buildCellChildren(cell, k, cellBbox, false, xScale, yScale, transform, svgNode),
-                };
-                
-                renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
-              } else if (item.type === 'block') {
-                // Render block at correct coordinates
-                renderSingleBlock(item.block, xScale, yScale, g);
-              }
+            // Render all cells individually with fractal subdivision
+            cellsToRender.forEach(item => {
+              // All items are individual cells now
+              const cell = item.cell;
+              const cellBbox = {
+                x: xScale(cell.y),  // cell.y -> x position
+                y: yScale(cell.x),  // cell.x -> y position
+                width: CELL_SIZE,
+                height: CELL_SIZE,
+              };
+              
+              // Build children for fractal subdivision
+              const cellWithChildren = {
+                ...cell,
+                children: buildCellChildren(cell, k, cellBbox, false, xScale, yScale, transform, svgNode),
+              };
+              
+              renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
             });
           });
         }

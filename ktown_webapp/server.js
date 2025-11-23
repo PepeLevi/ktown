@@ -2,6 +2,9 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
+const { chain } = require("stream-chain");
+const { parser } = require("stream-json");
+const { streamValues } = require("stream-json/streamers/StreamValues");
 
 const app = express();
 
@@ -16,9 +19,37 @@ const book_location = "big/books.json"; // Optional - can be missing
 const PUBLIC_DIR = path.join(__dirname, "public");
 app.use(express.static(PUBLIC_DIR));
 
+// ---------- Helper: load JSON file using streaming parser for large files ----------
+function loadJsonFileStreaming(filePath) {
+  return new Promise((resolve, reject) => {
+    const pipeline = chain([
+      fs.createReadStream(filePath),
+      parser(),
+      streamValues(),
+    ]);
+
+    let result = null;
+    pipeline.on("data", (data) => {
+      result = data.value;
+    });
+
+    pipeline.on("end", () => {
+      if (result === null) {
+        reject(new Error(`Failed to parse JSON file: ${filePath}`));
+      } else {
+        resolve(result);
+      }
+    });
+
+    pipeline.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
 // ---------- Helper: load default JSON files from /public ----------
-// NOTE: Files are loaded on-demand to handle very large files that exceed Node.js string length limits
-function loadDefaultFiles() {
+// Uses streaming parser to handle very large files that exceed Node.js string length limits
+async function loadDefaultFiles() {
   const file1Path = path.join(PUBLIC_DIR, map_plus_location);
   const file2Path = path.join(PUBLIC_DIR, map_location);
   const booksPath = path.join(PUBLIC_DIR, book_location);
@@ -34,38 +65,22 @@ function loadDefaultFiles() {
   }
 
   try {
-    // Check file sizes first
-    const file1Stats = fs.statSync(file1Path);
-    const file2Stats = fs.statSync(file2Path);
-    const maxSize = 500 * 1024 * 1024; // 500MB - Node.js string limit is ~512MB
+    console.log("Loading JSON files using streaming parser...");
     
-    if (file1Stats.size > maxSize || file2Stats.size > maxSize) {
-      const file1MB = (file1Stats.size / (1024 * 1024)).toFixed(2);
-      const file2MB = (file2Stats.size / (1024 * 1024)).toFixed(2);
-      throw new Error(
-        `Files are too large to load into memory (json_big_xml_plus.json: ${file1MB}MB, json_big_xml.json: ${file2MB}MB). ` +
-        `Node.js has a ~512MB limit for strings. Please split the files or use a streaming JSON parser.`
-      );
-    }
+    // Use streaming parser for large files
+    const [file1, file2, books] = await Promise.all([
+      loadJsonFileStreaming(file1Path),
+      loadJsonFileStreaming(file2Path),
+      hasBooks ? loadJsonFileStreaming(booksPath).catch(() => null) : Promise.resolve(null),
+    ]);
 
-    // Read files
-    const file1Raw = fs.readFileSync(file1Path, "utf8");
-    const file2Raw = fs.readFileSync(file2Path, "utf8");
-    const booksRaw = hasBooks ? fs.readFileSync(booksPath, "utf8") : null; // Optional
-
-    const file1 = JSON.parse(file1Raw);
-    const file2 = JSON.parse(file2Raw);
-    const books = booksRaw ? JSON.parse(booksRaw) : null; // Optional
-
-    return { file1, file2, books }; // UPDATED
+    console.log("JSON files loaded successfully");
+    return { file1, file2, books };
   } catch (err) {
-    if (err.code === "ERR_STRING_TOO_LONG") {
-      throw new Error(
-        `Files are too large to load into memory. Please split the files into smaller chunks or use a streaming JSON parser. ` +
-        `Current files exceed Node.js's ~512MB string limit.`
-      );
-    }
-    throw err;
+    console.error("Error loading JSON files:", err);
+    throw new Error(
+      `Failed to load JSON files: ${err.message}`
+    );
   }
 }
 
@@ -420,9 +435,9 @@ function buildWorldData(file1, file2, booksFile) {
 }
 
 // ---------- NEW: GET / -> worldData from default files ----------
-app.get("/", (req, res) => {
+app.get("/", async (req, res) => {
   try {
-    const { file1, file2, books } = loadDefaultFiles();
+    const { file1, file2, books } = await loadDefaultFiles();
     const worldData = buildWorldData(file1, file2, books);
     res.json({ worldData });
     console.log("WORLD DATA (from default files)", worldData);
@@ -436,11 +451,11 @@ app.get("/", (req, res) => {
 });
 
 // ---------- Existing POST /api/world-data (still works with body) ----------
-app.post("/api/world-data", (req, res) => {
+app.post("/api/world-data", async (req, res) => {
   try {
     // const { file1, file2, books } = req.body;
 
-    const { file1, file2, books } = loadDefaultFiles();
+    const { file1, file2, books } = await loadDefaultFiles();
 
     // Books file is optional - can be null
     // if (!file1 || !file2) {
