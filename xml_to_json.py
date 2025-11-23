@@ -71,19 +71,11 @@ def attach_books_to_historical_figures(df_world_dict, json_books_arg):
     else:
         hf_container['historical_figure'] = hist_list
         
-### MAIN SCRIPT
+### MAIN SCRIPT ### 
 
-# define paths
-# https://stackoverflow.com/a/38412504
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # https://stackoverflow.com/a/38412504
 FILES_PATH = os.path.join(BASE_DIR, "files")
 JSON_PATH = os.path.join(FILES_PATH, "jsons")
-
-# # create variables to hold the json data
-# json_legends = None
-# json_legends_plus = None
-# json_books = None
-# df_books_flat = None
 
 # /!\ for the script to work, the XML files need to be on the files/ folder. /!\
 for entry in os.listdir(FILES_PATH):
