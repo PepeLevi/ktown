@@ -25,7 +25,7 @@ const LOD_CONFIG = {
   maxCellsToRender: 400, // Maximum individual cells/blocks to render at once (performance limit)
   minCellsToCombine: 300, // Only combine cells if more than this many visible
   maxCellsPerBlock: 40, // Maximum cells per block
-  zoomUpdateThrottle: 50, // Throttle zoom updates (ms) for smoother performance
+  zoomUpdateThrottle: 0, // No throttling - update constantly for smooth transitions
   // Block sizes based on zoom - progressive subdivision
   // Zoom 1-3: 8x8 blocks (64 cells)
   // Zoom 4-6: 4x4 blocks (16 cells)
@@ -60,13 +60,13 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "undergroundRegion",
-    minZoom: 3, // Show underground regions when zoom >= 3
+    minZoom: 20, // Show underground regions when zoom >= 20 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
   {
     name: "site",
-    minZoom: 5, // Show sites when zoom >= 5 - they subdivide the cell
+    minZoom: 30, // Show sites when zoom >= 30 - they subdivide the cell (much higher zoom)
     getChildren: (site) => {
       const structures = site.data?.structures?.structure || site.structures?.structure;
       if (!structures) return [];
@@ -76,7 +76,7 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "structure",
-    minZoom: 15, // Show structures when zoom >= 15 - they subdivide the site
+    minZoom: 50, // Show structures when zoom >= 50 - they subdivide the site (much higher zoom)
     getChildren: (structure) => {
       // Structures contain inhabitants (historical figures)
       return structure.inhabitants || [];
@@ -85,19 +85,19 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "figure",
-    minZoom: 40, // Show figures when zoom >= 40 - they subdivide the structure
+    minZoom: 80, // Show figures when zoom >= 80 - they subdivide the structure (much higher zoom)
     getChildren: () => [], // Figures are leaf nodes
     sizeRatio: 1.0, // Figures fill the entire structure when visible (fractal subdivision)
   },
   {
     name: "cellFigure",
-    minZoom: 8, // Show cell-level figures when zoom >= 8
+    minZoom: 25, // Show cell-level figures when zoom >= 25 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
   {
     name: "writtenContent",
-    minZoom: 10, // Show written contents (books) when zoom >= 10
+    minZoom: 35, // Show written contents (books) when zoom >= 35 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
@@ -547,13 +547,15 @@ function WorldMap({
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     // Subdivision radius based on zoom - cells closer to center subdivide first
-    // More progressive: radius increases smoothly with zoom
-    // At zoom 1: radius = 2 cells
-    // At zoom 5: radius = ~4 cells
-    // At zoom 10: radius = ~8 cells
-    const baseRadius = CELL_SIZE * 2.5; // Base radius at zoom 1
-    const zoomFactor = 1.3; // How much radius increases per zoom level
-    const maxRadius = baseRadius * Math.pow(zoomFactor, Math.max(0, zoom - 1));
+    // Only subdivide at very high zoom levels - fractal should appear only when zooming in a lot
+    // At zoom < 30: no subdivision (radius = 0)
+    // At zoom 30-50: small radius
+    // At zoom 50+: larger radius
+    const baseRadius = CELL_SIZE * 2.5; // Base radius
+    const zoomFactor = 1.2; // How much radius increases per zoom level
+    const minZoomForSubdivision = 30; // Only start subdividing at zoom 30+
+    const effectiveZoom = Math.max(0, zoom - minZoomForSubdivision);
+    const maxRadius = effectiveZoom > 0 ? baseRadius * Math.pow(zoomFactor, effectiveZoom / 5) : 0;
     
     // Cells closer to center and within radius should subdivide
     return distance <= maxRadius;
@@ -1577,25 +1579,11 @@ function WorldMap({
           const focusChanged = !oldFocused || !focusedCell || oldFocused.key !== focusedCell.key;
           const transform = event.transform;
           
-          // Throttle zoom updates for smoother performance
-          // Only update if zoom changed significantly (to avoid excessive re-renders)
-          const zoomDelta = Math.abs(k - lastRenderedZoomRef.current);
-          const shouldUpdateBlocks = zoomDelta > 0.5 || zoomChanged; // Update on significant zoom change or hierarchy change
-          
-          // Clear any pending update
-          if (zoomUpdateTimeoutRef.current) {
-            clearTimeout(zoomUpdateTimeoutRef.current);
-          }
-          
-          // Throttle updates - only update after zoom has settled
-          zoomUpdateTimeoutRef.current = setTimeout(() => {
-            // Only update if zoom changed significantly
-            const currentZoomDelta = Math.abs(k - lastRenderedZoomRef.current);
-            if (shouldUpdateBlocks || currentZoomDelta > 0.3) {
-              lastRenderedZoomRef.current = k;
-              
-              // Use requestAnimationFrame for smooth rendering
-              requestAnimationFrame(() => {
+          // Update constantly for smooth transitions - no throttling
+          // Use requestAnimationFrame for smooth rendering
+          requestAnimationFrame(() => {
+            lastRenderedZoomRef.current = k;
+            
             // Rebuild based on current zoom and viewport
             const svgNode = svgRef.current;
             const allCells = worldData.cells;
@@ -1636,9 +1624,7 @@ function WorldMap({
                 renderSingleBlock(item.block, xScale, yScale, g);
               }
             });
-              });
-            }
-          }, LOD_CONFIG.zoomUpdateThrottle);
+          });
         }
       });
 
