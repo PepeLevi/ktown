@@ -41,9 +41,6 @@ def attach_books_to_historical_figures(df_world_dict, json_books_arg):
     # modify only historic_figures
     hf_container = df_world_dict.setdefault('historical_figures', {})
 
-    # fill books key with result of book mapping
-    hf_container['books'] = books_map
-
     hist_list = hf_container.get('historical_figure')
     single = isinstance(hist_list, dict)
 
@@ -126,6 +123,7 @@ else:
 # process books data if available
 if json_books is not None:
     attach_books_to_historical_figures(json_legends_new, json_books)
+    # json_legends_new['historical_figures'].pop('books', None)
 
 json_encod_dict = {
    'json_map': {'encoding': 'utf-8', 'data': json_legends_new},
