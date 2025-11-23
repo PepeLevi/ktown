@@ -123,7 +123,6 @@ else:
 # process books data if available
 if json_books is not None:
     attach_books_to_historical_figures(json_legends_new, json_books)
-    # json_legends_new['historical_figures'].pop('books', None)
 
 json_encod_dict = {
    'json_map': {'encoding': 'utf-8', 'data': json_legends_new},
