@@ -1,6 +1,6 @@
 :root {
-  --primary-bg-color: #020617;
-  --primary-color: #39ff14;
+  --primary-bg-color: #797979;
+  --primary-color: #01ff49;
   --regPad: 0.2px;
 }
 
@@ -8,6 +8,7 @@ body {
   margin: 0;
   background: var(--primary-bg-color);
   color: var(--primary-color);
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 p {
@@ -15,11 +16,11 @@ p {
   color: var(--primary-color);
 }
 .app-header {
-  padding: var(--regPad);
+  padding: 5px;
   left: 0;
   right: 0;
   margin: 0;
-  border-bottom: 1px solid var(--primary-color);
+  border-bottom: 5px solid var(--primary-color);
   z-index: 9999;
   display: flex;
   flex-direction: row-reverse;
@@ -72,11 +73,13 @@ p {
   right: 0;
   width: 40%;
   overflow-y: scroll;
+  border: 5px solid var(--primary-color);
 }
 
 .map-wrapper {
   flex: 1;
   position: relative;
+  height: calc(100% - 0px);
 }
 
 .map-wrapper svg {
@@ -147,7 +150,7 @@ p {
 }
 
 /* experiement with blend modes on map objects */
-.site-marker {
+/* .site-marker {
   mix-blend-mode: screen;
 }
 .figure-marker {
@@ -156,7 +159,9 @@ p {
 .cell {
   mix-blend-mode: color-dodge;
 }
-
+.structure-marker {
+  mix-blend-mode: exclusion;
+} */
 .texture-previews {
   width: 100px;
   height: 100px;
@@ -241,4 +246,9 @@ button:hover p {
 button:hover .cat_headline {
   margin-top: 50px;
   border-top: 2px solid var(--primary-bg-color);
+}
+
+.book-content button {
+  width: auto;
+  display: inline-block;
 }

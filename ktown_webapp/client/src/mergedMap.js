@@ -2,11 +2,10 @@
 import React, { useEffect, useRef } from "react";
 import * as d3 from "d3";
 import {
-  REGION_TEXTURES,
-  SITE_TEXTURES,
-  FIGURE_TEXTURES,
-  DEFAULT_TEXTURE,
-} from "./regionTextures";
+  getRegionTex as proceduralRegionTex,
+  getSiteTex as proceduralSiteTex,
+  getFigureTex as proceduralFigureTex,
+} from "./proceduralTextures";
 
 const regionColor = "yellow";
 const siteColor = "var(--primary-color)";
@@ -29,6 +28,14 @@ const ZOOM_BY_KIND = {
   structure: 50,
   figure: 80,
   book: 120,
+};
+
+// when each level starts to appear (tweak as you like)
+const HIERARCHY_VISIBILITY = {
+  site: 20,
+  structure: 80,
+  figure: 200,
+  book: 350,
 };
 
 function calculateGridPositions(
@@ -92,11 +99,53 @@ function WorldMap({
   const mapWidthRef = useRef(0); // store map width
   const mapHeightRef = useRef(0); // store map height
 
-  const regionTypesRef = useRef([]);
-  const siteTypesRef = useRef([]);
-  const figureKindsRef = useRef(["default"]);
+  const zoomStateRef = useRef({ x: 0, y: 0, k: 10 });
+  const currentZoomRef = useRef(10);
 
   const sanitizeKey = (val) => String(val || "Unknown").replace(/\s+/g, "");
+
+  const sanitizeForSelector = (val) =>
+    String(val || "unknown")
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+
+  // wrappers so we can still call getRegionTex/type-only in other places
+  const getRegionTex = (type, key) => proceduralRegionTex?.(type, key) ?? null;
+  const getSiteTex = (type, key) => proceduralSiteTex?.(type, key) ?? null;
+  const getFigureTex = (hf, key) => proceduralFigureTex?.(hf, key) ?? null;
+
+  const getPatternId = (kind, key) =>
+    `pattern-${kind}-${sanitizeForSelector(`${kind}-${key}`)}`;
+
+  const getOrCreatePattern = (defsSelection, patternKey, textureUrl) => {
+    if (!defsSelection || defsSelection.empty() || !textureUrl) return null;
+
+    const pid = sanitizeForSelector(`pattern-${patternKey}`);
+    let pattern = defsSelection.select(`#${pid}`);
+    if (!pattern.empty()) return pid;
+
+    pattern = defsSelection
+      .append("pattern")
+      .attr("id", pid)
+      .attr("patternUnits", "objectBoundingBox")
+      .attr("patternContentUnits", "objectBoundingBox")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", 1)
+      .attr("height", 1);
+
+    pattern
+      .append("image")
+      .attr("href", textureUrl)
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", 1)
+      .attr("height", 1)
+      .attr("preserveAspectRatio", "none");
+
+    return pid;
+  };
 
   // helper: accept single object or array and always return array
   const normalizeToArray = (value) => {
@@ -128,19 +177,6 @@ function WorldMap({
   const handleLabelClick = (d) => {
     console.log("clicks label", d);
   };
-
-  const getRegionTex = (type) =>
-    (type && REGION_TEXTURES[type]) || DEFAULT_TEXTURE;
-
-  const getSiteTex = (type) => {
-    if (!type) return SITE_TEXTURES.default || DEFAULT_TEXTURE;
-    const key = String(type).toLowerCase();
-    return SITE_TEXTURES[key] || SITE_TEXTURES.default || DEFAULT_TEXTURE;
-  };
-
-  const getFigureTex = (hf) => FIGURE_TEXTURES.default || DEFAULT_TEXTURE;
-
-  const getPatternId = (kind, key) => `pattern-${kind}-${sanitizeKey(key)}`;
 
   const zoomToPoint = (x, y, targetK = 8, duration = 750) => {
     const svgNode = svgRef.current;
@@ -181,89 +217,6 @@ function WorldMap({
 
     // clamp to global limits
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k));
-  };
-
-  const createOrUpdatePatterns = (defsSelection, k = 1) => {
-    if (!defsSelection || defsSelection.empty()) return;
-
-    defsSelection.selectAll("pattern").remove();
-
-    const baseSize = CELL_SIZE;
-    const patternSize = baseSize / k;
-
-    // regions
-    regionTypesRef.current.forEach((type) => {
-      const texUrl = getRegionTex(type);
-      if (!texUrl) return;
-      const pid = getPatternId("region", type);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", patternSize)
-        .attr("height", patternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", patternSize)
-        .attr("height", patternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
-
-    // sites
-    const sitePatternSize = CELL_SIZE;
-
-    siteTypesRef.current.forEach((type) => {
-      const texUrl = getSiteTex(type);
-      if (!texUrl) return;
-      const pid = getPatternId("site", type);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", sitePatternSize)
-        .attr("height", sitePatternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", sitePatternSize)
-        .attr("height", sitePatternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
-
-    // figures
-    const figPatternSize = (CELL_SIZE * 0.6) / k;
-
-    figureKindsRef.current.forEach((kind) => {
-      const texUrl =
-        kind === "default" ? FIGURE_TEXTURES.default || DEFAULT_TEXTURE : null;
-      if (!texUrl) return;
-      const pid = getPatternId("fig", kind);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", figPatternSize)
-        .attr("height", figPatternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", figPatternSize)
-        .attr("height", figPatternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
   };
 
   // approximate multi-line word-wrap for SVG text
@@ -322,6 +275,51 @@ function WorldMap({
     return { lines, truncated };
   }
 
+  const updateVisibility = (k) => {
+    const svg = d3.select(svgRef.current);
+    const g = svg.select("g");
+    if (g.empty()) return;
+
+    const showSites = k >= HIERARCHY_VISIBILITY.site;
+    const showStructures = k >= HIERARCHY_VISIBILITY.structure;
+    const showFigures = k >= HIERARCHY_VISIBILITY.figure;
+    const showBooks = k >= HIERARCHY_VISIBILITY.book;
+
+    // sites
+    g.selectAll("rect.site-marker").style("opacity", showSites ? 1 : 0);
+    g.selectAll("text.site-label").style("opacity", showSites ? 1 : 0);
+
+    // structures
+    g.selectAll("rect.structure-marker").style(
+      "opacity",
+      showStructures ? 1 : 0
+    );
+    g.selectAll("text.structure-label").style(
+      "opacity",
+      showStructures ? 1 : 0
+    );
+
+    // figures
+    g.selectAll("rect.figure-marker").style("opacity", showFigures ? 1 : 0);
+    g.selectAll("text.figure-label").style("opacity", showFigures ? 1 : 0);
+
+    // books
+    g.selectAll("foreignObject.book-fo").style("opacity", showBooks ? 1 : 0);
+
+    // make parents more transparent as deeper levels appear
+    let cellOpacity = 1;
+    if (showSites) cellOpacity *= 0.85;
+    if (showStructures) cellOpacity *= 0.75;
+    if (showFigures) cellOpacity *= 0.65;
+
+    g.selectAll("rect.cell").style("opacity", cellOpacity);
+
+    let siteOpacity = showSites ? 1 : 0;
+    if (showStructures) siteOpacity *= 0.8;
+    if (showFigures) siteOpacity *= 0.6;
+    g.selectAll("rect.site-marker").style("opacity", siteOpacity);
+  };
+
   // 1) build map & markers
   useEffect(() => {
     if (!worldData || !worldData.cells?.length) return;
@@ -332,6 +330,173 @@ function WorldMap({
       MAX_RENDERED_CELLS && allCells.length > MAX_RENDERED_CELLS
         ? allCells.slice(0, MAX_RENDERED_CELLS)
         : allCells;
+
+    const minX = d3.min(cells, (d) => d.x) ?? 0;
+    const maxX = d3.max(cells, (d) => d.x) ?? 0;
+    const minY = d3.min(cells, (d) => d.y) ?? 0;
+    const maxY = d3.max(cells, (d) => d.y) ?? 0;
+
+    const nRows = maxX - minX + 1;
+    const nCols = maxY - minY + 1;
+
+    const width = nCols * (CELL_SIZE + CELL_GAP) + CELL_GAP;
+    const height = nRows * (CELL_SIZE + CELL_GAP) + CELL_GAP;
+
+    mapWidthRef.current = width;
+    mapHeightRef.current = height;
+
+    const svg = d3
+      .select(svgRef.current)
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("width", "100%")
+      .attr("height", "100%");
+
+    svg.selectAll("*").remove();
+
+    const defs = svg.append("defs");
+    const g = svg.append("g");
+
+    const xScale = d3
+      .scaleLinear()
+      .domain([minY, maxY])
+      .range([CELL_GAP, width - CELL_GAP - CELL_SIZE]);
+
+    const yScale = d3
+      .scaleLinear()
+      .domain([minX, maxX])
+      .range([CELL_GAP, height - CELL_GAP - CELL_SIZE]);
+
+    // --- NEW LAYOUT HELPERS: children fill parent with margin ---
+
+    const getCellBox = (cell) => ({
+      x: xScale(cell.y),
+      y: yScale(cell.x),
+      width: CELL_SIZE,
+      height: CELL_SIZE,
+    });
+
+    function getChildBox(parentBox, index, count) {
+      if (!parentBox || count <= 0) {
+        return {
+          x: parentBox?.x ?? 0,
+          y: parentBox?.y ?? 0,
+          width: 0,
+          height: 0,
+        };
+      }
+
+      const margin = parentBox.width * 0.05;
+      const innerX = parentBox.x + margin;
+      const innerY = parentBox.y + margin;
+      const innerW = Math.max(parentBox.width - margin * 2, 0);
+      const innerH = Math.max(parentBox.height - margin * 2, 0);
+
+      if (count === 1) {
+        return {
+          x: innerX,
+          y: innerY,
+          width: innerW,
+          height: innerH,
+        };
+      }
+
+      const horizontalStrips = innerW >= innerH;
+
+      if (horizontalStrips) {
+        const childW = innerW / count;
+        return {
+          x: innerX + index * childW,
+          y: innerY,
+          width: childW,
+          height: innerH,
+        };
+      } else {
+        const childH = innerH / count;
+        return {
+          x: innerX,
+          y: innerY + index * childH,
+          width: innerW,
+          height: childH,
+        };
+      }
+    }
+
+    const getSiteBox = (cell, siteIdx, siteCount) => {
+      const cellBox = getCellBox(cell);
+      return getChildBox(cellBox, siteIdx, siteCount || 1);
+    };
+
+    const getStructureBox = (
+      cell,
+      siteIdx,
+      siteCount,
+      structIdx,
+      structCount
+    ) => {
+      const siteBox = getSiteBox(cell, siteIdx, siteCount || 1);
+      return getChildBox(siteBox, structIdx, structCount || 1);
+    };
+
+    const getFigureParentBox = (
+      cell,
+      siteIdx,
+      siteCount,
+      structIdx,
+      structCount
+    ) => {
+      if (structIdx != null && structCount > 0) {
+        return getStructureBox(
+          cell,
+          siteIdx,
+          siteCount || 1,
+          structIdx,
+          structCount
+        );
+      }
+      return getSiteBox(cell, siteIdx, siteCount || 1);
+    };
+
+    const getFigureBox = (
+      cell,
+      siteIdx,
+      siteCount,
+      structIdx,
+      structCount,
+      figIdx,
+      figCount
+    ) => {
+      const parentBox = getFigureParentBox(
+        cell,
+        siteIdx,
+        siteCount,
+        structIdx,
+        structCount
+      );
+      return getChildBox(parentBox, figIdx, figCount || 1);
+    };
+
+    const getBookBox = (
+      cell,
+      siteIdx,
+      siteCount,
+      structIdx,
+      structCount,
+      figIdx,
+      figCount,
+      bookIdx,
+      bookCount
+    ) => {
+      const figureBox = getFigureBox(
+        cell,
+        siteIdx,
+        siteCount,
+        structIdx,
+        structCount,
+        figIdx,
+        figCount
+      );
+      return getChildBox(figureBox, bookIdx, bookCount || 1);
+    };
 
     // --- generic renderer for sites / structures / figures ---
     function drawEntityLayer({
@@ -350,6 +515,7 @@ function WorldMap({
       composeEntity,
       getZoomParams,
       getBoundingBox, // optional (d) => { x, y, width, height }
+      layoutChildBox, // optional (d, parentBox) => { x, y, width, height }
     }) {
       if (!markers || !markers.length) {
         g.selectAll(`rect.${rectClass}`).remove();
@@ -373,6 +539,8 @@ function WorldMap({
           ? labelFontSize(renderSize, d, parentBox)
           : labelFontSize;
 
+      const hasCustomLayout = typeof layoutChildBox === "function";
+
       // --- rects ---
       const rectSel = g.selectAll(`rect.${rectClass}`).data(markers, keyFn);
 
@@ -382,9 +550,21 @@ function WorldMap({
         .attr("class", rectClass)
         .style("cursor", "pointer");
 
-      rectEnter
-        .merge(rectSel)
+      const rectUpdate = rectEnter.merge(rectSel);
+
+      rectUpdate.each(function (d) {
+        if (hasCustomLayout) {
+          const parentBox = resolveParentBox(d);
+          const childBox = layoutChildBox(d, parentBox);
+          d._bbox = { ...childBox };
+          d._renderSize = Math.min(childBox.width, childBox.height);
+        }
+      });
+
+      rectUpdate
         .attr("x", (d) => {
+          if (hasCustomLayout && d._bbox) return d._bbox.x;
+
           const parentBox = resolveParentBox(d);
           const s = resolveSize(d, parentBox);
           const { x } = calculateGridPositions(
@@ -404,6 +584,8 @@ function WorldMap({
           return finalX;
         })
         .attr("y", (d) => {
+          if (hasCustomLayout && d._bbox) return d._bbox.y;
+
           const parentBox = resolveParentBox(d);
           const s = d._renderSize ?? resolveSize(d, parentBox);
           const { y } = calculateGridPositions(
@@ -422,8 +604,16 @@ function WorldMap({
 
           return finalY;
         })
-        .attr("width", (d) => d._renderSize || CELL_SIZE * 0.3)
-        .attr("height", (d) => d._renderSize || CELL_SIZE * 0.3)
+        .attr("width", (d) =>
+          hasCustomLayout && d._bbox
+            ? d._bbox.width
+            : d._renderSize || CELL_SIZE * 0.3
+        )
+        .attr("height", (d) =>
+          hasCustomLayout && d._bbox
+            ? d._bbox.height
+            : d._renderSize || CELL_SIZE * 0.3
+        )
         .each(function (d) {
           const rect = d3.select(this);
           const fill = getFill ? getFill(d) : "#9ca3af";
@@ -435,7 +625,7 @@ function WorldMap({
           }
         });
 
-      // tooltips
+      // tooltips (only added on enter)
       rectEnter
         .append("title")
         .text((d) => (getTitleText ? getTitleText(d) : ""));
@@ -453,49 +643,40 @@ function WorldMap({
       labelEnter.merge(labelSel).each(function (d) {
         const label = d3.select(this);
 
-        // prefer this entity's bbox (site, structure, figure, etc.)
         const entityBox = d._bbox || resolveParentBox(d);
 
         const s = d._renderSize || resolveSize(d, entityBox);
         const rawText = getLabelText ? getLabelText(d) : "";
 
-        const padding = s / 100; // in map units
+        const padding = entityBox.width * 0.01;
         const maxWidth = Math.max(1, entityBox.width - padding * 2);
         const maxHeight = Math.max(1, entityBox.height - padding * 2);
 
-        // --- 1) base font size from existing logic ---
         const baseFs = resolveFontSize(s, d, entityBox);
 
-        // --- 2) adjust based on text length ---
         const len = rawText ? rawText.length : 0;
         const MIN_FS = 0.8;
-        const MAX_FS = 8; // safety cap
+        const MAX_FS = 8;
 
-        // simple length-based scaling: longer text => smaller font
         let candidateFs = baseFs;
         if (len > 0) {
-          const refLen = 12; // length that "fits" at full baseFs
-          const factor = Math.min(1, refLen / len); // shrink if length > refLen
+          const refLen = 12;
+          const factor = Math.min(1, refLen / len);
           candidateFs = baseFs * factor;
         }
 
-        // also ensure it isn't taller than the box height
         candidateFs = Math.min(candidateFs, maxHeight / 1.1);
         candidateFs = Math.max(MIN_FS, Math.min(MAX_FS, candidateFs));
 
-        // --- 3) iterative shrink if we still truncate ---
         let fs = candidateFs;
         let wrapped = wrapLabelLines(rawText, maxWidth, fs, maxHeight);
 
-        // try a few times to make it fit
         let attempts = 0;
         const MAX_ATTEMPTS = 5;
 
         while (wrapped.truncated && fs > MIN_FS && attempts < MAX_ATTEMPTS) {
-          fs *= 0.8; // shrink a bit
-          if (fs < MIN_FS) {
-            fs = MIN_FS;
-          }
+          fs *= 0.8;
+          if (fs < MIN_FS) fs = MIN_FS;
           wrapped = wrapLabelLines(rawText, maxWidth, fs, maxHeight);
           attempts += 1;
         }
@@ -503,7 +684,7 @@ function WorldMap({
         const lines = wrapped.lines;
 
         const baseX = entityBox.x + padding;
-        const baseY = entityBox.y + fs + padding; // baseline of first line
+        const baseY = entityBox.y + fs + padding;
 
         label
           .attr("x", baseX)
@@ -548,187 +729,6 @@ function WorldMap({
       labelSel.exit().remove();
     }
 
-    const minX = d3.min(cells, (d) => d.x) ?? 0;
-    const maxX = d3.max(cells, (d) => d.x) ?? 0;
-    const minY = d3.min(cells, (d) => d.y) ?? 0;
-    const maxY = d3.max(cells, (d) => d.y) ?? 0;
-
-    const nRows = maxX - minX + 1;
-    const nCols = maxY - minY + 1;
-
-    const width = nCols * (CELL_SIZE + CELL_GAP) + CELL_GAP;
-    const height = nRows * (CELL_SIZE + CELL_GAP) + CELL_GAP;
-
-    mapWidthRef.current = width;
-    mapHeightRef.current = height;
-
-    const svg = d3
-      .select(svgRef.current)
-      .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("width", "100%")
-      .attr("height", "100%");
-
-    svg.selectAll("*").remove();
-
-    const defs = svg.append("defs");
-    const g = svg.append("g");
-
-    const xScale = d3
-      .scaleLinear()
-      .domain([minY, maxY])
-      .range([CELL_GAP, width - CELL_GAP - CELL_SIZE]);
-
-    const yScale = d3
-      .scaleLinear()
-      .domain([minX, maxX])
-      .range([CELL_GAP, height - CELL_GAP - CELL_SIZE]);
-
-    const getSiteBox = (cell, siteIdx, siteCount) => {
-      const baseX = xScale(cell.y);
-      const baseY = yScale(cell.x);
-
-      const siteSize = computeChildSize(
-        CELL_SIZE,
-        CELL_SIZE,
-        siteCount || 1,
-        0.85
-      );
-      const pos = calculateGridPositions(
-        siteIdx,
-        siteCount || 1,
-        siteSize,
-        CELL_SIZE,
-        CELL_SIZE
-      );
-
-      return {
-        x: baseX + pos.x,
-        y: baseY + pos.y,
-        width: siteSize,
-        height: siteSize,
-      };
-    };
-
-    const getStructureBox = (
-      cell,
-      siteIdx,
-      siteCount,
-      structIdx,
-      structCount
-    ) => {
-      const siteBox = getSiteBox(cell, siteIdx, siteCount);
-      const structSize = computeChildSize(
-        siteBox.width,
-        siteBox.height,
-        structCount || 1,
-        0.8
-      );
-      const pos = calculateGridPositions(
-        structIdx,
-        structCount || 1,
-        structSize,
-        siteBox.width,
-        siteBox.height
-      );
-
-      return {
-        x: siteBox.x + pos.x,
-        y: siteBox.y + pos.y,
-        width: structSize,
-        height: structSize,
-      };
-    };
-
-    const getFigureBox = (
-      cell,
-      siteIdx,
-      siteCount,
-      structIdx,
-      structCount,
-      figIdx,
-      figCount
-    ) => {
-      // if no structure, figures live directly in the site box
-      if (structIdx == null || structCount === 0) {
-        const siteBox = getSiteBox(cell, siteIdx, siteCount);
-        const figSize = computeChildSize(
-          siteBox.width,
-          siteBox.height,
-          figCount || 1,
-          0.8
-        );
-        const pos = calculateGridPositions(
-          figIdx,
-          figCount || 1,
-          figSize,
-          siteBox.width,
-          siteBox.height
-        );
-
-        return {
-          x: siteBox.x + pos.x,
-          y: siteBox.y + pos.y,
-          width: figSize,
-          height: figSize,
-        };
-      }
-
-      const structBox = getStructureBox(
-        cell,
-        siteIdx,
-        siteCount,
-        structIdx,
-        structCount
-      );
-      const figSize = computeChildSize(
-        structBox.width,
-        structBox.height,
-        figCount || 1,
-        0.8
-      );
-      const pos = calculateGridPositions(
-        figIdx,
-        figCount || 1,
-        figSize,
-        structBox.width,
-        structBox.height
-      );
-
-      return {
-        x: structBox.x + pos.x,
-        y: structBox.y + pos.y,
-        width: figSize,
-        height: figSize,
-      };
-    };
-
-    const regionTypesWithTextures = Array.from(
-      new Set(
-        cells.map((c) => c.region?.type).filter((t) => t && getRegionTex(t))
-      )
-    );
-
-    const siteTypesWithTextures = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site) => {
-        const siteType =
-          site?.fromFile2?.type ||
-          site?.fromFile1?.type ||
-          site?.type ||
-          "default";
-        if (getSiteTex(siteType)) siteTypesWithTextures.push(siteType);
-      });
-    });
-    const uniqueSiteTypesWithTextures = Array.from(
-      new Set(siteTypesWithTextures)
-    );
-
-    regionTypesRef.current = regionTypesWithTextures;
-    siteTypesRef.current = uniqueSiteTypesWithTextures;
-    figureKindsRef.current = ["default"];
-
-    createOrUpdatePatterns(defs, 1);
-
     // cells
     const cellsSelection = g.selectAll("rect.cell").data(cells, (d) => d.key);
 
@@ -743,11 +743,20 @@ function WorldMap({
       .style("cursor", "pointer");
 
     cellsEnter.merge(cellsSelection).each(function (d) {
-      const texUrl = getRegionTex(d.region?.type);
       const rect = d3.select(this);
+      const cellKey = d.key || `${d.x},${d.y}`;
+      const texUrl = getRegionTex(d.region?.type, cellKey);
 
-      const pid = getPatternId("region", d.region?.type);
-      rect.style("fill", `url(#${pid})`);
+      if (texUrl) {
+        const patternKey = `region-${d.region?.type || "default"}-${cellKey}`;
+        const pid = getOrCreatePattern(defs, patternKey, texUrl);
+        if (pid) {
+          rect.style("fill", `url(#${pid})`);
+          return;
+        }
+      }
+
+      rect.style("fill", "#111827");
     });
 
     cellsEnter
@@ -760,41 +769,9 @@ function WorldMap({
           `\nWritten contents: ${d.written_contents?.length || 0}`
       );
 
-    // cellsEnter.on("click", (_, d) => {
-    //   onCellClick?.(d);
-    //   onCellClick?.(null);
-
-    //   console.log("clicks celle", d);
-
-    //   const regionType = d.region?.type || null;
-    //   const regionTextureUrl = getRegionTex(regionType);
-
-    //   const composed = {
-    //     kind: "cell",
-    //     name: getCellName(d),
-    //     type: regionType,
-    //     textureUrl: regionTextureUrl,
-    //     cellCoords: { x: d.x, y: d.y },
-
-    //     cell: d,
-    //     region: d.region,
-
-    //     historical_figures: d.historical_figures || [],
-    //   };
-
-    //   onEntityClick?.(composed);
-
-    //   const svg = d3.select(svgRef.current);
-    //   const g = svg.select("g");
-    //   if (!g.empty()) {
-    //     const cx = xScale(d.y) + CELL_SIZE / 2;
-    //     const cy = yScale(d.x) + CELL_SIZE / 2;
-    //     zoomToPoint(cx, cy, 20);
-    //   }
-    // });
-
     cellsSelection.exit().remove();
 
+    // sites
     const siteMarkers = [];
     cells.forEach((cell) => {
       if (cell.sites && cell.sites.length) {
@@ -815,7 +792,6 @@ function WorldMap({
       rectClass: "site-marker",
       labelClass: "site-label",
 
-      // size based on CELL_SIZE & sites-in-cell
       size: (d, parentBox) =>
         computeChildSize(parentBox.width, parentBox.height, d.count, 0.85),
 
@@ -827,18 +803,22 @@ function WorldMap({
           d.site?.fromFile1?.type ||
           d.site?.type ||
           "default";
-        const texUrl = getSiteTex(type);
-        if (texUrl) {
-          const pid = getPatternId("site", type);
-          return `url(#${pid})`;
-        }
-        return "#9ca3af";
+
+        const key = `${d.cell.key || `${d.cell.x},${d.cell.y}`}-site-${
+          d.site.id || d.idx
+        }`;
+
+        const texUrl = getSiteTex(type, key);
+        if (!texUrl) return "#9ca3af";
+
+        const patternKey = `site-${type}-${key}`;
+        const pid = getOrCreatePattern(defs, patternKey, texUrl);
+        return pid ? `url(#${pid})` : "#9ca3af";
       },
 
       baseStroke: siteColor,
       baseStrokeWidth: 0.1,
 
-      // font size depends on rendered rect size
       labelFontSize: (s) => Math.max(2, s * 0.01),
       labelFill: siteColor,
 
@@ -891,8 +871,11 @@ function WorldMap({
         const cy = yScale(d.cell.x) + CELL_SIZE / 2;
         return { cx, cy, k: 20 };
       },
+
+      layoutChildBox: (d, parentBox) => getChildBox(parentBox, d.idx, d.count),
     });
 
+    // structures
     const structureMarkers = [];
     cells.forEach((cell) => {
       (cell.sites || []).forEach((site, siteIdx) => {
@@ -918,7 +901,6 @@ function WorldMap({
       rectClass: "structure-marker",
       labelClass: "structure-label",
 
-      // size based on the *site* bbox and structures-in-site
       size: (d, parentBox) =>
         computeChildSize(parentBox.width, parentBox.height, d.count, 0.8),
 
@@ -949,7 +931,7 @@ function WorldMap({
           kind: "structure",
           name,
           type: d.structure.type || null,
-          textureUrl: SITE_TEXTURES.default || DEFAULT_TEXTURE,
+          textureUrl: proceduralSiteTex?.("default"),
           cellCoords: { x: d.cell.x, y: d.cell.y },
 
           structure: d.structure,
@@ -973,45 +955,19 @@ function WorldMap({
           return { cx, cy, k };
         }
 
-        // fallback to cell center
         const cx = xScale(d.cell.y) + CELL_SIZE / 2;
         const cy = yScale(d.cell.x) + CELL_SIZE / 2;
         return { cx, cy, k: ZOOM_BY_KIND.structure };
       },
 
-      // parent bbox = site bbox (inside cell)
       getBoundingBox: (d) => {
-        const baseX = xScale(d.cell.y);
-        const baseY = yScale(d.cell.x);
-
-        const siteIdx = d.parentSiteIdx;
-        const siteCount = d.parentSiteCount || 1;
-
-        const siteSize = computeChildSize(
-          CELL_SIZE,
-          CELL_SIZE,
-          siteCount,
-          0.85
-        );
-        const sitePos = calculateGridPositions(
-          siteIdx,
-          siteCount,
-          siteSize,
-          CELL_SIZE,
-          CELL_SIZE
-        );
-
-        return {
-          x: baseX + sitePos.x,
-          y: baseY + sitePos.y,
-          width: siteSize,
-          height: siteSize,
-        };
+        return getSiteBox(d.cell, d.parentSiteIdx, d.parentSiteCount || 1);
       },
+
+      layoutChildBox: (d, parentBox) => getChildBox(parentBox, d.idx, d.count),
     });
 
-    // --- FIGURES: nested in structure.inhabitants (or in site if no structures) ---
-
+    // figures
     const figureMarkers = [];
     cells.forEach((cell) => {
       (cell.sites || []).forEach((site, siteIdx) => {
@@ -1040,7 +996,6 @@ function WorldMap({
             });
           });
         } else {
-          // fallback: figures directly in site if no structures
           const siteFigures = normalizeToArray(site.historical_figures);
           siteFigures.forEach((hf, figIdx) => {
             figureMarkers.push({
@@ -1068,7 +1023,6 @@ function WorldMap({
       rectClass: "figure-marker",
       labelClass: "figure-label",
 
-      // size based on the *structure* or *site* bbox and figures-in-parent
       size: (d, parentBox) =>
         computeChildSize(
           parentBox.width,
@@ -1083,12 +1037,14 @@ function WorldMap({
         }`,
 
       getFill: (d) => {
-        const texUrl = getFigureTex(d.hf);
-        if (texUrl) {
-          const pid = getPatternId("fig", "default");
-          return `url(#${pid})`;
-        }
-        return "#e5e7eb";
+        const key =
+          d.hf.id || `${d.cell.key || `${d.cell.x},${d.cell.y}`}-hf-${d.idx}`;
+        const texUrl = getFigureTex(d.hf, key);
+        if (!texUrl) return "#e5e7eb";
+
+        const patternKey = `fig-${key}`;
+        const pid = getOrCreatePattern(defs, patternKey, texUrl);
+        return pid ? `url(#${pid})` : "#e5e7eb";
       },
 
       baseStroke: figureColor,
@@ -1148,39 +1104,37 @@ function WorldMap({
           return { cx, cy, k };
         }
 
-        // hard fallback
         const cx = xScale(d.cell.y) + CELL_SIZE / 2;
         const cy = yScale(d.cell.x) + CELL_SIZE / 2;
         return { cx, cy, k: ZOOM_BY_KIND.figure };
       },
 
-      // parent bbox = figure's parent (structure or site)
       getBoundingBox: (d) =>
-        getFigureBox(
+        getFigureParentBox(
           d.cell,
           d.parentSiteIdx,
           d.parentSiteCount,
           d.parentStructIdx,
-          d.parentStructCount,
-          d.parentFigureIdx,
-          d.parentFigureCount
+          d.parentStructCount
         ),
+
+      layoutChildBox: (d, parentBox) => getChildBox(parentBox, d.idx, d.count),
     });
 
-    // --- BOOKS: nested inside inhabitant.books, parent = figure box ---
-
+    // books
     const bookMarkers = [];
     cells.forEach((cell) => {
       (cell.sites || []).forEach((site, siteIdx) => {
-        const structures = normalizeToArray(site.structures?.structure);
+        const structures = normalizeToArray(site.structures);
 
         if (structures.length) {
           structures.forEach((structure, structIdx) => {
-            const inhabitants = normalizeToArray(structure.inhabitants);
+            const inhabitants = normalizeToArray(structure.inhabitant);
 
             inhabitants.forEach((inhabitant, figIdx) => {
               const books = normalizeToArray(inhabitant.books);
-              books.forEach((book, bookIdx) => {
+
+              inhabitant.books?.forEach((book, bookIdx) => {
                 bookMarkers.push({
                   kind: "book",
                   cell,
@@ -1189,7 +1143,7 @@ function WorldMap({
                   inhabitant,
                   book,
                   idx: bookIdx,
-                  count: books.length, // siblings per figure
+                  count: books.length,
                   parentSiteIdx: siteIdx,
                   parentSiteCount: (cell.sites || []).length,
                   parentStructIdx: structIdx,
@@ -1201,7 +1155,7 @@ function WorldMap({
             });
           });
         } else {
-          // optional: books from site-level figures if you ever need it
+          // optional: books from site-level figures if needed
         }
       });
     });
@@ -1231,47 +1185,25 @@ function WorldMap({
       foEnter
         .merge(foSel)
         .each(function (d) {
-          // parent = figure box
-          const figBox = getFigureBox(
+          const bookBox = getBookBox(
             d.cell,
             d.parentSiteIdx,
             d.parentSiteCount,
             d.parentStructIdx,
             d.parentStructCount,
             d.parentFigureIdx,
-            d.parentFigureCount
-          );
-
-          // size of each book inside the figure
-          const bookSize = computeChildSize(
-            figBox.width,
-            figBox.height,
-            d.count,
-            0.4
-          );
-          const pos = calculateGridPositions(
+            d.parentFigureCount,
             d.idx,
-            d.count,
-            bookSize,
-            figBox.width,
-            figBox.height
+            d.count
           );
 
-          const x = figBox.x + pos.x;
-          const y = figBox.y + pos.y;
-
-          d._bookBox = {
-            x,
-            y,
-            width: bookSize,
-            height: bookSize,
-          };
+          d._bookBox = { ...bookBox };
 
           d3.select(this)
-            .attr("x", x)
-            .attr("y", y)
-            .attr("width", bookSize)
-            .attr("height", bookSize);
+            .attr("x", bookBox.x)
+            .attr("y", bookBox.y)
+            .attr("width", bookBox.width)
+            .attr("height", bookBox.height);
         })
         .html((d) => {
           const book = d.book || {};
@@ -1285,45 +1217,36 @@ function WorldMap({
             book.raw_html ||
             `<p>${title}</p><p>${text_content}</p>`;
 
-          // small styled HTML card with links preserved
           return `
         <div xmlns="http://www.w3.org/1999/xhtml"
              style="
                width: 100%;
                height: 100%;
+               background-color: black;
                box-sizing: border-box;
-       
-              //  background: rgba(15,23,42,0.9);
-              //  border: 0.5px solid ${bookColor};
                color: #e5e7eb;
                font-size: 1px;
                line-height: 1.2;
                overflow: hidden;
-               overflow-y:
                text-overflow: ellipsis;
                display: -webkit-box;
-
                -webkit-line-clamp: 4;
                -webkit-box-orient: vertical;
              ">
-          ${html}
+             <div>
+              ${html}
+          </div>
         </div>
       `;
         });
 
-      // click handler: foreignObject itself
       foEnter.on("click", function (event, d) {
         event.stopPropagation();
         onCellClick?.(null);
 
         const book = d.book || {};
         const bookTitle = getBookTitle(book) || "Book";
-        const bookHtml =
-          book.html ||
-          book.content_html ||
-          book.text ||
-          book.raw_html ||
-          `<p>${bookTitle}</p>`;
+        const bookHtml = `<p>${bookTitle}</p><p>${book?.raw?.text_content}</p>`;
 
         const siteType =
           d.site?.fromFile2?.type ||
@@ -1370,8 +1293,11 @@ function WorldMap({
       foSel.exit().remove();
     }
 
-    // finally call it:
     drawBookLayer();
+
+    // apply visibility based on current zoom
+    const initialK = zoomStateRef.current?.k ?? 10;
+    updateVisibility(initialK);
   }, [worldData]);
 
   // zoom
@@ -1380,7 +1306,6 @@ function WorldMap({
 
     const svg = d3.select(svgRef.current);
     const g = svg.select("g");
-    const defs = svg.select("defs");
 
     if (g.empty()) return;
 
@@ -1397,7 +1322,10 @@ function WorldMap({
       .on("zoom", (event) => {
         const { x, y, k } = event.transform;
         g.attr("transform", `translate(${x},${y}) scale(${k})`);
-        createOrUpdatePatterns(defs, k);
+
+        zoomStateRef.current = { x, y, k };
+        currentZoomRef.current = k;
+        updateVisibility(k);
       });
 
     svg.call(zoom);
@@ -1406,6 +1334,14 @@ function WorldMap({
 
     const initialTransform = d3.zoomIdentity.translate(0, 0).scale(10);
     svg.call(zoom.transform, initialTransform);
+
+    zoomStateRef.current = {
+      x: initialTransform.x,
+      y: initialTransform.y,
+      k: initialTransform.k,
+    };
+    currentZoomRef.current = initialTransform.k;
+    updateVisibility(initialTransform.k);
 
     return () => {
       svg.on(".zoom", null);
@@ -1418,6 +1354,9 @@ function WorldMap({
     if (!svgNode) return;
 
     const svg = d3.select(svgNode);
+
+    const currentTransform = d3.zoomTransform(svgNode);
+    const currentK = currentTransform?.k || zoomStateRef.current?.k || 1;
 
     const cellRects = svg.selectAll("rect.cell");
     const siteRects = svg.selectAll("rect.site-marker");
@@ -1459,10 +1398,10 @@ function WorldMap({
         namesEqual(selectedCellName, cellName);
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 5);
+        rect.style("stroke", "#f97316").style("stroke-width", 5 / currentK);
         zoomOnElementCenter(rect, "cell");
       } else {
-        rect.style("stroke", "none").style("stroke-width", 0);
+        rect.style("stroke", "none").style("stroke-width", 1 / currentK);
       }
     });
 
@@ -1481,10 +1420,10 @@ function WorldMap({
         namesEqual(selectedSiteName, siteName);
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        rect.style("stroke", "#f97316").style("stroke-width", 30 / currentK);
         zoomOnElementCenter(rect, "site");
       } else {
-        rect.style("stroke", siteColor).style("stroke-width", 0.1);
+        rect.style("stroke", siteColor).style("stroke-width", 1 / currentK);
       }
     });
 
@@ -1504,10 +1443,12 @@ function WorldMap({
         namesEqual(selectedStructName, structName);
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        rect.style("stroke", "#f97316").style("stroke-width", 20 / currentK);
         zoomOnElementCenter(rect, "structure");
       } else {
-        rect.style("stroke", structureColor).style("stroke-width", 0.1);
+        rect
+          .style("stroke", structureColor)
+          .style("stroke-width", 1 / currentK);
       }
     });
 
@@ -1527,10 +1468,10 @@ function WorldMap({
         namesEqual(selectedFigName, figName);
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
+        rect.style("stroke", "#f97316").style("stroke-width", 10 / currentK);
         zoomOnElementCenter(rect, "figure");
       } else {
-        rect.style("stroke", figureColor).style("stroke-width", 0);
+        rect.style("stroke", figureColor).style("stroke-width", 1 / currentK);
       }
     });
 
@@ -1548,7 +1489,7 @@ function WorldMap({
         namesEqual(selectedBookTitle, bookTitle);
 
       if (isSelected) {
-        fo.style("filter", "drop-shadow(0 0 1px #f97316)");
+        fo.style("filter", "drop-shadow(1 1 1px var(--primary-color))");
         zoomOnElementCenter(fo, "book");
       } else {
         fo.style("filter", null);
