@@ -214,7 +214,7 @@ function FigureDetailView({
       {figure.books && isTopLevel && (
         <>
           <p className="cat_headline">books</p>
-          {figure.books.map((b, i) => (
+          {normalizeToArray(figure.books).map((b, i) => (
             <div key={i}>
               <BookDetailView
                 book={b}
@@ -232,8 +232,8 @@ function FigureDetailView({
         <>
           <p className="cat_headline">connections</p>
           <div className="flex-column subFigures">
-            {figure.hf_link.length &&
-              figure.hf_link?.map((s, i) => (
+            {normalizeToArray(figure.hf_link).length > 0 &&
+              normalizeToArray(figure.hf_link).map((s, i) => (
                 <>
                   {figures[s.hfid] ? (
                     <button
@@ -312,7 +312,16 @@ function BookDetailView({
   );
 }
 
+// Helper function to normalize values to arrays
+const normalizeToArray = (value) => {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+};
+
 function StructureDetailView({ structure, handleEntityClick, books, figures }) {
+  // Normalize inhabitant to array (can be single object or array)
+  const inhabitants = normalizeToArray(structure.inhabitant || structure.inhabitants);
+  
   return (
     <div>
       <button
@@ -323,27 +332,25 @@ function StructureDetailView({ structure, handleEntityClick, books, figures }) {
         {structure.name}
       </button>
 
-      {structure.inhabitant && (
+      {inhabitants.length > 0 && (
         <>
           <p className="cat_headline">structure inhabitant:</p>
-          {structure.inhabitant &&
-            Array.isArray(structure.inhabitant) &&
-            structure.inhabitant.map((si, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  handleEntityClick(createSelectedEntity("figure", si));
-                }}
-              >
-                <FigureDetailView
-                  figure={si}
-                  figures={figures}
-                  isTopLevel={true}
-                  books={books}
-                  handleEntityClick={handleEntityClick}
-                />
-              </button>
-            ))}
+          {inhabitants.map((si, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                handleEntityClick(createSelectedEntity("figure", si));
+              }}
+            >
+              <FigureDetailView
+                figure={si}
+                figures={figures}
+                isTopLevel={true}
+                books={books}
+                handleEntityClick={handleEntityClick}
+              />
+            </button>
+          ))}
         </>
       )}
     </div>
