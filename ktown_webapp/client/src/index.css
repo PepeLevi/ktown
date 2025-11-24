@@ -248,44 +248,28 @@ g.hover {
   background-color: green;
 }
 
-rect {
-  mix-blend-mode: difference;
-}
-
 rect.cell-type-region {
-  stroke: #222;
-  stroke-width: 0.2;
-  background-color: #10b981;
   fill: green;
 }
 
 rect.cell-type-site {
-  stroke: #2563eb;
-  stroke-width: 0.4;
   fill: blue;
 }
 
 rect.cell-type-structure {
-  stroke: #16a34a;
-  stroke-width: 0.4;
-  fill: green;
+  fill: #ec4899;
 }
 
 rect.cell-type-figure {
-  stroke: #ec4899;
-  stroke-width: 0.6;
   fill: red;
 }
 
 rect.cell-type-writtenContent {
-  stroke: #f97316;
-  stroke-width: 0.6;
+  fill: #f97316;
 }
 
 rect.cell-type-undergroundRegion {
-  stroke: #0ea5e9;
-  stroke-dasharray: 1 1;
-  fill: black;
+  fill: brown;
 }
 
 rect.cell-type-ocean {

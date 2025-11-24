@@ -125,28 +125,38 @@ const getSiteStructures = (site) => {
   if (!site) return [];
 
   let structures = [];
+
+  console.log("WHAT SITE AM I LOOKING FOR STRUCTURES IN???", site);
+
   // Preferred: already flattened on the site
   if (Array.isArray(site.structures)) {
     structures = site.structures;
+
+    console.log("returns structures from array", structures);
+
+    return structures;
+  }
+  if (site.structure) {
+    structures = site.structure;
+
+    console.log("returns structures from obj", structures);
+
+    return structures;
   }
 
   // DF style: site.structures.structure
-  if (site.structures?.structure) {
-    structures = normalizeToArray(site.structures.structure);
-  }
+  // if (site.structures?.structure) {
+  //   structures = normalizeToArray(site.structures.structure);
+  // }
 
-  // Legends / extra files
-  if (site.fromFile2?.structures?.structure) {
-    structures = normalizeToArray(site.fromFile2.structures.structure);
-  }
+  // // Legends / extra files
+  // if (site.fromFile2?.structures?.structure) {
+  //   structures = normalizeToArray(site.fromFile2.structures.structure);
+  // }
 
-  if (site.fromFile1?.structures?.structure) {
-    structures = normalizeToArray(site.fromFile1.structures.structure);
-  }
-
-  if (structures.length > 0) {
-    console.log("has structures", structures);
-  }
+  // if (site.fromFile1?.structures?.structure) {
+  //   structures = normalizeToArray(site.fromFile1.structures.structure);
+  // }
 
   return structures;
 };
@@ -417,98 +427,98 @@ function WorldMap({
   };
 
   // Render a single block - procedurally combined cells, respects original positions
-  const renderSingleBlock = (block, xScale, yScale, g) => {
-    if (!block || !block.cells || block.cells.length === 0) return;
+  // const renderSingleBlock = (block, xScale, yScale, g) => {
+  //   if (!block || !block.cells || block.cells.length === 0) return;
 
-    // Calculate block bounds in screen space using actual cell positions
-    // This ensures the block covers exactly the area of its cells (no overlaps)
-    const blockMinX = Math.min(...block.cells.map((c) => xScale(c.y)));
-    const blockMaxX = Math.max(...block.cells.map((c) => xScale(c.y + 1)));
-    const blockMinY = Math.min(...block.cells.map((c) => yScale(c.x)));
-    const blockMaxY = Math.max(...block.cells.map((c) => yScale(c.x + 1)));
+  //   // Calculate block bounds in screen space using actual cell positions
+  //   // This ensures the block covers exactly the area of its cells (no overlaps)
+  //   const blockMinX = Math.min(...block.cells.map((c) => xScale(c.y)));
+  //   const blockMaxX = Math.max(...block.cells.map((c) => xScale(c.y + 1)));
+  //   const blockMinY = Math.min(...block.cells.map((c) => yScale(c.x)));
+  //   const blockMaxY = Math.max(...block.cells.map((c) => yScale(c.x + 1)));
 
-    const blockBbox = {
-      x: blockMinX,
-      y: blockMinY,
-      width: blockMaxX - blockMinX,
-      height: blockMaxY - blockMinY,
-    };
+  //   const blockBbox = {
+  //     x: blockMinX,
+  //     y: blockMinY,
+  //     width: blockMaxX - blockMinX,
+  //     height: blockMaxY - blockMinY,
+  //   };
 
-    // Get representative cell for texture and interaction
-    const representativeCell = getBlockRepresentativeCell(block);
-    if (!representativeCell) return;
+  //   // Get representative cell for texture and interaction
+  //   const representativeCell = getBlockRepresentativeCell(block);
+  //   if (!representativeCell) return;
 
-    // Use unique block key based on actual cell bounds
-    const blockKey = `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
-    const texUrl = getBlockTexture(block, xScale, yScale);
-    const patternKey = `block-${sanitizeForSelector(blockKey)}`;
+  //   // Use unique block key based on actual cell bounds
+  //   const blockKey = `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
+  //   const texUrl = getBlockTexture(block, xScale, yScale);
+  //   const patternKey = `block-${sanitizeForSelector(blockKey)}`;
 
-    // Create rect for block - covers exactly the cells in the block
-    // This maintains the original map structure
-    const rect = g
-      .append("rect")
-      .attr("class", `cell block`)
-      .attr("x", blockMinX)
-      .attr("y", blockMinY)
-      .attr("width", blockBbox.width)
-      .attr("height", blockBbox.height)
-      .style("cursor", "pointer")
-      .style("pointer-events", "auto");
+  //   // Create rect for block - covers exactly the cells in the block
+  //   // This maintains the original map structure
+  //   const rect = g
+  //     .append("rect")
+  //     .attr("class", `cell block`)
+  //     .attr("x", blockMinX)
+  //     .attr("y", blockMinY)
+  //     .attr("width", blockBbox.width)
+  //     .attr("height", blockBbox.height)
+  //     .style("cursor", "pointer")
+  //     .style("pointer-events", "auto");
 
-    // Apply texture - procedurally combined from block cells
-    if (texUrl) {
-      const defs = d3.select(svgRef.current).select("defs");
-      const pid = getOrCreatePattern(defs, patternKey, texUrl);
-      if (pid) {
-        rect.style("fill", `url(#${pid})`).style("opacity", 1);
-      }
-    } else {
-      // Fallback: use representative cell's texture
-      const fallbackTex = getRegionTex(
-        representativeCell.region?.type,
-        blockKey
-      );
-      const defs = d3.select(svgRef.current).select("defs");
-      const pid = getOrCreatePattern(
-        defs,
-        `fallback-${patternKey}`,
-        fallbackTex
-      );
-      if (pid) {
-        rect.style("fill", `url(#${pid})`).style("opacity", 1);
-      }
-    }
+  //   // Apply texture - procedurally combined from block cells
+  //   if (texUrl) {
+  //     const defs = d3.select(svgRef.current).select("defs");
+  //     const pid = getOrCreatePattern(defs, patternKey, texUrl);
+  //     if (pid) {
+  //       rect.style("fill", `url(#${pid})`).style("opacity", 1);
+  //     }
+  //   } else {
+  //     // Fallback: use representative cell's texture
+  //     const fallbackTex = getRegionTex(
+  //       representativeCell.region?.type,
+  //       blockKey
+  //     );
+  //     const defs = d3.select(svgRef.current).select("defs");
+  //     const pid = getOrCreatePattern(
+  //       defs,
+  //       `fallback-${patternKey}`,
+  //       fallbackTex
+  //     );
+  //     if (pid) {
+  //       rect.style("fill", `url(#${pid})`).style("opacity", 1);
+  //     }
+  //   }
 
-    // Add click handler for blocks
-    const blockCell = {
-      key: blockKey,
-      x: block.minX,
-      y: block.minY,
-      isBlock: true,
-      block: block,
-      region: representativeCell.region,
-    };
+  //   // Add click handler for blocks
+  //   const blockCell = {
+  //     key: blockKey,
+  //     x: block.minX,
+  //     y: block.minY,
+  //     isBlock: true,
+  //     block: block,
+  //     region: representativeCell.region,
+  //   };
 
-    rect.on("click", (event) => {
-      event.stopPropagation();
-      const composed = {
-        kind: "cell",
-        name: `Block (${block.cells.length} cells: ${block.minX},${block.minY} to ${block.maxX},${block.maxY})`,
-        type: representativeCell.region?.type || null,
-        cellCoords: { x: block.minX, y: block.minY },
-        cell: blockCell,
-        region: representativeCell.region,
-        block: block,
-      };
+  //   rect.on("click", (event) => {
+  //     event.stopPropagation();
+  //     const composed = {
+  //       kind: "cell",
+  //       name: `Block (${block.cells.length} cells: ${block.minX},${block.minY} to ${block.maxX},${block.maxY})`,
+  //       type: representativeCell.region?.type || null,
+  //       cellCoords: { x: block.minX, y: block.minY },
+  //       cell: blockCell,
+  //       region: representativeCell.region,
+  //       block: block,
+  //     };
 
-      if (onEntityClick) {
-        onEntityClick(composed);
-      }
-      if (onCellClick) {
-        onCellClick(blockCell);
-      }
-    });
-  };
+  //     if (onEntityClick) {
+  //       onEntityClick(composed);
+  //     }
+  //     if (onCellClick) {
+  //       onCellClick(blockCell);
+  //     }
+  //   });
+  // };
 
   // Check if a cell is visible in the current viewport
   const isCellVisible = (cell, xScale, yScale, transform, svgNode) => {
@@ -1216,7 +1226,8 @@ function WorldMap({
             region: originalCell.region,
           };
         } else if (d.childType === "figure" || d.childType === "cellFigure") {
-          const hf = d.childData;
+          console.log("has figure on click", d);
+          const hf = d.childData[0] || d.childData;
           const hfName = hf.name || hf.id || "Unknown figure";
 
           composed = {
@@ -1375,13 +1386,6 @@ function WorldMap({
       return []; // Ocean cells are empty - no texture, no subdivision
     }
 
-    // Decide what object we’re actually inspecting for children:
-    // - root cell: it's the world cell itself
-    // - child nodes: they carry the real object in childData (site / structure / hf / book)
-    const payload = cell.childData || cell;
-
-    // console.log("WHAT IS THE CHILD DATA", cell, payload);
-
     // For original cells, check if they should subdivide based on visibility and zoom
     if (!isChildCell && xScale && yScale && transform && svgNode) {
       if (
@@ -1510,8 +1514,6 @@ function WorldMap({
       });
 
       sites.forEach((s) => {
-        // console.log("looks at site", s);
-
         const siteStructures = getSiteStructures(s);
 
         if (siteStructures.length > 0 && isLevelVisible("structure")) {
@@ -1548,9 +1550,11 @@ function WorldMap({
                 inhabitants.length,
                 figBaseCount + Math.max(0, figAdditionalCount)
               );
-
+              // console.log("PUSH FIGURE TO MAP", hf);
               inhabitants.slice(0, visibleFigCount).forEach((hf) => {
                 allChildData.push({ kind: "figure", data: hf });
+
+                console.log("PUSH FIGURE TO MAP", hf);
               });
 
               inhabitants.forEach((inh) => {
@@ -2074,17 +2078,46 @@ function WorldMap({
       return;
     }
 
-    // Helper: what are we actually trying to highlight?
+    // --- zoom helper: compute zoom from rect size ---
+    const zoomOnRect = (rectSelection) => {
+      if (!rectSelection || rectSelection.empty()) return;
+      const zoomBehavior = zoomBehaviorRef.current;
+      if (!zoomBehavior) return;
+
+      const viewBox = svgNode.viewBox.baseVal;
+      const vw = viewBox.width || 1;
+      const vh = viewBox.height || 1;
+
+      const x = parseFloat(rectSelection.attr("x")) || 0;
+      const y = parseFloat(rectSelection.attr("y")) || 0;
+      const w = parseFloat(rectSelection.attr("width")) || CELL_SIZE;
+      const h = parseFloat(rectSelection.attr("height")) || CELL_SIZE;
+
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+
+      // How much of the viewport should the rect occupy?
+      // paddingFactor = 2 → ~50% of viewport
+      // paddingFactor = 3 → ~33% of viewport
+      const paddingFactor = 3;
+
+      const kx = vw / (w * paddingFactor);
+      const ky = vh / (h * paddingFactor);
+      let targetK = Math.min(kx, ky);
+
+      // Clamp to your zoom limits
+      targetK = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetK));
+
+      zoomToPoint(cx, cy, targetK, 750);
+    };
+
+    // Helper: describe what we’re selecting
     const getSelectedDescriptor = (entity) => {
       const kind = entity.kind;
 
-      // Base cell coords (for children we set this when composing)
       const cellCoords =
         entity.cellCoords ||
-        (entity.cell && {
-          x: entity.cell.x,
-          y: entity.cell.y,
-        }) ||
+        (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
         null;
 
       let id = null;
@@ -2100,7 +2133,6 @@ function WorldMap({
       } else if (kind === "undergroundRegion" && entity.undergroundRegion) {
         id = entity.undergroundRegion.id;
       } else if (entity.childData && entity.childData.id) {
-        // fallback – if you ever pass raw childData as selectedEntity
         id = entity.childData.id;
       }
 
@@ -2117,25 +2149,25 @@ function WorldMap({
       cellCoords,
     } = getSelectedDescriptor(selectedEntity);
 
+    let didZoom = false;
+
     cellRects.each(function (d) {
       const rect = d3.select(this);
 
-      // d.originalCell exists on children; for root cells, d IS the originalCell
       const baseCell = d.originalCell || d;
 
       let isSelected = false;
 
-      // 1) Cell selection: highlight the base cell rect
+      // 1) Cell selection – match by base cell coords
       if (selectedEntity.kind === "cell" && cellCoords) {
         if (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y) {
           isSelected = true;
         }
       } else if (selectedId && selectedKind) {
-        // 2) Child selection: highlight the tile whose payload matches
+        // 2) Child selection – match by kind + id + base cell
         const child = d.childData || d;
 
         const childIdRaw = child?.id ?? child?.local_id ?? null;
-
         const childId = childIdRaw != null ? String(childIdRaw) : null;
 
         const sameKind = d.childType === selectedKind;
@@ -2151,10 +2183,13 @@ function WorldMap({
       }
 
       if (isSelected) {
-        rect.style("stroke", "var(--primary-color").style("stroke-width", 0.1);
+        rect.style("stroke", "#f97316").style("stroke-width", 2);
+
+        if (!didZoom) {
+          didZoom = true;
+          zoomOnRect(rect);
+        }
       } else {
-        // Reset to "unselected" – you can tweak this to
-        // preserve your subtle child-stroke if you want.
         rect.style("stroke", null).style("stroke-width", 0);
       }
     });
