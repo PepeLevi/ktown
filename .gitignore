@@ -15,6 +15,9 @@ PyLNP.user
 *.user
 PyLNP.json
 
+# ignore data processing output
+files
+
 # Ignore error logs
 stderr.txt
 stderr.log
