@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from "react";
 import WorldMap from "./worldMap";
 import JourneyVerticalProgress from "./progressBar";
+import RichBookContent from "./RichBookContent";
 
 function createSelectedEntity(kind, payload) {
   return {
     kind,
     [kind]: payload,
     id: payload?.id ?? null,
+    name: payload?.name ?? null,
   };
 }
 
@@ -52,8 +54,6 @@ function App() {
       let temp_books = [];
       wd.cells.forEach((cell) => {
         if (cell.sites.length > 0) {
-          console.log("CELL", cell);
-
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
 
@@ -68,6 +68,8 @@ function App() {
                     temp_figures.push(figure);
 
                     if (figure.books) {
+                      // console.log("has figure with books", figure, cell);
+
                       for (let bi = 0; bi < figure.books.length; bi++) {
                         const book = figure.books[bi];
                         temp_books.push(book);
@@ -98,11 +100,6 @@ function App() {
     fetchWorldData();
     // backendUrl is constant, so no need to add it to deps
   }, []);
-
-  const handleCellClick = (cell) => {
-    setSelectedCell(cell);
-    setSelectedEntity(null);
-  };
 
   const handleEntityClick = (entity) => {
     setSelectedEntity(entity);
@@ -137,7 +134,6 @@ function App() {
           {worldData ? (
             <WorldMap
               worldData={worldData}
-              onCellClick={handleCellClick}
               onEntityClick={handleEntityClick}
               selectedCell={selectedCell}
               selectedEntity={selectedEntity}
@@ -275,8 +271,9 @@ function BookDetailView({
   handleEntityClick,
 }) {
   if (!book) {
-    return;
+    return null;
   }
+
   return (
     <div className="book">
       <button
@@ -289,12 +286,20 @@ function BookDetailView({
         <p>is a book</p>
       </button>
 
-      <p className="cat_headline">book content:</p>
-      <p>{book?.raw?.text_content}</p>
+      {/* <p className="cat_headline">book content:</p> */}
+
+      {/* ⬇️ Use rich renderer instead of plain <p> */}
+      <div className="book-content">
+        <RichBookContent
+          text={book?.raw?.text_content}
+          handleEntityClick={handleEntityClick}
+          createSelectedEntity={createSelectedEntity}
+        />
+      </div>
 
       {figures[book.author_hfid] && isTopLevel && (
         <>
-          <p className="cat_headline">book author:</p>
+          {/* <p className="cat_headline">book author:</p> */}
           <FigureDetailView
             figure={figures[book.author_hfid]}
             isTopLevel={false}
@@ -306,6 +311,7 @@ function BookDetailView({
     </div>
   );
 }
+
 function StructureDetailView({ structure, handleEntityClick, books, figures }) {
   return (
     <div>
@@ -409,15 +415,17 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
         {kind && <p>{kind}**</p>}
       </div>
 
-      <div className="texture-previews">
-        <TexturePreview label="Entity texture" src={mainTexture} />
-        {siteTextureUrl && siteTextureUrl !== mainTexture && (
-          <TexturePreview label="Site texture" src={siteTextureUrl} />
-        )}
-        {regionTextureUrl && regionTextureUrl !== mainTexture && (
-          <TexturePreview label="Region texture" src={regionTextureUrl} />
-        )}
-      </div>
+      {mainTexture && (
+        <div className="texture-previews">
+          <TexturePreview label="Entity texture" src={mainTexture} />
+          {siteTextureUrl && siteTextureUrl !== mainTexture && (
+            <TexturePreview label="Site texture" src={siteTextureUrl} />
+          )}
+          {regionTextureUrl && regionTextureUrl !== mainTexture && (
+            <TexturePreview label="Region texture" src={regionTextureUrl} />
+          )}
+        </div>
+      )}
 
       <div className="flex-row-full"></div>
       <div className="specs">

@@ -147,7 +147,7 @@ p {
 }
 
 /* experiement with blend modes on map objects */
-.site-marker {
+/* .site-marker {
   mix-blend-mode: screen;
 }
 .figure-marker {
@@ -155,7 +155,7 @@ p {
 }
 .cell {
   mix-blend-mode: color-dodge;
-}
+} */
 
 .texture-previews {
   width: 100px;
@@ -241,4 +241,9 @@ button:hover p {
 button:hover .cat_headline {
   margin-top: 50px;
   border-top: 2px solid var(--primary-bg-color);
+}
+
+g.hover {
+  border: 2px solid blue;
+  background-color: green;
 }

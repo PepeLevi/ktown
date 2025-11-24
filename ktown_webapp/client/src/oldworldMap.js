@@ -1,81 +1,333 @@
 // src/WorldMap.jsx
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import {
-  REGION_TEXTURES,
-  SITE_TEXTURES,
-  FIGURE_TEXTURES,
-  DEFAULT_TEXTURE,
-} from "./regionTextures";
+import { getRegionTex, getSiteTex, getFigureTex } from "./proceduralTextures";
+import Minimap from "./Minimap";
 
 const regionColor = "yellow";
-const siteColor = "var(--primary-color)";
-const structureColor = "var(--primary-color)";
-const figureColor = "var(--primary-color)";
-const bookColor = "var(--primary-color)";
+const siteColor = "blue";
+const structureColor = "green";
+const figureColor = "pink";
+const bookColor = "white";
 
 const CELL_SIZE = 30;
 const CELL_GAP = 0;
 
 // zoom limits
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 1500;
+let MIN_ZOOM = 1; // Will be calculated dynamically
+const MAX_ZOOM = 160;
 
-const ZOOM_BY_KIND = {
-  cell: 20,
-  site: 20,
-  structure: 50,
-  figure: 80,
-  book: 120,
+// Performance: Maximum cells visible at minimum zoom (zoom out limit)
+const MAX_VISIBLE_CELLS_AT_MIN_ZOOM = 650;
+
+// LOD Configuration - not really used now but kept for future tuning
+const LOD_CONFIG = {
+  maxCellsToRender: 400,
+  minCellsToCombine: 300,
+  maxCellsPerBlock: 40,
+  zoomUpdateThrottle: 0,
 };
 
+// Hierarchical zoom thresholds
+const HIERARCHY_LEVELS = [
+  {
+    name: "cell",
+    minZoom: 1,
+    getChildren: (cell) => {
+      const children = [];
+      if (cell.sites && cell.sites.length > 0)
+        children.push(...cell.sites.map((s) => ({ type: "site", data: s })));
+      if (cell.undergroundRegions && cell.undergroundRegions.length > 0) {
+        children.push(
+          ...cell.undergroundRegions.map((ug) => ({
+            type: "undergroundRegion",
+            data: ug,
+          }))
+        );
+      }
+      if (cell.historical_figures && cell.historical_figures.length > 0) {
+        children.push(
+          ...cell.historical_figures.map((hf) => ({
+            type: "cellFigure",
+            data: hf,
+          }))
+        );
+      }
+      if (cell.written_contents && cell.written_contents.length > 0) {
+        children.push(
+          ...cell.written_contents.map((wc) => ({
+            type: "writtenContent",
+            data: wc,
+          }))
+        );
+      }
+      return children;
+    },
+    sizeRatio: 1.0,
+  },
+  {
+    name: "undergroundRegion",
+    minZoom: 20,
+    getChildren: () => [],
+    sizeRatio: 1.0,
+  },
+  {
+    name: "site",
+    minZoom: 30,
+    getChildren: (site) => {
+      const structures =
+        site.data?.structures?.structure || site.structures?.structure;
+      if (!structures) return [];
+      return Array.isArray(structures) ? structures : [structures];
+    },
+    sizeRatio: 1.0,
+  },
+  {
+    name: "structure",
+    minZoom: 50,
+    getChildren: (structure) => {
+      return structure.inhabitants || structure.inhabitant || [];
+    },
+    sizeRatio: 1.0,
+  },
+  {
+    name: "figure",
+    minZoom: 80,
+    getChildren: () => [],
+    sizeRatio: 1.0,
+  },
+  {
+    name: "cellFigure",
+    minZoom: 25,
+    getChildren: () => [],
+    sizeRatio: 1.0,
+  },
+  {
+    name: "writtenContent",
+    minZoom: 35,
+    getChildren: () => [],
+    sizeRatio: 1.0,
+  },
+];
+
+// Calculate Fibonacci-style fractal subdivision in a square
 function calculateGridPositions(
   index,
   count,
-  entitySize,
   boundingBoxWidth,
-  boundingBoxHeight
+  boundingBoxHeight,
+  offsetX = 0,
+  offsetY = 0
 ) {
+  if (count === 0) return { x: 0, y: 0, width: 0, height: 0 };
+
   if (count === 1) {
-    const x = boundingBoxWidth / 2 - entitySize / 2;
-    const y = boundingBoxHeight / 2 - entitySize / 2;
-    return { x, y };
+    return {
+      x: offsetX,
+      y: offsetY,
+      width: boundingBoxWidth,
+      height: boundingBoxHeight,
+    };
   }
 
-  const cols = Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / cols);
+  const isWide = boundingBoxWidth >= boundingBoxHeight;
 
-  const col = index % cols;
-  const row = Math.floor(index / cols);
+  if (index === 0) {
+    if (isWide) {
+      return {
+        x: offsetX,
+        y: offsetY,
+        width: boundingBoxWidth / 2,
+        height: boundingBoxHeight,
+      };
+    } else {
+      return {
+        x: offsetX,
+        y: offsetY,
+        width: boundingBoxWidth,
+        height: boundingBoxHeight / 2,
+      };
+    }
+  }
 
-  const totalGridWidth = cols * entitySize;
-  const totalGridHeight = rows * entitySize;
+  const remainingCount = count - 1;
+  const remainingIndex = index - 1;
 
-  const startX = (boundingBoxWidth - totalGridWidth) / 2;
-  const startY = (boundingBoxHeight - totalGridHeight) / 2;
-
-  const x = startX + col * entitySize;
-  const y = startY + row * entitySize;
-
-  return { x, y };
+  if (isWide) {
+    const remainingWidth = boundingBoxWidth / 2;
+    return calculateGridPositions(
+      remainingIndex,
+      remainingCount,
+      remainingWidth,
+      boundingBoxHeight,
+      offsetX + remainingWidth,
+      offsetY
+    );
+  } else {
+    const remainingHeight = boundingBoxHeight / 2;
+    return calculateGridPositions(
+      remainingIndex,
+      remainingCount,
+      boundingBoxWidth,
+      remainingHeight,
+      offsetX,
+      offsetY + remainingHeight
+    );
+  }
 }
 
-function computeChildSize(
-  parentWidth,
-  parentHeight,
-  count,
-  paddingFactor = 0.8
-) {
-  if (!count || count <= 0) return 0;
+// ===== Generic helpers / hierarchy helpers =====
 
-  const cols = Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / cols);
+const sanitizeKey = (val) => String(val || "Unknown").replace(/\s+/g, "");
 
-  const maxWidth = (parentWidth * paddingFactor) / cols;
-  const maxHeight = (parentHeight * paddingFactor) / rows;
+const sanitizeForSelector = (val) => {
+  return String(val || "unknown")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+};
 
-  return Math.min(maxWidth, maxHeight);
-}
+// Always return array
+const normalizeToArray = (value) => {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+};
+
+// CELL → SITES
+const getCellSites = (cell) => normalizeToArray(cell.sites);
+
+// CELL → UNDERGROUND REGIONS
+const getCellUndergroundRegions = (cell) =>
+  normalizeToArray(cell.undergroundRegions);
+
+// CELL → CELL-LEVEL FIGURES
+const getCellFigures = (cell) => normalizeToArray(cell.historical_figures);
+
+// CELL → CELL-LEVEL WRITTEN CONTENT
+const getCellWrittenContents = (cell) =>
+  normalizeToArray(cell.written_contents);
+
+// SITE → STRUCTURES
+const getSiteStructures = (site) => {
+  if (!site) return [];
+
+  if (Array.isArray(site.structures)) return site.structures;
+
+  const sNested = site.structures?.structure;
+  if (sNested) return normalizeToArray(sNested);
+
+  const f2 = site.fromFile2?.structures?.structure;
+  if (f2) return normalizeToArray(f2);
+
+  const f1 = site.fromFile1?.structures?.structure;
+  if (f1) return normalizeToArray(f1);
+
+  return [];
+};
+
+// STRUCTURE → FIGURES (inhabitants)
+const getStructureFigures = (structure) => {
+  if (!structure) return [];
+  const raw = structure.inhabitants || structure.inhabitant;
+  const arr = normalizeToArray(raw);
+  return arr.filter((hf) => hf && typeof hf === "object");
+};
+
+// FIGURE → BOOKS
+const getFigureBooks = (hf) => {
+  if (!hf) return [];
+  return normalizeToArray(hf.books)
+    .map((book, idx) => {
+      if (!book) return null;
+      const raw = book.raw || {};
+      return {
+        id: raw.written_content_id || `${hf.id || "hf"}-${idx}`,
+        title: book.title || raw.title || "Untitled work",
+        author_hfid: hf.id,
+        author: hf,
+        raw,
+      };
+    })
+    .filter(Boolean);
+};
+
+// Count descendants recursively (for density-aware subdivision)
+const countDescendantsForNode = (node) => {
+  const type = node.childType || "cell";
+  const data = node.childData || node;
+
+  let directChildrenCount = 0;
+  let nestedCount = 0;
+
+  if (type === "cell") {
+    const sites = getCellSites(data);
+    const ugs = getCellUndergroundRegions(data);
+    const cellFigs = getCellFigures(data);
+    const cellWc = getCellWrittenContents(data);
+
+    directChildrenCount +=
+      sites.length + ugs.length + cellFigs.length + cellWc.length;
+
+    sites.forEach((site) => {
+      nestedCount += countDescendantsForNode({
+        childType: "site",
+        childData: site,
+        originalCell: data,
+      });
+    });
+  } else if (type === "site") {
+    const structs = getSiteStructures(data);
+    directChildrenCount += structs.length;
+    structs.forEach((s) => {
+      nestedCount += countDescendantsForNode({
+        childType: "structure",
+        childData: s,
+        originalCell: node.originalCell,
+      });
+    });
+  } else if (type === "structure") {
+    const figs = getStructureFigures(data);
+    directChildrenCount += figs.length;
+    figs.forEach((hf) => {
+      nestedCount += countDescendantsForNode({
+        childType: "figure",
+        childData: hf,
+        originalCell: node.originalCell,
+      });
+    });
+  } else if (type === "figure") {
+    const books = getFigureBooks(data);
+    directChildrenCount += books.length;
+  } else {
+    // leaf types: undergroundRegion, writtenContent, cellFigure
+  }
+
+  return directChildrenCount + nestedCount;
+};
+
+// How many direct children of this node should be visible at this zoom?
+const getVisibleChildCountForNode = (
+  node,
+  allDirectChildren,
+  zoom,
+  level = 0
+) => {
+  if (allDirectChildren.length === 0) return 0;
+  if (allDirectChildren.length === 1) return 1;
+
+  const totalDescendants = countDescendantsForNode(node);
+
+  const zoomFactor = level === 0 ? 1.5 : level === 1 ? 2 : 2.5;
+  const baseCount = 1;
+
+  const densityBoost = Math.log10(totalDescendants + 1); // 0..~3
+  const effectiveZoom = Math.max(0, zoom - 1) * (1 + densityBoost * 0.3);
+
+  const additionalCount = Math.floor(effectiveZoom / zoomFactor);
+  const wanted = baseCount + Math.max(0, additionalCount);
+
+  return Math.min(allDirectChildren.length, wanted);
+};
 
 function WorldMap({
   worldData,
@@ -86,40 +338,94 @@ function WorldMap({
 }) {
   const svgRef = useRef(null);
 
-  const zoomBehaviorRef = useRef(null); // 🆕 store d3.zoom()
-  const mapWidthRef = useRef(0); // 🆕 store map width
-  const mapHeightRef = useRef(0); // 🆕 store map height
+  const zoomBehaviorRef = useRef(null);
+  const mapWidthRef = useRef(0);
+  const mapHeightRef = useRef(0);
+  const currentZoomRef = useRef(1);
+  const focusedCellRef = useRef(null);
+  const xScaleRef = useRef(null);
+  const yScaleRef = useRef(null);
+  const zoomUpdateTimeoutRef = useRef(null);
+  const lastRenderedZoomRef = useRef(1);
 
   const regionTypesRef = useRef([]);
   const siteTypesRef = useRef([]);
   const figureKindsRef = useRef(["default"]);
 
-  const sanitizeKey = (val) => String(val || "Unknown").replace(/\s+/g, "");
+  const cellDragStateRef = useRef({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    threshold: 5,
+    timeoutId: null,
+  });
 
-  // helper: accept single object or array and always return array
-  const normalizeToArray = (value) => {
-    if (!value) return [];
-    return Array.isArray(value) ? value : [value];
+  const [mainTransform, setMainTransform] = useState(null);
+  const [mainViewBox, setMainViewBox] = useState(null);
+
+  const isLevelVisible = (levelName) => {
+    const level = HIERARCHY_LEVELS.find((l) => l.name === levelName);
+    if (!level) return false;
+    return currentZoomRef.current >= level.minZoom;
+  };
+
+  const optimizeVisibleCells = (visibleCells, zoom) => {
+    if (!visibleCells || visibleCells.length === 0) return [];
+
+    const validCells = visibleCells.filter(
+      (c) => c && c.region?.type !== "Ocean"
+    );
+    if (validCells.length === 0) return [];
+
+    return validCells.map((cell) => ({ type: "individual", cell }));
+  };
+
+  // Check if a cell is visible in the viewport
+  const isCellVisible = (cell, xScale, yScale, transform, svgNode) => {
+    if (!cell || !xScale || !yScale || !transform || !svgNode) return false;
+
+    const viewBox = svgNode.viewBox.baseVal;
+    const { x, y, k } = transform;
+
+    const cellX = xScale(cell.y);
+    const cellY = yScale(cell.x);
+    const cellWidth = CELL_SIZE;
+    const cellHeight = CELL_SIZE;
+
+    const cellLeft = cellX * k + x;
+    const cellRight = (cellX + cellWidth) * k + x;
+    const cellTop = cellY * k + y;
+    const cellBottom = (cellY + cellHeight) * k + y;
+
+    const padding = CELL_SIZE * k;
+    const viewportRight = viewBox.width + padding;
+    const viewportBottom = viewBox.height + padding;
+
+    return !(
+      cellRight < -padding ||
+      cellLeft > viewportRight ||
+      cellBottom < -padding ||
+      cellTop > viewportBottom
+    );
+  };
+
+  const belongsToSubdividingCell = (cell, zoom) => {
+    const focused = focusedCellRef.current;
+    if (!focused || !cell) return false;
+    const dx = Math.abs(cell.x - focused.x);
+    const dy = Math.abs(cell.y - focused.y);
+    const distance = Math.max(dx, dy);
+    const maxDistance = Math.floor((zoom - 1) / 10);
+    return distance <= maxDistance;
   };
 
   const handleLabelClick = (d) => {
     console.log("clicks label", d);
   };
 
-  const getRegionTex = (type) =>
-    (type && REGION_TEXTURES[type]) || DEFAULT_TEXTURE;
-
-  const getSiteTex = (type) => {
-    if (!type) return SITE_TEXTURES.default || DEFAULT_TEXTURE;
-    const key = String(type).toLowerCase();
-    return SITE_TEXTURES[key] || SITE_TEXTURES.default || DEFAULT_TEXTURE;
-  };
-
-  const getFigureTex = (hf) => FIGURE_TEXTURES.default || DEFAULT_TEXTURE;
-
   const getPatternId = (kind, key) => `pattern-${kind}-${sanitizeKey(key)}`;
 
-  const zoomToPoint = (x, y, targetK = 8, duration = 750) => {
+  const zoomToPoint = (x, y, targetK = 8, duration = 200) => {
     const svgNode = svgRef.current;
     const zoomBehavior = zoomBehaviorRef.current;
     if (!svgNode || !zoomBehavior) return;
@@ -131,9 +437,9 @@ function WorldMap({
     const k = targetK ?? current.k;
 
     const next = d3.zoomIdentity
-      .translate(width / 2, height / 2) // center of viewport
-      .scale(k) // desired zoom
-      .translate(-x, -y); // bring world point (x,y) to center
+      .translate(width / 2, height / 2)
+      .scale(k)
+      .translate(-x, -y);
 
     d3.select(svgNode)
       .transition()
@@ -141,259 +447,543 @@ function WorldMap({
       .call(zoomBehavior.transform, next);
   };
 
-  const createOrUpdatePatterns = (defsSelection, k = 1) => {
-    if (!defsSelection || defsSelection.empty()) return;
+  const getOrCreatePattern = (defsSelection, patternKey, textureUrl) => {
+    if (!defsSelection || defsSelection.empty()) {
+      console.warn("getOrCreatePattern: defsSelection is empty");
+      return null;
+    }
 
-    defsSelection.selectAll("pattern").remove();
+    if (!textureUrl) {
+      console.warn(
+        "getOrCreatePattern: textureUrl is missing for patternKey:",
+        patternKey
+      );
+      return null;
+    }
 
-    const baseSize = CELL_SIZE;
-    const patternSize = baseSize / k;
+    const pid = sanitizeForSelector(`pattern-${patternKey}`);
 
-    // regions
-    regionTypesRef.current.forEach((type) => {
-      const texUrl = getRegionTex(type);
-      if (!texUrl) return;
-      const pid = getPatternId("region", type);
+    let pattern = defsSelection.select(`#${pid}`);
+    if (!pattern.empty()) {
+      return pid;
+    }
 
-      const pattern = defsSelection
+    try {
+      pattern = defsSelection
         .append("pattern")
         .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", patternSize)
-        .attr("height", patternSize);
+        .attr("patternUnits", "objectBoundingBox")
+        .attr("patternContentUnits", "objectBoundingBox")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", 1)
+        .attr("height", 1);
 
       pattern
         .append("image")
-        .attr("href", texUrl)
+        .attr("href", textureUrl)
         .attr("x", 0)
         .attr("y", 0)
-        .attr("width", patternSize)
-        .attr("height", patternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
+        .attr("width", 1)
+        .attr("height", 1)
+        .attr("preserveAspectRatio", "none");
 
-    // sites
-    const sitePatternSize = CELL_SIZE;
-
-    siteTypesRef.current.forEach((type) => {
-      const texUrl = getSiteTex(type);
-      if (!texUrl) return;
-      const pid = getPatternId("site", type);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", sitePatternSize)
-        .attr("height", sitePatternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", sitePatternSize)
-        .attr("height", sitePatternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
-
-    // figures
-    const figPatternSize = (CELL_SIZE * 0.6) / k;
-
-    figureKindsRef.current.forEach((kind) => {
-      const texUrl =
-        kind === "default" ? FIGURE_TEXTURES.default || DEFAULT_TEXTURE : null;
-      if (!texUrl) return;
-      const pid = getPatternId("fig", kind);
-
-      const pattern = defsSelection
-        .append("pattern")
-        .attr("id", pid)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", figPatternSize)
-        .attr("height", figPatternSize);
-
-      pattern
-        .append("image")
-        .attr("href", texUrl)
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", figPatternSize)
-        .attr("height", figPatternSize)
-        .attr("preserveAspectRatio", "xMidYMid slice");
-    });
+      return pid;
+    } catch (error) {
+      console.error(
+        "getOrCreatePattern: Error creating pattern:",
+        error,
+        "patternKey:",
+        patternKey
+      );
+      return null;
+    }
   };
 
-  // 1) build map & markers
-  useEffect(() => {
-    if (!worldData || !worldData.cells?.length) return;
+  // ===== New hierarchy-preserving builder =====
+  const buildCellChildren = (node, zoom, parentBbox, level = 0) => {
+    const type = node.childType || "cell";
+    const data = node.childData || node;
 
-    // --- generic renderer for sites / structures / figures ---
-    function drawEntityLayer({
-      markers,
-      rectClass,
-      labelClass,
-      size, // can be number or (d, parentBBox) => number
-      keyFn,
-      getFill,
-      baseStroke,
-      baseStrokeWidth,
-      labelFontSize, // can be number or (renderSize, d, parentBBox) => number
-      labelFill,
-      getLabelText,
-      getTitleText,
-      composeEntity,
-      getZoomParams,
-      getBoundingBox, // optional (d) => { x, y, width, height }
-    }) {
-      if (!markers || !markers.length) {
-        g.selectAll(`rect.${rectClass}`).remove();
-        g.selectAll(`text.${labelClass}`).remove();
+    const allChildData = [];
+
+    if (type === "cell") {
+      if (isLevelVisible("site")) {
+        getCellSites(data).forEach((site) => {
+          allChildData.push({ type: "site", data: site });
+        });
+      }
+      if (isLevelVisible("undergroundRegion")) {
+        getCellUndergroundRegions(data).forEach((ug) => {
+          allChildData.push({ type: "undergroundRegion", data: ug });
+        });
+      }
+      if (isLevelVisible("cellFigure")) {
+        getCellFigures(data).forEach((hf) => {
+          allChildData.push({ type: "cellFigure", data: hf });
+        });
+      }
+      if (isLevelVisible("writtenContent")) {
+        getCellWrittenContents(data).forEach((wc) => {
+          allChildData.push({ type: "writtenContent", data: wc });
+        });
+      }
+    } else if (type === "site") {
+      if (isLevelVisible("structure")) {
+        getSiteStructures(data).forEach((struct) => {
+          allChildData.push({ type: "structure", data: struct });
+        });
+      }
+    } else if (type === "structure") {
+      if (isLevelVisible("figure")) {
+        getStructureFigures(data).forEach((hf) => {
+          allChildData.push({ type: "figure", data: hf });
+        });
+      }
+    } else if (type === "figure") {
+      if (isLevelVisible("writtenContent")) {
+        getFigureBooks(data).forEach((book) => {
+          allChildData.push({ type: "writtenContent", data: book });
+        });
+      }
+    } else {
+      // undergroundRegion, writtenContent, cellFigure are leaves
+    }
+
+    if (allChildData.length === 0) return [];
+
+    const visibleCount = getVisibleChildCountForNode(
+      node,
+      allChildData,
+      zoom,
+      level
+    );
+    const visibleChildData = allChildData.slice(0, visibleCount);
+
+    const children = [];
+
+    visibleChildData.forEach((childInfo, idx) => {
+      const gridPos = calculateGridPositions(
+        idx,
+        visibleCount,
+        parentBbox.width,
+        parentBbox.height
+      );
+
+      const cellData = node.originalCell || node.cell || node.childData || node;
+
+      const childCell = {
+        key: `${
+          data.key ||
+          cellData.key ||
+          `${type}-${cellData.x ?? "?"}-${cellData.y ?? "?"}`
+        }-child-${childInfo.type}-${idx}`,
+        level: level + 1,
+        parent: node,
+        originalCell: node.originalCell || cellData || node, // bubble original map cell through
+        childType: childInfo.type,
+        childData: childInfo.data,
+        bbox: {
+          x: gridPos.x,
+          y: gridPos.y,
+          width: gridPos.width,
+          height: gridPos.height,
+        },
+        children: [],
+      };
+
+      const childInnerBbox = {
+        x: 0,
+        y: 0,
+        width: gridPos.width,
+        height: gridPos.height,
+      };
+
+      childCell.children = buildCellChildren(
+        childCell,
+        zoom,
+        childInnerBbox,
+        level + 1
+      );
+
+      children.push(childCell);
+    });
+
+    return children;
+  };
+
+  // Recursive rendering for a cell (and its children)
+  const renderRecursiveCell = (
+    cell,
+    parentBbox,
+    gSelection,
+    xScale,
+    yScale,
+    level = 0
+  ) => {
+    const cellX =
+      level === 0 ? xScale(cell.y) : parentBbox.x + (cell.bbox?.x || 0);
+    const cellY =
+      level === 0 ? yScale(cell.x) : parentBbox.y + (cell.bbox?.y || 0);
+    const cellWidth = level === 0 ? CELL_SIZE : cell.bbox?.width || CELL_SIZE;
+    const cellHeight = level === 0 ? CELL_SIZE : cell.bbox?.height || CELL_SIZE;
+
+    const cellBbox = {
+      x: cellX,
+      y: cellY,
+      width: cellWidth,
+      height: cellHeight,
+    };
+
+    const rawCellKey = cell.key || `cell-${level}-${cellX}-${cellY}`;
+    const sanitizedX = Math.round(cellX * 100) / 100;
+    const sanitizedY = Math.round(cellY * 100) / 100;
+    const uniqueKeyRaw = `${rawCellKey}-${level}-${sanitizedX}-${sanitizedY}`;
+    const uniqueKey = sanitizeForSelector(uniqueKeyRaw);
+
+    const cellRect = gSelection
+      .selectAll(`rect.cell-${uniqueKey}`)
+      .data(
+        [{ ...cell, cellKey: uniqueKey, cellBbox }],
+        (d) => d.cellKey || uniqueKey
+      );
+
+    const cellEnter = cellRect
+      .enter()
+      .append("rect")
+      .attr("class", `cell cell-level-${level} cell-${uniqueKey}`)
+      .attr("x", cellX)
+      .attr("y", cellY)
+      .attr("width", cellWidth)
+      .attr("height", cellHeight)
+      .style("cursor", "pointer")
+      .style("pointer-events", "auto")
+      .style("z-index", 10);
+
+    const merged = cellEnter
+      .merge(cellRect)
+      .attr("x", cellX)
+      .attr("y", cellY)
+      .attr("width", cellWidth)
+      .attr("height", cellHeight)
+      .style("cursor", "pointer")
+      .style("pointer-events", "auto")
+      .each(function (d) {
+        const rect = d3.select(this);
+        const svg = d3.select(svgRef.current);
+        const defs = svg.select("defs");
+
+        if (level === 0 && d.region?.type === "Ocean") {
+          rect.style("display", "none");
+          return;
+        }
+
+        const cellKeyForTexture =
+          d.key ||
+          d.originalCell?.key ||
+          d.cellKey ||
+          `cell-${level}-${cellX}-${cellY}`;
+
+        let texUrl = null;
+        let patternKey = null;
+
+        console.log("cell data sample", d);
+
+        if (level === 0) {
+          if (d.region?.type !== "Ocean") {
+            texUrl = getRegionTex(d.region?.type, cellKeyForTexture);
+            patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
+          }
+        } else if (d.isOriginalCell || d.childType === "region") {
+          const regionType = d.childData?.type || d.originalCell?.region?.type;
+          texUrl = getRegionTex(regionType, cellKeyForTexture);
+          patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
+        } else if (d.childType === "site") {
+          const site = d.childData;
+          const siteType =
+            site?.fromFile2?.type ||
+            site?.fromFile1?.type ||
+            site?.type ||
+            "default";
+          texUrl = getSiteTex(siteType, cellKeyForTexture);
+          patternKey = `site-${sanitizeForSelector(
+            cellKeyForTexture
+          )}-${sanitizeForSelector(siteType)}`;
+        } else if (d.childType === "structure") {
+          const structId =
+            d.childData?.id || d.childData?.local_id || "default";
+          texUrl = getRegionTex(
+            null,
+            `${cellKeyForTexture}-struct-${structId}`
+          );
+
+          console.log("renders child type structure", d);
+
+          patternKey = `structure-${sanitizeForSelector(
+            cellKeyForTexture
+          )}-${sanitizeForSelector(String(structId))}`;
+        } else if (d.childType === "figure" || d.childType === "cellFigure") {
+          texUrl = getFigureTex(d.childData, cellKeyForTexture);
+          patternKey = `fig-${sanitizeForSelector(
+            cellKeyForTexture
+          )}-${sanitizeForSelector(String(d.childData?.id || "default"))}`;
+        } else if (d.childType === "undergroundRegion") {
+          const ugId = d.childData?.id || "default";
+          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`);
+          patternKey = `underground-${sanitizeForSelector(
+            cellKeyForTexture
+          )}-${sanitizeForSelector(String(ugId))}`;
+        } else if (d.childType === "writtenContent") {
+          const wcId = d.childData?.id || d.childData?.title || "default";
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`);
+          patternKey = `written-${sanitizeForSelector(
+            cellKeyForTexture
+          )}-${sanitizeForSelector(String(wcId))}`;
+        } else {
+          texUrl = getRegionTex(null, cellKeyForTexture);
+          patternKey = `default-${sanitizeForSelector(cellKeyForTexture)}`;
+        }
+
+        let appliedTexture = false;
+        if (texUrl && patternKey) {
+          const pid = getOrCreatePattern(defs, patternKey, texUrl);
+          if (pid) {
+            rect.style("fill", `url(#${pid})`).style("opacity", 1);
+            appliedTexture = true;
+          }
+        }
+
+        if (!appliedTexture) {
+          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+          const fallbackPatternKey = `fallback-${sanitizeForSelector(
+            cellKeyForTexture
+          )}`;
+          const fallbackPid = getOrCreatePattern(
+            defs,
+            fallbackPatternKey,
+            fallbackTexUrl
+          );
+          if (fallbackPid) {
+            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+          } else {
+            rect.style("fill", "#f0f0f0").style("opacity", 1);
+            console.warn(
+              "Failed to create texture for cell:",
+              cellKeyForTexture
+            );
+          }
+        }
+
+        rect.style("opacity", 1);
+
+        const hasVisibleChildren = d.children && d.children.length > 0;
+
+        if (hasVisibleChildren) {
+          rect
+            .style("stroke", "rgba(255,255,255,0.3)")
+            .style("stroke-width", 0.5);
+        } else {
+          rect.style("stroke", null).style("stroke-width", 0);
+        }
+      });
+
+    const cellDragState = cellDragStateRef.current;
+
+    const handleCellMouseDown = (event, d) => {
+      cellDragState.isDragging = false;
+      cellDragState.startX = event.clientX;
+      cellDragState.startY = event.clientY;
+
+      if (cellDragState.timeoutId) {
+        clearTimeout(cellDragState.timeoutId);
+        cellDragState.timeoutId = null;
+      }
+    };
+
+    const handleCellMouseMove = (event) => {
+      if (cellDragState.startX !== 0 || cellDragState.startY !== 0) {
+        const dx = Math.abs(event.clientX - cellDragState.startX);
+        const dy = Math.abs(event.clientY - cellDragState.startY);
+        if (dx > cellDragState.threshold || dy > cellDragState.threshold) {
+          cellDragState.isDragging = true;
+        }
+      }
+    };
+
+    const handleCellClick = (event, d) => {
+      const wasDragging = cellDragState.isDragging;
+
+      if (cellDragState.timeoutId) {
+        clearTimeout(cellDragState.timeoutId);
+      }
+      cellDragState.timeoutId = setTimeout(() => {
+        cellDragState.isDragging = false;
+        cellDragState.startX = 0;
+        cellDragState.startY = 0;
+        cellDragState.timeoutId = null;
+      }, 150);
+
+      if (wasDragging) {
+        event.stopPropagation();
         return;
       }
 
-      const resolveParentBox = (d) =>
-        (getBoundingBox && getBoundingBox(d)) || {
-          x: xScale(d.cell.y),
-          y: yScale(d.cell.x),
-          width: CELL_SIZE,
-          height: CELL_SIZE,
+      event.stopPropagation();
+
+      const originalCell = d.originalCell || d;
+
+      if (!originalCell) {
+        console.warn("No originalCell found in clicked cell:", d);
+        return;
+      }
+
+      let composed = null;
+
+      if (level === 0) {
+        composed = {
+          kind: "cell",
+          name: `Cell (${originalCell.x}, ${originalCell.y})`,
+          type: originalCell.region?.type || null,
+          cellCoords: { x: originalCell.x, y: originalCell.y },
+          cell: originalCell,
+          region: originalCell.region,
+          sites: originalCell.sites || [],
+          undergroundRegions: originalCell.undergroundRegions || [],
+          historical_figures: originalCell.historical_figures || [],
+          written_contents: originalCell.written_contents || [],
         };
+      } else {
+        if (d.childType === "site") {
+          const site = d.childData;
+          const siteType =
+            site?.fromFile2?.type ||
+            site?.fromFile1?.type ||
+            site?.type ||
+            "default";
+          const siteName =
+            site?.fromFile2?.name ||
+            site?.fromFile1?.name ||
+            site?.name ||
+            "Unknown site";
 
-      const resolveSize = (d, parentBox) =>
-        typeof size === "function" ? size(d, parentBox) : size;
-
-      const resolveFontSize = (renderSize, d, parentBox) =>
-        typeof labelFontSize === "function"
-          ? labelFontSize(renderSize, d, parentBox)
-          : labelFontSize;
-
-      // --- rects ---
-      const rectSel = g.selectAll(`rect.${rectClass}`).data(markers, keyFn);
-
-      const rectEnter = rectSel
-        .enter()
-        .append("rect")
-        .attr("class", rectClass)
-        .style("cursor", "pointer");
-
-      rectEnter
-        .merge(rectSel)
-        .attr("x", (d) => {
-          const parentBox = resolveParentBox(d);
-          const s = resolveSize(d, parentBox);
-          const { x } = calculateGridPositions(
-            d.idx,
-            d.count,
-            s,
-            parentBox.width,
-            parentBox.height
-          );
-          const finalX = parentBox.x + x;
-
-          d._bbox = d._bbox || {};
-          d._bbox.x = finalX;
-          d._bbox.width = s;
-          d._renderSize = s;
-
-          return finalX;
-        })
-        .attr("y", (d) => {
-          const parentBox = resolveParentBox(d);
-          const s = d._renderSize ?? resolveSize(d, parentBox);
-          const { y } = calculateGridPositions(
-            d.idx,
-            d.count,
-            s,
-            parentBox.width,
-            parentBox.height
-          );
-          const finalY = parentBox.y + y;
-
-          d._bbox = d._bbox || {};
-          d._bbox.y = finalY;
-          d._bbox.height = s;
-          d._renderSize = s;
-
-          return finalY;
-        })
-        .attr("width", (d) => d._renderSize || CELL_SIZE * 0.3)
-        .attr("height", (d) => d._renderSize || CELL_SIZE * 0.3)
-        .each(function (d) {
-          const rect = d3.select(this);
-          const fill = getFill ? getFill(d) : "#9ca3af";
-          rect.style("fill", fill);
-          if (baseStroke != null) {
-            rect
-              .style("stroke", baseStroke)
-              .style("stroke-width", baseStrokeWidth ?? 0.1);
-          }
-        });
-
-      // tooltips
-      rectEnter
-        .append("title")
-        .text((d) => (getTitleText ? getTitleText(d) : ""));
-
-      // --- labels ---
-      const labelSel = g.selectAll(`text.${labelClass}`).data(markers, keyFn);
-
-      const labelEnter = labelSel
-        .enter()
-        .append("text")
-        .attr("class", labelClass)
-        .attr("text-anchor", "start")
-        .style("pointer-events", "auto");
-
-      labelEnter
-        .merge(labelSel)
-        .attr("x", (d) => {
-          const bb = d._bbox || {
-            x: xScale(d.cell.y),
-            y: yScale(d.cell.x),
+          composed = {
+            kind: "site",
+            name: siteName,
+            type: siteType,
+            textureUrl: getSiteTex(siteType),
+            regionTextureUrl: getRegionTex(originalCell.region?.type),
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            site,
+            cell: originalCell,
+            region: originalCell.region,
+            undergroundRegions: originalCell.undergroundRegions || [],
+            historical_figures: site.historical_figures || [],
+            inhabitants: site.inhabitants || [],
+            written_contents: site.written_contents || [],
           };
-          return bb.x;
-        })
-        .attr("y", (d) => {
-          const bb = d._bbox || {
-            x: xScale(d.cell.y),
-            y: yScale(d.cell.x),
+        } else if (d.childType === "structure") {
+          const structure = d.childData;
+          const name = structure.name || structure.type || "Structure";
+
+          composed = {
+            kind: "structure",
+            name,
+            type: structure.type || null,
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            structure,
+            cell: originalCell,
+            region: originalCell.region,
           };
-          return bb.y;
-        })
-        .style("font-size", (d) => {
-          const parentBox = resolveParentBox(d);
-          const s = d._renderSize || resolveSize(d, parentBox);
-          const fs = resolveFontSize(s, d, parentBox);
-          return `${fs}px`;
-        })
-        .style("fill", labelFill ?? "#fff")
-        .text((d) => (getLabelText ? getLabelText(d) : ""));
+        } else if (d.childType === "figure" || d.childType === "cellFigure") {
+          const hf = d.childData;
+          const hfName = hf.name || hf.id || "Unknown figure";
 
-      // --- shared click handler (rect + label) ---
-      const handleClick = (event, d) => {
-        event.stopPropagation();
-        onCellClick?.(null);
+          composed = {
+            kind: "figure",
+            name: hfName,
+            textureUrl: getFigureTex(hf),
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            figure: hf,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "undergroundRegion") {
+          const ug = d.childData;
 
-        if (composeEntity) {
-          const composed = composeEntity(d);
-          if (composed) onEntityClick?.(composed);
+          composed = {
+            kind: "undergroundRegion",
+            name: ug.name || "Underground Region",
+            type: ug.type || null,
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            undergroundRegion: ug,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "writtenContent") {
+          const wc = d.childData;
+
+          composed = {
+            kind: "writtenContent",
+            name: wc.title || "Written Content",
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            writtenContent: wc,
+            cell: originalCell,
+            region: originalCell.region,
+          };
+        } else if (d.childType === "region") {
+          const region = d.childData || originalCell.region;
+
+          composed = {
+            kind: "cell",
+            name: `Region: ${region?.type || "Unknown"}`,
+            type: region?.type || null,
+            cellCoords: { x: originalCell.x, y: originalCell.y },
+            cell: originalCell,
+            region,
+            sites: originalCell.sites || [],
+            undergroundRegions: originalCell.undergroundRegions || [],
+            historical_figures: originalCell.historical_figures || [],
+            written_contents: originalCell.written_contents || [],
+          };
         }
+      }
 
-        if (getZoomParams) {
-          const { cx, cy, k } = getZoomParams(d) || {};
-          if (cx != null && cy != null) {
-            zoomToPoint(cx, cy, k);
-          }
+      if (composed) {
+        if (onEntityClick) {
+          onEntityClick(composed);
         }
-      };
+      }
 
-      rectEnter.on("click", handleClick);
-      labelEnter.on("click", handleClick);
+      if (onCellClick) {
+        onCellClick(d);
+      }
+    };
 
-      rectSel.exit().remove();
-      labelSel.exit().remove();
+    merged.on("mousedown", handleCellMouseDown);
+    merged.on("mousemove", handleCellMouseMove);
+    merged.on("click", handleCellClick);
+
+    d3.select(window).on("mouseup.cellDrag", () => {});
+
+    if (cell.children && cell.children.length > 0) {
+      cell.children.forEach((child) => {
+        renderRecursiveCell(
+          child,
+          cellBbox,
+          gSelection,
+          xScale,
+          yScale,
+          level + 1
+        );
+      });
     }
+
+    cellRect.exit().remove();
+  };
+
+  // Initial render
+  useEffect(() => {
+    if (!worldData || !worldData.cells?.length) return;
 
     const cells = worldData.cells;
 
@@ -432,124 +1022,8 @@ function WorldMap({
       .domain([minX, maxX])
       .range([CELL_GAP, height - CELL_GAP - CELL_SIZE]);
 
-    const getSiteBox = (cell, siteIdx, siteCount) => {
-      const baseX = xScale(cell.y);
-      const baseY = yScale(cell.x);
-
-      const siteSize = computeChildSize(
-        CELL_SIZE,
-        CELL_SIZE,
-        siteCount || 1,
-        0.85
-      );
-      const pos = calculateGridPositions(
-        siteIdx,
-        siteCount || 1,
-        siteSize,
-        CELL_SIZE,
-        CELL_SIZE
-      );
-
-      return {
-        x: baseX + pos.x,
-        y: baseY + pos.y,
-        width: siteSize,
-        height: siteSize,
-      };
-    };
-
-    const getStructureBox = (
-      cell,
-      siteIdx,
-      siteCount,
-      structIdx,
-      structCount
-    ) => {
-      const siteBox = getSiteBox(cell, siteIdx, siteCount);
-      const structSize = computeChildSize(
-        siteBox.width,
-        siteBox.height,
-        structCount || 1,
-        0.8
-      );
-      const pos = calculateGridPositions(
-        structIdx,
-        structCount || 1,
-        structSize,
-        siteBox.width,
-        siteBox.height
-      );
-
-      return {
-        x: siteBox.x + pos.x,
-        y: siteBox.y + pos.y,
-        width: structSize,
-        height: structSize,
-      };
-    };
-
-    const getFigureBox = (
-      cell,
-      siteIdx,
-      siteCount,
-      structIdx,
-      structCount,
-      figIdx,
-      figCount
-    ) => {
-      // if no structure, figures live directly in the site box
-      if (structIdx == null || structCount === 0) {
-        const siteBox = getSiteBox(cell, siteIdx, siteCount);
-        const figSize = computeChildSize(
-          siteBox.width,
-          siteBox.height,
-          figCount || 1,
-          0.8
-        );
-        const pos = calculateGridPositions(
-          figIdx,
-          figCount || 1,
-          figSize,
-          siteBox.width,
-          siteBox.height
-        );
-
-        return {
-          x: siteBox.x + pos.x,
-          y: siteBox.y + pos.y,
-          width: figSize,
-          height: figSize,
-        };
-      }
-
-      const structBox = getStructureBox(
-        cell,
-        siteIdx,
-        siteCount,
-        structIdx,
-        structCount
-      );
-      const figSize = computeChildSize(
-        structBox.width,
-        structBox.height,
-        figCount || 1,
-        0.8
-      );
-      const pos = calculateGridPositions(
-        figIdx,
-        figCount || 1,
-        figSize,
-        structBox.width,
-        structBox.height
-      );
-
-      return {
-        x: structBox.x + pos.x,
-        y: structBox.y + pos.y,
-        width: figSize,
-        height: figSize,
-      };
-    };
+    xScaleRef.current = xScale;
+    yScaleRef.current = yScale;
 
     const regionTypesWithTextures = Array.from(
       new Set(
@@ -576,646 +1050,74 @@ function WorldMap({
     siteTypesRef.current = uniqueSiteTypesWithTextures;
     figureKindsRef.current = ["default"];
 
-    createOrUpdatePatterns(defs, 1);
+    const viewBox = svg.node().viewBox.baseVal;
+    const viewportWidth = viewBox.width;
+    const viewportHeight = viewBox.height;
 
-    // cells
-    const cellsSelection = g.selectAll("rect.cell").data(cells, (d) => d.key);
+    const cellsPerViewportAxis = Math.sqrt(MAX_VISIBLE_CELLS_AT_MIN_ZOOM);
+    const requiredZoomX = viewportWidth / (cellsPerViewportAxis * CELL_SIZE);
+    const requiredZoomY = viewportHeight / (cellsPerViewportAxis * CELL_SIZE);
+    const calculatedMinZoom = Math.max(requiredZoomX, requiredZoomY, 0.5);
 
-    const cellsEnter = cellsSelection
-      .enter()
-      .append("rect")
-      .attr("class", "cell")
-      .attr("x", (d) => xScale(d.y))
-      .attr("y", (d) => yScale(d.x))
-      .attr("width", CELL_SIZE)
-      .attr("height", CELL_SIZE)
-      .style("cursor", "pointer");
+    MIN_ZOOM = calculatedMinZoom;
 
-    cellsEnter.merge(cellsSelection).each(function (d) {
-      const texUrl = getRegionTex(d.region?.type);
-      const rect = d3.select(this);
+    currentZoomRef.current = MIN_ZOOM;
+    focusedCellRef.current = null;
 
-      // if (texUrl && d.sites.length) {
-      //   const pid = getPatternId("region", d.region?.type);
-      //   rect.style("fill", `url(#${pid})`);
-      // } else {
-      //   rect.style("fill", "#1f2933");
-      // }
-      const pid = getPatternId("region", d.region?.type);
-      rect.style("fill", `url(#${pid})`);
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const initialTransform = d3.zoomIdentity
+      .translate(
+        viewportWidth / 2 - centerX * MIN_ZOOM,
+        viewportHeight / 2 - centerY * MIN_ZOOM
+      )
+      .scale(MIN_ZOOM);
+
+    g.attr("transform", initialTransform);
+
+    g.selectAll("rect.cell").remove();
+
+    const visibleCells = cells.filter((cell) => {
+      if (!cell || cell.region?.type === "Ocean") return false;
+      return isCellVisible(cell, xScale, yScale, initialTransform, svg.node());
     });
 
-    cellsEnter
-      .append("title")
-      .text(
-        (d) =>
-          `(${d.x}, ${d.y})` +
-          (d.region?.type ? `\nRegion: ${d.region.type}` : "") +
-          `\nSites: ${d.sites?.length || 0}` +
-          `\nWritten contents: ${d.written_contents?.length || 0}`
-      );
+    const cellsToRender = optimizeVisibleCells(
+      visibleCells,
+      currentZoomRef.current
+    );
 
-    cellsEnter.on("click", (_, d) => {
-      onCellClick?.(d);
-      onCellClick?.(null);
-
-      console.log("clicks celle", d);
-
-      const regionType = d.region?.type || null;
-      const regionTextureUrl = getRegionTex(regionType);
-
-      const composed = {
-        kind: "cell",
-        name: d.region?.name,
-        type: regionType,
-        textureUrl: regionTextureUrl,
-        cellCoords: { x: d.x, y: d.y },
-
-        cell: d,
-        region: d.region,
-
-        historical_figures: d.historical_figures || [],
+    cellsToRender.forEach((item) => {
+      const cell = item.cell;
+      const cellBbox = {
+        x: xScale(cell.y),
+        y: yScale(cell.x),
+        width: CELL_SIZE,
+        height: CELL_SIZE,
       };
 
-      onEntityClick?.(composed);
+      const cellNode = {
+        childType: "cell",
+        childData: cell,
+        originalCell: cell,
+        key: cell.key,
+      };
 
-      const svg = d3.select(svgRef.current);
-      const g = svg.select("g");
-      if (!g.empty()) {
-        // xScale/yScale are in scope in this effect
-        const cx = xScale(d.y) + CELL_SIZE / 2;
-        const cy = yScale(d.x) + CELL_SIZE / 2;
-        zoomToPoint(cx, cy, 20); //
-      }
-    });
-
-    cellsSelection.exit().remove();
-
-    const siteMarkers = [];
-    cells.forEach((cell) => {
-      if (cell.sites && cell.sites.length) {
-        cell.sites.forEach((site, idx) => {
-          siteMarkers.push({
-            kind: "site",
-            cell,
-            site,
-            idx,
-            count: cell.sites.length,
-          });
-        });
-      }
-    });
-
-    drawEntityLayer({
-      markers: siteMarkers,
-      rectClass: "site-marker",
-      labelClass: "site-label",
-
-      // size based on CELL_SIZE & sites-in-cell
-      size: (d, parentBox) =>
-        computeChildSize(parentBox.width, parentBox.height, d.count, 0.85),
-
-      keyFn: (d) => `${d.cell.key}-site-${d.site.id || d.idx}`,
-
-      getFill: (d) => {
-        const type =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-        const texUrl = getSiteTex(type);
-        if (texUrl) {
-          const pid = getPatternId("site", type);
-          return `url(#${pid})`;
-        }
-        return "#9ca3af";
-      },
-
-      baseStroke: siteColor,
-      baseStrokeWidth: 0.1,
-
-      // font size depends on rendered rect size
-      labelFontSize: (s) => Math.max(2, s * 0.01),
-      labelFill: siteColor,
-
-      getLabelText: (d) =>
-        d.site?.fromFile2?.name ||
-        d.site?.fromFile1?.name ||
-        d.site?.name ||
-        "",
-
-      getTitleText: (d) => {
-        const name =
-          d.site?.fromFile2?.name ||
-          d.site?.fromFile1?.name ||
-          d.site?.name ||
-          "Site";
-        const type =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "";
-        return `${name}${type ? ` (${type})` : ""}`;
-      },
-
-      composeEntity: (d) => {
-        const siteType =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-
-        const siteName =
-          d.site?.fromFile2?.name ||
-          d.site?.fromFile1?.name ||
-          d.site?.name ||
-          "Unknown site";
-
-        const siteTextureUrl = getSiteTex(siteType);
-        const regionType = d.cell.region?.type || null;
-        const regionTextureUrl = getRegionTex(regionType);
-
-        return {
-          kind: "site",
-          name: siteName,
-          type: siteType,
-          textureUrl: siteTextureUrl,
-          regionTextureUrl,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          historical_figures: d.site.historical_figures || [],
-          inhabitants: d.site.inhabitants || [],
-          written_contents: d.site.written_contents || [],
-        };
-      },
-
-      getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        return { cx, cy, k: 20 };
-      },
-
-      // parent box defaults to whole cell, so no getBoundingBox here
-    });
-
-    const structureMarkers = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site, siteIdx) => {
-        const raw = site.structures;
-        const structures = normalizeToArray(raw);
-        structures.forEach((structure, idx) => {
-          structureMarkers.push({
-            kind: "structure",
-            cell,
-            site,
-            structure,
-            idx,
-            count: structures.length,
-            parentSiteIdx: siteIdx,
-            parentSiteCount: (cell.sites || []).length,
-          });
-        });
-      });
-    });
-
-    drawEntityLayer({
-      markers: structureMarkers,
-      rectClass: "structure-marker",
-      labelClass: "structure-label",
-
-      // size based on the *site* bbox and structures-in-site
-      size: (d, parentBox) =>
-        computeChildSize(parentBox.width, parentBox.height, d.count, 0.8),
-
-      keyFn: (d) =>
-        `${d.cell.key}-site-${d.site.id}-structure-${
-          d.structure.id || d.structure.local_id || d.idx
-        }`,
-
-      getFill: () => "#6b7280",
-      baseStroke: structureColor,
-      baseStrokeWidth: 0.3,
-
-      labelFontSize: (s) => Math.max(1.2, s * 0.1),
-      labelFill: structureColor,
-
-      getLabelText: (d) => d.structure.name || d.structure.type || "",
-      getTitleText: (d) => d.structure.name || d.structure.type || "Structure",
-
-      composeEntity: (d) => {
-        const name = d.structure.name || d.structure.type || "Structure";
-
-        const inhabitantIds = normalizeToArray(d.structure.inhabitant);
-        const structureInhabitants = (d.site.historical_figures || []).filter(
-          (hf) => inhabitantIds.includes(hf.id)
-        );
-
-        return {
-          kind: "structure",
-          name,
-          type: d.structure.type || null,
-          textureUrl: SITE_TEXTURES.default || DEFAULT_TEXTURE,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-
-          structure: d.structure,
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          inhabitants: structureInhabitants,
-          site_historical_figures: d.site.historical_figures || [],
-          site_written_contents: d.site.written_contents || [],
-        };
-      },
-
-      getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        return { cx, cy, k: 50 };
-      },
-
-      // parent bbox = site bbox (inside cell)
-      getBoundingBox: (d) => {
-        const baseX = xScale(d.cell.y);
-        const baseY = yScale(d.cell.x);
-
-        const siteIdx = d.parentSiteIdx;
-        const siteCount = d.parentSiteCount || 1;
-
-        const siteSize = computeChildSize(
-          CELL_SIZE,
-          CELL_SIZE,
-          siteCount,
-          0.85
-        );
-        const sitePos = calculateGridPositions(
-          siteIdx,
-          siteCount,
-          siteSize,
-          CELL_SIZE,
-          CELL_SIZE
-        );
-
-        return {
-          x: baseX + sitePos.x,
-          y: baseY + sitePos.y,
-          width: siteSize,
-          height: siteSize,
-        };
-      },
-    });
-
-    // figures
-
-    // --- FIGURES: use structure rect as parent bbox ---
-    // --- FIGURES: nested in structure.inhabitants (or in site if no structures) ---
-
-    const figureMarkers = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site, siteIdx) => {
-        const structures = normalizeToArray(site.structures);
-
-        if (structures.length) {
-          structures.forEach((structure, structIdx) => {
-            const inhabitants = normalizeToArray(structure.inhabitant);
-
-            inhabitants.forEach((hf, figIdx) => {
-              figureMarkers.push({
-                kind: "figure",
-                cell,
-                site,
-                structure,
-                hf,
-                idx: figIdx,
-                count: inhabitants.length,
-                parentSiteIdx: siteIdx,
-                parentSiteCount: (cell.sites || []).length,
-                parentStructIdx: structIdx,
-                parentStructCount: structures.length,
-                parentFigureIdx: figIdx,
-                parentFigureCount: inhabitants.length,
-              });
-            });
-          });
-        } else {
-          // fallback: figures directly in site if no structures
-          const siteFigures = normalizeToArray(site.historical_figures);
-          siteFigures.forEach((hf, figIdx) => {
-            figureMarkers.push({
-              kind: "figure",
-              cell,
-              site,
-              structure: null,
-              hf,
-              idx: figIdx,
-              count: siteFigures.length,
-              parentSiteIdx: siteIdx,
-              parentSiteCount: (cell.sites || []).length,
-              parentStructIdx: null,
-              parentStructCount: 0,
-              parentFigureIdx: figIdx,
-              parentFigureCount: siteFigures.length,
-            });
-          });
-        }
-      });
-    });
-
-    drawEntityLayer({
-      markers: figureMarkers,
-      rectClass: "figure-marker",
-      labelClass: "figure-label",
-
-      // size based on the *structure* or *site* bbox and figures-in-parent
-      size: (d, parentBox) =>
-        computeChildSize(parentBox.width, parentBox.height, d.count, 0.8),
-
-      keyFn: (d) =>
-        `${d.cell.key}-hf-${d.hf.id || d.idx}-struct-${
-          d.structure?.id || d.structure?.local_id || "none"
-        }`,
-
-      getFill: (d) => {
-        const texUrl = getFigureTex(d.hf);
-        if (texUrl) {
-          const pid = getPatternId("fig", "default");
-          return `url(#${pid})`;
-        }
-        return "#e5e7eb";
-      },
-
-      baseStroke: figureColor,
-      baseStrokeWidth: 0.1,
-
-      labelFontSize: 0.2,
-      labelFill: figureColor,
-
-      getLabelText: (d) => d.hf.name || "",
-      getTitleText: (d) => {
-        const name = d.hf.name || d.hf.id || "Figure";
-        const race = d.hf.race || "";
-        return `${name}${race ? ` (${race})` : ""}`;
-      },
-
-      composeEntity: (d) => {
-        const hfName = d.hf.name || d.hf.id || "Unknown figure";
-        const figureTextureUrl = getFigureTex(d.hf);
-
-        const siteType =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-        const siteTextureUrl = getSiteTex(siteType);
-        const regionType = d.cell.region?.type || null;
-        const regionTextureUrl = getRegionTex(regionType);
-
-        return {
-          kind: "figure",
-          name: hfName,
-          textureUrl: figureTextureUrl,
-          siteTextureUrl,
-          regionTextureUrl,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-
-          figure: d.hf,
-          structure: d.structure,
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          site_historical_figures: d.site.historical_figures || [],
-          cell_historical_figures: d.cell.historical_figures || [],
-          site_written_contents: d.site.written_contents || [],
-          cell_written_contents: d.cell.written_contents || [],
-        };
-      },
-
-      getZoomParams: (d) => {
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        return { cx, cy, k: 80 };
-      },
-
-      // parent bbox = figure's parent (structure or site)
-      getBoundingBox: (d) =>
-        getFigureBox(
-          d.cell,
-          d.parentSiteIdx,
-          d.parentSiteCount,
-          d.parentStructIdx,
-          d.parentStructCount,
-          d.parentFigureIdx,
-          d.parentFigureCount
+      const cellWithChildren = {
+        ...cell,
+        children: buildCellChildren(
+          cellNode,
+          currentZoomRef.current,
+          { x: 0, y: 0, width: CELL_SIZE, height: CELL_SIZE },
+          0
         ),
+      };
+
+      renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
     });
-
-    // --- BOOKS: nested inside inhabitant.books, parent = figure box ---
-
-    const bookMarkers = [];
-    cells.forEach((cell) => {
-      (cell.sites || []).forEach((site, siteIdx) => {
-        const structures = normalizeToArray(site.structures?.structure);
-
-        if (structures.length) {
-          structures.forEach((structure, structIdx) => {
-            const inhabitants = normalizeToArray(structure.inhabitants);
-
-            inhabitants.forEach((inhabitant, figIdx) => {
-              const books = normalizeToArray(inhabitant.books);
-              books.forEach((book, bookIdx) => {
-                bookMarkers.push({
-                  kind: "book",
-                  cell,
-                  site,
-                  structure,
-                  inhabitant,
-                  book,
-                  idx: bookIdx,
-                  count: books.length, // siblings per figure
-                  parentSiteIdx: siteIdx,
-                  parentSiteCount: (cell.sites || []).length,
-                  parentStructIdx: structIdx,
-                  parentStructCount: structures.length,
-                  parentFigureIdx: figIdx,
-                  parentFigureCount: inhabitants.length,
-                });
-              });
-            });
-          });
-        } else {
-          // optional: books from site-level figures if you ever need it
-        }
-      });
-    });
-
-    function drawBookLayer() {
-      const keyFn = (d) =>
-        `${d.cell.key}-book-${d.book.id || d.book.title || d.idx}-inh-${
-          d.inhabitant.id || d.parentFigureIdx
-        }`;
-
-      if (!bookMarkers.length) {
-        g.selectAll("foreignObject.book-fo").remove();
-        return;
-      }
-
-      const foSel = g
-        .selectAll("foreignObject.book-fo")
-        .data(bookMarkers, keyFn);
-
-      const foEnter = foSel
-        .enter()
-        .append("foreignObject")
-        .attr("class", "book-fo")
-        .attr("requiredExtensions", "http://www.w3.org/1999/xhtml")
-        .style("cursor", "pointer");
-
-      foEnter
-        .merge(foSel)
-        .each(function (d) {
-          // parent = figure box
-          const figBox = getFigureBox(
-            d.cell,
-            d.parentSiteIdx,
-            d.parentSiteCount,
-            d.parentStructIdx,
-            d.parentStructCount,
-            d.parentFigureIdx,
-            d.parentFigureCount
-          );
-
-          // size of each book inside the figure
-          const bookSize = computeChildSize(
-            figBox.width,
-            figBox.height,
-            d.count,
-            0.4
-          );
-          const pos = calculateGridPositions(
-            d.idx,
-            d.count,
-            bookSize,
-            figBox.width,
-            figBox.height
-          );
-
-          const x = figBox.x + pos.x;
-          const y = figBox.y + pos.y;
-
-          d._bookBox = {
-            x,
-            y,
-            width: bookSize,
-            height: bookSize,
-          };
-
-          d3.select(this)
-            .attr("x", x)
-            .attr("y", y)
-            .attr("width", bookSize)
-            .attr("height", bookSize);
-        })
-        .html((d) => {
-          const book = d.book || {};
-          const title = book.title || `Book ${d.idx + 1}`;
-          const text_content =
-            book.raw.text_content || `book default content ${d.idx + 1}`;
-          const html =
-            book.html ||
-            book.content_html ||
-            book.text ||
-            book.raw_html ||
-            `<p>${title}</p><p>${text_content}</p>`;
-
-          // small styled HTML card with links preserved
-          return `
-        <div xmlns="http://www.w3.org/1999/xhtml"
-             style="
-               width: 100%;
-               height: 100%;
-               box-sizing: border-box;
-       
-              //  background: rgba(15,23,42,0.9);
-              //  border: 0.5px solid ${bookColor};
-               color: #e5e7eb;
-               font-size: 1px;
-               line-height: 1.2;
-               overflow: hidden;
-               overflow-y:
-               text-overflow: ellipsis;
-               display: -webkit-box;
-
-               -webkit-line-clamp: 4;
-               -webkit-box-orient: vertical;
-             ">
-          ${html}
-        </div>
-      `;
-        });
-
-      // click handler: foreignObject itself
-      foEnter.on("click", function (event, d) {
-        event.stopPropagation();
-        onCellClick?.(null);
-
-        const book = d.book || {};
-        const bookTitle = book.title || "Book";
-        const bookHtml =
-          book.html ||
-          book.content_html ||
-          book.text ||
-          book.raw_html ||
-          `<p>${bookTitle}</p>`;
-
-        const siteType =
-          d.site?.fromFile2?.type ||
-          d.site?.fromFile1?.type ||
-          d.site?.type ||
-          "default";
-        const siteTextureUrl = getSiteTex(siteType);
-        const regionType = d.cell.region?.type || null;
-        const regionTextureUrl = getRegionTex(regionType);
-
-        const composed = {
-          kind: "book",
-          name: bookTitle,
-          html: bookHtml,
-          book,
-          inhabitant: d.inhabitant,
-          structure: d.structure,
-          site: d.site,
-          cell: d.cell,
-          region: d.cell.region,
-          undergroundRegions: d.cell.undergroundRegions || [],
-
-          siteTextureUrl,
-          regionTextureUrl,
-          cellCoords: { x: d.cell.x, y: d.cell.y },
-        };
-
-        onEntityClick?.(composed);
-
-        const cx = xScale(d.cell.y) + CELL_SIZE / 2;
-        const cy = yScale(d.cell.x) + CELL_SIZE / 2;
-        zoomToPoint(cx, cy, 120);
-      });
-
-      foSel.exit().remove();
-    }
-
-    // finally call it:
-    drawBookLayer();
   }, [worldData]);
 
-  // zoom
+  // Zoom / re-render on zoom
   useEffect(() => {
     if (!worldData || !worldData.cells?.length) return;
 
@@ -1232,163 +1134,227 @@ function WorldMap({
         if (event.type === "wheel") return true;
         if (event.type === "touchstart" || event.type === "touchmove")
           return true;
-        if (event.type === "mousedown" && event.button === 0) return true;
+        if (event.type === "mousedown") {
+          return event.button === 0;
+        }
         return false;
       })
       .on("zoom", (event) => {
         const { x, y, k } = event.transform;
+
+        if (k < MIN_ZOOM) {
+          const clampedTransform = d3.zoomIdentity
+            .translate(event.transform.x, event.transform.y)
+            .scale(MIN_ZOOM);
+          svg.call(zoom.transform, clampedTransform);
+          return;
+        }
+
         g.attr("transform", `translate(${x},${y}) scale(${k})`);
-        createOrUpdatePatterns(defs, k);
+
+        const oldZoom = currentZoomRef.current;
+        currentZoomRef.current = k;
+
+        const svgNode = svgRef.current;
+        const xScale = xScaleRef.current;
+        const yScale = yScaleRef.current;
+
+        if (svgNode && worldData && worldData.cells && xScale && yScale) {
+          const viewBox = svgNode.viewBox.baseVal;
+          setMainTransform(event.transform);
+          setMainViewBox({ width: viewBox.width, height: viewBox.height });
+          const viewportCenterX = viewBox.width / 2;
+          const viewportCenterY = viewBox.height / 2;
+
+          const worldX = (viewportCenterX - x) / k;
+          const worldY = (viewportCenterY - y) / k;
+
+          const cells = worldData.cells;
+          let focusedCell = null;
+
+          for (const cell of cells) {
+            const cellX = xScale(cell.y);
+            const cellY = yScale(cell.x);
+            if (
+              worldX >= cellX &&
+              worldX <= cellX + CELL_SIZE &&
+              worldY >= cellY &&
+              worldY <= cellY + CELL_SIZE
+            ) {
+              focusedCell = cell;
+              break;
+            }
+          }
+
+          const oldFocused = focusedCellRef.current;
+          focusedCellRef.current = focusedCell;
+
+          const transform = event.transform;
+
+          requestAnimationFrame(() => {
+            lastRenderedZoomRef.current = k;
+
+            const svgNode = svgRef.current;
+            const allCells = worldData.cells;
+
+            g.selectAll("rect.cell").remove();
+
+            const visibleCells = allCells.filter((cell) => {
+              if (!cell || cell.region?.type === "Ocean") return false;
+              return isCellVisible(cell, xScale, yScale, transform, svgNode);
+            });
+
+            const cellsToRender = optimizeVisibleCells(visibleCells, k);
+
+            cellsToRender.forEach((item) => {
+              const cell = item.cell;
+              const cellBbox = {
+                x: xScale(cell.y),
+                y: yScale(cell.x),
+                width: CELL_SIZE,
+                height: CELL_SIZE,
+              };
+
+              const cellNode = {
+                childType: "cell",
+                childData: cell,
+                originalCell: cell,
+                key: cell.key,
+              };
+
+              const cellWithChildren = {
+                ...cell,
+                children: buildCellChildren(
+                  cellNode,
+                  k,
+                  { x: 0, y: 0, width: CELL_SIZE, height: CELL_SIZE },
+                  0
+                ),
+              };
+
+              renderRecursiveCell(
+                cellWithChildren,
+                cellBbox,
+                g,
+                xScale,
+                yScale,
+                0
+              );
+            });
+          });
+        }
       });
 
     svg.call(zoom);
     zoomBehaviorRef.current = zoom;
     svg.on("dblclick.zoom", null);
 
-    const initialTransform = d3.zoomIdentity.translate(0, 0).scale(1);
-    svg.call(zoom.transform, initialTransform);
+    const viewBox = svg.node().viewBox.baseVal;
+    const mapWidth = mapWidthRef.current;
+    const mapHeight = mapHeightRef.current;
+    const viewportWidth = viewBox.width;
+    const viewportHeight = viewBox.height;
+
+    if (mapWidth > 0 && mapHeight > 0) {
+      const centerX = mapWidth / 2;
+      const centerY = mapHeight / 2;
+      const initialTransform = d3.zoomIdentity
+        .translate(
+          viewportWidth / 2 - centerX * MIN_ZOOM,
+          viewportHeight / 2 - centerY * MIN_ZOOM
+        )
+        .scale(MIN_ZOOM);
+
+      svg.call(zoom.transform, initialTransform);
+
+      setMainTransform(initialTransform);
+      setMainViewBox({ width: viewBox.width, height: viewBox.height });
+    } else {
+      const defaultTransform = d3.zoomIdentity.translate(0, 0).scale(MIN_ZOOM);
+      svg.call(zoom.transform, defaultTransform);
+      setMainTransform(defaultTransform);
+      setMainViewBox({ width: viewBox.width, height: viewBox.height });
+    }
 
     return () => {
       svg.on(".zoom", null);
     };
   }, [worldData]);
 
-  // highlight selected entity (site / figure)
-  // highlight + zoom to selected entity
+  // highlight selected entity
   useEffect(() => {
-    const svgNode = svgRef.current;
-    if (!svgNode) return;
+    if (!selectedEntity) return;
 
-    const svg = d3.select(svgNode);
+    const svg = d3.select(svgRef.current);
+    if (svg.empty()) return;
 
-    const cellRects = svg.selectAll("rect.cell");
-    const siteRects = svg.selectAll("rect.site-marker");
-    const structureRects = svg.selectAll("rect.structure-marker");
-    const figureRects = svg.selectAll("rect.figure-marker");
-    const bookFOs = svg.selectAll("foreignObject.book-fo");
+    const allCellRects = svg.selectAll("rect.cell");
 
-    let didZoom = false;
-
-    const zoomOnElementCenter = (el, kind) => {
-      if (!el || didZoom || !selectedEntity) return;
-
-      const x = parseFloat(el.attr("x")) || 0;
-      const y = parseFloat(el.attr("y")) || 0;
-      const w = parseFloat(el.attr("width")) || 0;
-      const h = parseFloat(el.attr("height")) || 0;
-
-      const cx = x + w / 2;
-      const cy = y + h / 2;
-      const k = ZOOM_BY_KIND[selectedEntity.kind] ?? 20;
-
-      zoomToPoint(cx, cy, k);
-      didZoom = true;
-    };
-
-    // cells
-    cellRects.each(function (d) {
+    allCellRects.each(function (d) {
       const rect = d3.select(this);
+      let isSelected = false;
 
-      const isSelected =
-        selectedEntity &&
+      if (
         selectedEntity.kind === "cell" &&
-        // preferred: use selectedEntity.id
-        ((selectedEntity.id != null &&
-          (selectedEntity.id === d.id || selectedEntity.id === d.region?.id)) ||
-          // fallback: older shape with selectedEntity.cell.region.id
-          (selectedEntity.cell &&
-            selectedEntity.cell.region &&
-            selectedEntity.cell.region.id === d.region?.id));
-
-      if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 5);
-        zoomOnElementCenter(rect, "cell");
-      } else {
-        rect.style("stroke", "none").style("stroke-width", 0);
+        d.originalCell &&
+        selectedEntity.cell &&
+        selectedEntity.cell.key === d.originalCell.key
+      ) {
+        isSelected = true;
+      } else if (selectedEntity.kind === d.childType && d.childData) {
+        if (
+          selectedEntity.childData &&
+          d.childData.id === selectedEntity.childData.id
+        ) {
+          isSelected = true;
+        }
       }
-    });
-
-    // sites
-    siteRects.each(function (d) {
-      const rect = d3.select(this);
-
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "site" &&
-        d.site &&
-        ((selectedEntity.id != null && selectedEntity.id === d.site.id) ||
-          (selectedEntity.site && selectedEntity.site.id === d.site.id));
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
-        zoomOnElementCenter(rect, "site");
+        rect.style("stroke", "#f97316").style("stroke-width", 2);
       } else {
-        rect.style("stroke", siteColor).style("stroke-width", 0.1);
-      }
-    });
-
-    // structures
-    structureRects.each(function (d) {
-      const rect = d3.select(this);
-
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "structure" &&
-        d.structure &&
-        ((selectedEntity.id != null && selectedEntity.id === d.structure.id) ||
-          (selectedEntity.structure &&
-            selectedEntity.structure.id === d.structure.id));
-
-      if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
-        zoomOnElementCenter(rect, "structure");
-      } else {
-        rect.style("stroke", structureColor).style("stroke-width", 0.1);
-      }
-    });
-
-    // figures
-    figureRects.each(function (d) {
-      const rect = d3.select(this);
-
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "figure" &&
-        d.hf &&
-        ((selectedEntity.id != null && selectedEntity.id === d.hf.id) ||
-          (selectedEntity.figure && selectedEntity.figure.id === d.hf.id));
-
-      if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 0.7);
-        zoomOnElementCenter(rect, "figure");
-      } else {
-        rect.style("stroke", figureColor).style("stroke-width", 0);
-      }
-    });
-
-    // books (foreignObject)
-    bookFOs.each(function (d) {
-      const fo = d3.select(this);
-
-      const isSelected =
-        selectedEntity &&
-        selectedEntity.kind === "book" &&
-        d.book &&
-        ((selectedEntity.id != null && selectedEntity.id === d.book.id) ||
-          (selectedEntity.book && selectedEntity.book.id === d.book.id));
-
-      if (isSelected) {
-        fo.style("filter", "drop-shadow(0 0 1px #f97316)");
-        zoomOnElementCenter(fo, "book");
-      } else {
-        fo.style("filter", null);
+        rect.style("stroke", null).style("stroke-width", 0);
       }
     });
   }, [selectedEntity]);
 
+  const handleMinimapClick = (worldX, worldY) => {
+    const svg = d3.select(svgRef.current);
+    const zoom = zoomBehaviorRef.current;
+    if (!zoom || !svgRef.current) return;
+
+    const viewBox = svgRef.current.viewBox.baseVal;
+    const currentZoom = currentZoomRef.current || MIN_ZOOM;
+
+    const newTransform = d3.zoomIdentity
+      .translate(
+        viewBox.width / 2 - worldX * currentZoom,
+        viewBox.height / 2 - worldY * currentZoom
+      )
+      .scale(currentZoom);
+
+    svg.transition().duration(300).call(zoom.transform, newTransform);
+  };
+
   return (
-    <div className="map-wrapper">
+    <div
+      className="map-wrapper"
+      style={{ position: "relative", width: "100%", height: "100%" }}
+    >
       <svg ref={svgRef} />
+      {worldData &&
+        worldData.cells &&
+        xScaleRef.current &&
+        yScaleRef.current && (
+          <Minimap
+            worldData={worldData}
+            mainTransform={mainTransform}
+            mainViewBox={mainViewBox}
+            xScale={xScaleRef.current}
+            yScale={yScaleRef.current}
+            onMinimapClick={handleMinimapClick}
+          />
+        )}
     </div>
   );
 }

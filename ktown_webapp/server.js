@@ -2,86 +2,45 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
-const { chain } = require("stream-chain");
-const { parser } = require("stream-json");
-const { streamValues } = require("stream-json/streamers/StreamValues");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "json_big_xml_plus.json";
-const map_location = "json_big_xml.json";
-const book_location = "big/books.json"; // Optional - can be missing
+const map_plus_location = "map_plus.json";
+const map_location = "map.json";
+const book_location = "big/books.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
 const PUBLIC_DIR = path.join(__dirname, "public");
 app.use(express.static(PUBLIC_DIR));
 
-// ---------- Helper: load JSON file using streaming parser for large files ----------
-function loadJsonFileStreaming(filePath) {
-  return new Promise((resolve, reject) => {
-    const pipeline = chain([
-      fs.createReadStream(filePath),
-      parser(),
-      streamValues(),
-    ]);
-
-    let result = null;
-    pipeline.on("data", (data) => {
-      result = data.value;
-    });
-
-    pipeline.on("end", () => {
-      if (result === null) {
-        reject(new Error(`Failed to parse JSON file: ${filePath}`));
-      } else {
-        resolve(result);
-      }
-    });
-
-    pipeline.on("error", (err) => {
-      reject(err);
-    });
-  });
-}
-
 // ---------- Helper: load default JSON files from /public ----------
-// Uses streaming parser to handle very large files that exceed Node.js string length limits
-async function loadDefaultFiles() {
+function loadDefaultFiles() {
   const file1Path = path.join(PUBLIC_DIR, map_plus_location);
   const file2Path = path.join(PUBLIC_DIR, map_location);
   const booksPath = path.join(PUBLIC_DIR, book_location);
 
   const hasFile1 = fs.existsSync(file1Path);
   const hasFile2 = fs.existsSync(file2Path);
-  const hasBooks = fs.existsSync(booksPath); // Optional
+  const hasBooks = fs.existsSync(booksPath); // NEW
 
-  if (!hasFile1 || !hasFile2) {
+  if (!hasFile1 || !hasFile2 || !hasBooks) {
     throw new Error(
       `Default files missing. json_big_xml_plus.json: ${hasFile1}, json_big_xml.json: ${hasFile2}, books.json: ${hasBooks}`
     );
   }
 
-  try {
-    console.log("Loading JSON files using streaming parser...");
-    
-    // Use streaming parser for large files
-    const [file1, file2, books] = await Promise.all([
-      loadJsonFileStreaming(file1Path),
-      loadJsonFileStreaming(file2Path),
-      hasBooks ? loadJsonFileStreaming(booksPath).catch(() => null) : Promise.resolve(null),
-    ]);
+  const file1Raw = fs.readFileSync(file1Path, "utf8");
+  const file2Raw = fs.readFileSync(file2Path, "utf8");
+  const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
 
-    console.log("JSON files loaded successfully");
-    return { file1, file2, books };
-  } catch (err) {
-    console.error("Error loading JSON files:", err);
-    throw new Error(
-      `Failed to load JSON files: ${err.message}`
-    );
-  }
+  const file1 = JSON.parse(file1Raw);
+  const file2 = JSON.parse(file2Raw);
+  const books = JSON.parse(booksRaw); // NEW
+
+  return { file1, file2, books }; // UPDATED
 }
 
 // ---------- Existing endpoint to check default files ----------
@@ -94,7 +53,7 @@ app.get("/api/default-files", (req, res) => {
   const hasFile2 = fs.existsSync(file2Path);
   const hasBooks = fs.existsSync(booksPath); // NEW
 
-  if (!hasFile1 || !hasFile2) {
+  if (!hasFile1 || !hasFile2 || !hasBooks) {
     return res.json({
       hasDefaults: false,
       hasFile1,
@@ -106,17 +65,17 @@ app.get("/api/default-files", (req, res) => {
   try {
     const file1Raw = fs.readFileSync(file1Path, "utf8");
     const file2Raw = fs.readFileSync(file2Path, "utf8");
-    const booksRaw = hasBooks ? fs.readFileSync(booksPath, "utf8") : null; // Optional
+    const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
 
     const file1 = JSON.parse(file1Raw);
     const file2 = JSON.parse(file2Raw);
-    const books = booksRaw ? JSON.parse(booksRaw) : null; // Optional
+    const books = JSON.parse(booksRaw); // NEW
 
     return res.json({
       hasDefaults: true,
       file1,
       file2,
-      books, // Optional
+      books, // NEW
     });
   } catch (err) {
     console.error("Error reading default JSON files:", err);
@@ -215,7 +174,7 @@ function buildBooksByAuthorMap(booksFile) {
   // Adjust this path if your books JSON is shaped differently
   const booksArr = normalizeToArray(booksFile);
 
-  console.log("BOOKS ARRAY", booksArr);
+  // console.log("BOOKS ARRAY", booksArr);
 
   booksArr.forEach((b) => {
     if (!b) return;
@@ -257,6 +216,10 @@ function collectHistFigIdsForStructure(
       let figure = histFigureById[structure.inhabitant];
       figure.books = booksByAuthor[structure.inhabitant];
       tempInhabitants.push(figure);
+
+      // if (booksByAuthor[structure.inhabitant]) {
+      //   console.log("has figure with book", figure);
+      // }
     }
   }
   structure.inhabitant = tempInhabitants;
@@ -435,12 +398,32 @@ function buildWorldData(file1, file2, booksFile) {
 }
 
 // ---------- NEW: GET / -> worldData from default files ----------
-app.get("/", async (req, res) => {
+app.get("/", (req, res) => {
   try {
-    const { file1, file2, books } = await loadDefaultFiles();
+    const { file1, file2, books } = loadDefaultFiles();
     const worldData = buildWorldData(file1, file2, books);
-    res.json({ worldData });
-    console.log("WORLD DATA (from default files)", worldData);
+
+    const firstCellWithBooks = worldData.cells.find((cell) =>
+      cell.sites?.some((site) =>
+        site.structures?.some((struct) =>
+          struct.inhabitant?.some((inh) => {
+            const hasBooks = Array.isArray(inh.books) && inh.books.length > 0;
+            if (hasBooks) {
+              console.log("has inhabitant with book", inh);
+            }
+            return hasBooks;
+          })
+        )
+      )
+    );
+
+    console.log("firstCellWithBooks", firstCellWithBooks);
+    res.json({ cell: firstCellWithBooks });
+
+    // console.log("FILTERED WORLD DATA", filtered);
+    // res.json({ worldData });
+
+    // console.log("WORLD DATA (from default files)", worldData);
   } catch (err) {
     console.error("Error building worldData from default files:", err);
     res.status(500).json({
@@ -451,19 +434,18 @@ app.get("/", async (req, res) => {
 });
 
 // ---------- Existing POST /api/world-data (still works with body) ----------
-app.post("/api/world-data", async (req, res) => {
+app.post("/api/world-data", (req, res) => {
   try {
     // const { file1, file2, books } = req.body;
 
-    const { file1, file2, books } = await loadDefaultFiles();
+    const { file1, file2, books } = loadDefaultFiles();
 
-    // Books file is optional - can be null
-    // if (!file1 || !file2) {
-    //   return res.status(400).json({
-    //     error:
-    //       "Both file1 and file2 JSON must be provided in the request body.",
-    //   });
-    // }
+    if (!file1 || !file2) {
+      return res.status(400).json({
+        error:
+          "Both file1 and file2 JSON must be provided in the request body.",
+      });
+    }
 
     const worldData = buildWorldData(file1, file2, books);
 
