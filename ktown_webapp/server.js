@@ -11,9 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "json_big_xml_plus.json";
-const map_location = "json_big_xml.json";
-const book_location = "books.json";
+const map_plus_location = "big/map_plus.json";
+const map_location = "big/map.json";
+const book_location = "big/books.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -29,7 +29,11 @@ function loadJsonFileStreaming(filePath) {
 
     const fileSize = fs.statSync(filePath).size;
     const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2);
-    console.log(`Loading ${path.basename(filePath)} (${fileSizeMB} MB) using streaming parser...`);
+    console.log(
+      `Loading ${path.basename(
+        filePath
+      )} (${fileSizeMB} MB) using streaming parser...`
+    );
 
     const pipeline = chain([
       fs.createReadStream(filePath),
@@ -75,30 +79,42 @@ async function loadDefaultFiles() {
   let books = { written_content: [] };
 
   if (!hasFile1 && !hasFile2) {
-    console.warn(`Warning: Both ${map_plus_location} and ${map_location} not found. Using empty structures.`);
+    console.warn(
+      `Warning: Both ${map_plus_location} and ${map_location} not found. Using empty structures.`
+    );
     return { file1, file2, books };
   }
 
   try {
     console.log("Loading JSON files using streaming parser...");
-    
+
     // Use streaming parser for large files
     const [file1Data, file2Data, booksData] = await Promise.all([
-      hasFile1 ? loadJsonFileStreaming(file1Path).catch(() => null) : Promise.resolve(null),
-      hasFile2 ? loadJsonFileStreaming(file2Path).catch(() => null) : Promise.resolve(null),
-      hasBooks ? loadJsonFileStreaming(booksPath).catch(() => null) : Promise.resolve(null),
+      hasFile1
+        ? loadJsonFileStreaming(file1Path).catch(() => null)
+        : Promise.resolve(null),
+      hasFile2
+        ? loadJsonFileStreaming(file2Path).catch(() => null)
+        : Promise.resolve(null),
+      hasBooks
+        ? loadJsonFileStreaming(booksPath).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
     if (file1Data) {
       file1 = file1Data;
     } else if (hasFile1) {
-      console.warn(`Warning: Failed to load ${file1Path}. Using empty structure.`);
+      console.warn(
+        `Warning: Failed to load ${file1Path}. Using empty structure.`
+      );
     }
 
     if (file2Data) {
       file2 = file2Data;
     } else if (hasFile2) {
-      console.warn(`Warning: Failed to load ${file2Path}. Using empty structure.`);
+      console.warn(
+        `Warning: Failed to load ${file2Path}. Using empty structure.`
+      );
     }
 
     if (booksData) {
@@ -109,9 +125,7 @@ async function loadDefaultFiles() {
     return { file1, file2, books };
   } catch (err) {
     console.error("Error loading JSON files:", err);
-    throw new Error(
-      `Failed to load JSON files: ${err.message}`
-    );
+    throw new Error(`Failed to load JSON files: ${err.message}`);
   }
 }
 
@@ -441,6 +455,8 @@ function buildWorldData(file1, file2, booksFile) {
     }
 
     cell.sites.push(mergedSite);
+
+    console.log("building world data", cell);
   });
 
   // 4) Sort cells

@@ -50,6 +50,8 @@ function App() {
 
       setWorldData(wd);
 
+      console.log("has world data", wd);
+
       let temp_figures = [];
       let temp_books = [];
       wd.cells.forEach((cell) => {
@@ -68,7 +70,7 @@ function App() {
                     temp_figures.push(figure);
 
                     if (figure.books) {
-                      // console.log("has figure with books", figure, cell);
+                      console.log("has figure with books", figure, cell);
 
                       for (let bi = 0; bi < figure.books.length; bi++) {
                         const book = figure.books[bi];
@@ -320,8 +322,10 @@ const normalizeToArray = (value) => {
 
 function StructureDetailView({ structure, handleEntityClick, books, figures }) {
   // Normalize inhabitant to array (can be single object or array)
-  const inhabitants = normalizeToArray(structure.inhabitant || structure.inhabitants);
-  
+  const inhabitants = normalizeToArray(
+    structure.inhabitant || structure.inhabitants
+  );
+
   return (
     <div>
       <button
