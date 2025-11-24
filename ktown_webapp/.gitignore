@@ -89,7 +89,6 @@ client/storybook-static/
 package-lock.json
 
 
+# Large JSON files - NEVER commit these!
 ktown_webapp/public/json_big_xml.json
 ktown_webapp/public/json_big_xml_plus.json
-ktown_webapp\public\json_big_xml.json
-ktown_webapp\public\json_big_xml_plus.json
