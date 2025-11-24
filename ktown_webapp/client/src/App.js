@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import WorldMap from "./worldMap";
 import JourneyVerticalProgress from "./progressBar";
 import RichBookContent from "./RichBookContent";
+import CellPopup from "./CellPopup";
 
 function createSelectedEntity(kind, payload) {
   return {
@@ -50,22 +51,26 @@ function App() {
 
       setWorldData(wd);
 
-      let temp_figures = [];
-      let temp_books = [];
+      // Build figures and books as objects indexed by ID (for links like figures[s.hfid])
+      let temp_figures = {};
+      let temp_books = {};
       wd.cells.forEach((cell) => {
-        if (cell.sites.length > 0) {
+        if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
 
             if (site.structures) {
-              for (let sti = 0; sti < site.structures.length; sti++) {
-                const structure = site.structures[sti];
+              const structures = Array.isArray(site.structures) ? site.structures : [site.structures];
+              for (let sti = 0; sti < structures.length; sti++) {
+                const structure = structures[sti];
+                const inhabitants = normalizeToArray(structure.inhabitant || structure.inhabitants);
 
-                if (structure.inhabitant.length > 0) {
-                  for (let ii = 0; ii < structure.inhabitant.length; ii++) {
-                    const figure = structure.inhabitant[ii];
+                if (inhabitants.length > 0) {
+                  for (let ii = 0; ii < inhabitants.length; ii++) {
+                    const figure = inhabitants[ii];
 
-                    temp_figures.push(figure);
+                    if (figure && figure.id) {
+                      temp_figures[figure.id] = figure;
 
                     if (figure.books) {
                       // console.log("has figure with books", figure);
@@ -109,9 +114,21 @@ function App() {
     // backendUrl is constant, so no need to add it to deps
   }, []);
 
-  const handleEntityClick = (entity) => {
+  const [popupData, setPopupData] = useState(null);
+
+  const handleEntityClick = (entity, clickEvent) => {
     setSelectedEntity(entity);
     setSelectedCell(null);
+
+    // Get click position for popup
+    const x = clickEvent?.clientX || clickEvent?.nativeEvent?.clientX || window.innerWidth / 2;
+    const y = clickEvent?.clientY || clickEvent?.nativeEvent?.clientY || window.innerHeight / 2;
+    
+    // Show popup instead of details panel
+    setPopupData({
+      cellData: entity,
+      position: { x, y },
+    });
 
     if (entity.kind === "cell") {
       setLevel(5);
@@ -130,6 +147,10 @@ function App() {
     }
 
     console.log("click entity", entity, level);
+  };
+
+  const handleClosePopup = () => {
+    setPopupData(null);
   };
 
   return (
@@ -151,25 +172,18 @@ function App() {
           )}
         </section>
 
-        <section className="details-panel">
-          <div className="app-header">
-            <p>KT0WN</p>
-          </div>
-
-          {/* <section className="controls">
-            <button onClick={fetchWorldData}>Reload World Data</button>
-            <p className="status">{status}</p>
-          </section> */}
-
-          {selectedEntity ? (
-            <EntityDetailsView
-              entity={selectedEntity}
-              figures={figures}
-              books={books}
-              handleEntityClick={handleEntityClick}
-            />
-          ) : null}
-        </section>
+        {/* Popup instead of details panel */}
+        {popupData && (
+          <CellPopup
+            entity={popupData.cellData}
+            position={popupData.position}
+            onClose={handleClosePopup}
+            figures={figures}
+            books={books}
+            handleEntityClick={handleEntityClick}
+            createSelectedEntity={createSelectedEntity}
+          />
+        )}
       </main>
     </div>
   );
