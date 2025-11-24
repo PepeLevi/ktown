@@ -11,8 +11,8 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "map_plus.json";
-const map_location = "map.json";
+const map_plus_location = "big/map_plus.json";
+const map_location = "big/map.json";
 const book_location = "big/books.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
@@ -212,17 +212,13 @@ function buildHistoricalFiguresMap(file1, file2) {
   const world1 = getWorldData(file1);
   const world2 = getWorldData(file2);
 
-  const hf1 = normalizeToArray(
-    world1?.historical_figures?.historical_figure
-  );
+  const hf1 = normalizeToArray(world1?.historical_figures?.historical_figure);
   hf1.forEach((h) => {
     if (!h || !h.id) return;
     map[h.id] = shallowMerge(map[h.id], h);
   });
 
-  const hf2 = normalizeToArray(
-    world2?.historical_figures?.historical_figure
-  );
+  const hf2 = normalizeToArray(world2?.historical_figures?.historical_figure);
   hf2.forEach((h) => {
     if (!h || !h.id) return;
     map[h.id] = shallowMerge(map[h.id], h);
@@ -236,9 +232,7 @@ function buildWrittenByAuthorMap(file1, file2) {
 
   function addFromFile(file, sourceLabel) {
     const world = getWorldData(file);
-    const wcArray = normalizeToArray(
-      world?.written_contents?.written_content
-    );
+    const wcArray = normalizeToArray(world?.written_contents?.written_content);
     wcArray.forEach((wc) => {
       if (!wc) return;
       const authorId =
@@ -335,7 +329,7 @@ function buildWorldData(file1, file2, booksFile) {
   // Regions
   const world1 = getWorldData(file1);
   const world2 = getWorldData(file2);
-  
+
   const regions1 = normalizeToArray(world1?.regions?.region);
   const regions2 = normalizeToArray(world2?.regions?.region);
 

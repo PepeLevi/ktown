@@ -68,8 +68,6 @@ function App() {
                     temp_figures.push(figure);
 
                     if (figure.books) {
-                      console.log("has figure with books", figure);
-
                       for (let bi = 0; bi < figure.books.length; bi++) {
                         const book = figure.books[bi];
                         temp_books.push(book);

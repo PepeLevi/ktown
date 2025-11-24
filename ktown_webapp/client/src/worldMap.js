@@ -126,20 +126,15 @@ const getSiteStructures = (site) => {
 
   let structures = [];
 
-  console.log("WHAT SITE AM I LOOKING FOR STRUCTURES IN???", site);
+  // console.log("WHAT SITE AM I LOOKING FOR STRUCTURES IN???", site);
 
   // Preferred: already flattened on the site
   if (Array.isArray(site.structures)) {
     structures = site.structures;
-
-    console.log("returns structures from array", structures);
-
     return structures;
   }
   if (site.structure) {
     structures = site.structure;
-
-    console.log("returns structures from obj", structures);
 
     return structures;
   }
@@ -166,8 +161,6 @@ const getStructureInhabitants = (structure) => {
 
   let inhabitants = [];
 
-  console.log("looks at structure for inhabitants", structure);
-
   // You might add structure.inhabitants later
   if (Array.isArray(structure.inhabitants)) inhabitants = structure.inhabitants;
 
@@ -175,21 +168,24 @@ const getStructureInhabitants = (structure) => {
   if (Array.isArray(structure.inhabitant)) inhabitants = structure.inhabitant;
   if (structure.inhabitant) inhabitants = [structure.inhabitant];
 
-  if (inhabitants.length > 0) {
-    console.log("has figure in structure", inhabitants);
-  }
-
   return inhabitants;
 };
 
 const getInhabitantBooks = (hf) => {
   if (!hf) return [];
+
+  console.log("LOOKS for books", hf);
   const raw =
     hf.books ||
     hf.book ||
     hf.written_contents ||
     hf.written_content ||
     hf.book_list;
+
+  if (raw) {
+    console.log("LOOKS for books", raw);
+  }
+
   return normalizeToArray(raw);
 };
 
@@ -1286,7 +1282,6 @@ function WorldMap({
       if (composed) {
         // Call onEntityClick to show info in EntityDetailsView
         if (onEntityClick) {
-          console.log("Calling onEntityClick with:", composed);
           onEntityClick(composed);
         } else {
           console.warn("onEntityClick is not defined!");
@@ -1296,9 +1291,9 @@ function WorldMap({
       }
 
       // Also call onCellClick for cell selection
-      if (onCellClick) {
-        onCellClick(d);
-      }
+      // if (onCellClick) {
+      //   onCellClick(d);
+      // }
 
       // REMOVED: Auto-zoom on click - user should manually zoom if they want
       // This was causing unwanted camera movement when clicking on cells
@@ -1550,11 +1545,9 @@ function WorldMap({
                 inhabitants.length,
                 figBaseCount + Math.max(0, figAdditionalCount)
               );
-              // console.log("PUSH FIGURE TO MAP", hf);
+
               inhabitants.slice(0, visibleFigCount).forEach((hf) => {
                 allChildData.push({ kind: "figure", data: hf });
-
-                console.log("PUSH FIGURE TO MAP", hf);
               });
 
               inhabitants.forEach((inh) => {
