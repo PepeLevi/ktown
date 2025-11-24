@@ -5,6 +5,7 @@ import {
   getRegionTex,
   getSiteTex,
   getFigureTex,
+  clearTextureCache,
 } from "./proceduralTextures";
 import Minimap from "./Minimap";
 
@@ -226,6 +227,16 @@ function WorldMap({
   // State for minimap
   const [mainTransform, setMainTransform] = useState(null);
   const [mainViewBox, setMainViewBox] = useState(null);
+  
+  // Time progression state - DISABLED FOR PERFORMANCE
+  // const [currentYear, setCurrentYear] = useState(null);
+  // const [yearRange, setYearRange] = useState({ min: null, max: null });
+  // const [filteredWorldData, setFilteredWorldData] = useState(null);
+  // const timeProgressionRef = useRef(null);
+  
+  // Use worldData directly (no year filtering - year system disabled for performance)
+  // const filteredWorldData = worldData; // Removed - use worldData directly
+  // const currentYear = null; // Removed - not used
 
   const sanitizeKey = (val) => String(val || "Unknown").replace(/\s+/g, "");
 
@@ -241,6 +252,215 @@ function WorldMap({
   const normalizeToArray = (value) => {
     if (!value) return [];
     return Array.isArray(value) ? value : [value];
+  };
+  
+  // Extract year from various possible property names
+  const getYear = (obj) => {
+    if (!obj) return null;
+    return obj.start_year || obj.startYear || obj.year || obj.start || null;
+  };
+  
+  const getEndYear = (obj) => {
+    if (!obj) return null;
+    return obj.end_year || obj.endYear || obj.end || null;
+  };
+  
+  // Check if an entity exists at the given year
+  const existsAtYear = (entity, year) => {
+    if (!entity || year === null) return true; // If no year info, assume it always exists
+    
+    const startYear = getYear(entity);
+    const endYear = getEndYear(entity);
+    
+    // If no year info, assume it always exists
+    if (startYear === null && endYear === null) return true;
+    
+    // Check if year is within range
+    if (startYear !== null && year < startYear) return false;
+    if (endYear !== null && year > endYear) return false;
+    
+    return true;
+  };
+  
+  // Check if a cell has any entities with time-sensitive data (start_year or end_year)
+  const hasTimeSensitiveEntities = (cell) => {
+    if (!cell) return false;
+    
+    // Check sites
+    if (cell.sites && cell.sites.length > 0) {
+      for (const site of cell.sites) {
+        if (getYear(site) !== null || getEndYear(site) !== null) return true;
+        
+        // Check structures within sites
+        const structures = normalizeToArray(site.structures?.structure || site.structures);
+        for (const struct of structures) {
+          if (getYear(struct) !== null || getEndYear(struct) !== null) return true;
+          
+          // Check inhabitants (historical figures) in structures
+          const inhabitants = normalizeToArray(struct.inhabitants || struct.inhabitant);
+          for (const inhabitant of inhabitants) {
+            if (getYear(inhabitant) !== null || getEndYear(inhabitant) !== null) return true;
+          }
+        }
+      }
+    }
+    
+    // Check historical figures directly in cell
+    if (cell.historical_figures && cell.historical_figures.length > 0) {
+      for (const hf of cell.historical_figures) {
+        if (getYear(hf) !== null || getEndYear(hf) !== null) return true;
+      }
+    }
+    
+    // Check underground regions
+    if (cell.undergroundRegions && cell.undergroundRegions.length > 0) {
+      for (const ug of cell.undergroundRegions) {
+        if (getYear(ug) !== null || getEndYear(ug) !== null) return true;
+      }
+    }
+    
+    // Check written contents
+    if (cell.written_contents && cell.written_contents.length > 0) {
+      for (const wc of cell.written_contents) {
+        if (getYear(wc) !== null || getEndYear(wc) !== null) return true;
+      }
+    }
+    
+        // Check events/occasions in sites
+        if (cell.sites && cell.sites.length > 0) {
+          for (const site of cell.sites) {
+            // Check occasions/events within sites
+            const occasions = normalizeToArray(site.occasion || site.occasions || site.event || site.events);
+            for (const occasion of occasions) {
+              // Even if occasion doesn't have year, if site has year or has an event ID, consider it time-sensitive
+              if (getYear(occasion) !== null || getEndYear(occasion) !== null) return true;
+              if (occasion.event && occasion.event !== "-1") return true; // Has an event reference
+              
+              // Check schedule items within occasions (some may have year info)
+              const schedule = normalizeToArray(occasion.schedule);
+              for (const scheduleItem of schedule) {
+                if (getYear(scheduleItem) !== null || getEndYear(scheduleItem) !== null) return true;
+              }
+            }
+          }
+        }
+    
+    return false;
+  };
+  
+  // Extract min/max year range from worldData
+  const extractYearRange = (worldData) => {
+    if (!worldData || !worldData.cells) return { min: null, max: null };
+    
+    let minYear = null;
+    let maxYear = null;
+    
+    const checkYear = (year) => {
+      if (year !== null && year !== undefined) {
+        if (minYear === null || year < minYear) minYear = year;
+        if (maxYear === null || year > maxYear) maxYear = year;
+      }
+    };
+    
+    worldData.cells.forEach((cell) => {
+      // Check sites
+      (cell.sites || []).forEach((site) => {
+        checkYear(getYear(site));
+        checkYear(getEndYear(site));
+        
+        // Check structures within sites
+        const structures = normalizeToArray(site.structures?.structure);
+        structures.forEach((struct) => {
+          checkYear(getYear(struct));
+          checkYear(getEndYear(struct));
+        });
+        
+        // Check occasions/events within sites
+        const occasions = normalizeToArray(site.occasion || site.occasions || site.event || site.events);
+        occasions.forEach((occasion) => {
+          checkYear(getYear(occasion));
+          checkYear(getEndYear(occasion));
+        });
+      });
+      
+      // Check historical figures
+      (cell.historical_figures || []).forEach((hf) => {
+        checkYear(getYear(hf));
+        checkYear(getEndYear(hf));
+      });
+      
+      // Check underground regions
+      (cell.undergroundRegions || []).forEach((ug) => {
+        checkYear(getYear(ug));
+        checkYear(getEndYear(ug));
+      });
+    });
+    
+    return { min: minYear, max: maxYear };
+  };
+  
+  // Filter worldData based on current year
+  const filterWorldDataByYear = (worldData, year) => {
+    if (!worldData || !worldData.cells || year === null) return worldData;
+    
+    const filteredCells = worldData.cells.map((cell) => {
+      const filteredCell = { ...cell };
+      
+      // Filter sites
+      if (cell.sites) {
+        filteredCell.sites = cell.sites.filter((site) => existsAtYear(site, year));
+        
+        // Filter structures and occasions/events within sites
+        filteredCell.sites = filteredCell.sites.map((site) => {
+          const filteredSite = { ...site };
+          
+          // Filter structures within sites
+          if (site.structures?.structure) {
+            const structures = normalizeToArray(site.structures.structure);
+            const filteredStructures = structures.filter((struct) => existsAtYear(struct, year));
+            if (filteredStructures.length > 0) {
+              filteredSite.structures = { structure: filteredStructures.length === 1 ? filteredStructures[0] : filteredStructures };
+            } else {
+              filteredSite.structures = null;
+            }
+          }
+          
+          // Filter occasions/events within sites
+          const occasions = normalizeToArray(site.occasion || site.occasions || site.event || site.events);
+          if (occasions && occasions.length > 0) {
+            const filteredOccasions = occasions.filter((occasion) => existsAtYear(occasion, year));
+            if (filteredOccasions.length > 0) {
+              // Preserve original property name
+              if (site.occasion) filteredSite.occasion = filteredOccasions.length === 1 ? filteredOccasions[0] : filteredOccasions;
+              if (site.occasions) filteredSite.occasions = filteredOccasions;
+              if (site.event) filteredSite.event = filteredOccasions.length === 1 ? filteredOccasions[0] : filteredOccasions;
+              if (site.events) filteredSite.events = filteredOccasions;
+            } else {
+              if (site.occasion) filteredSite.occasion = null;
+              if (site.occasions) filteredSite.occasions = [];
+              if (site.event) filteredSite.event = null;
+              if (site.events) filteredSite.events = [];
+            }
+          }
+          
+          return filteredSite;
+        });
+      }
+      
+      // Filter historical figures
+      if (cell.historical_figures) {
+        filteredCell.historical_figures = cell.historical_figures.filter((hf) => existsAtYear(hf, year));
+      }
+      
+      // Filter underground regions
+      if (cell.undergroundRegions) {
+        filteredCell.undergroundRegions = cell.undergroundRegions.filter((ug) => existsAtYear(ug, year));
+      }
+      
+      return filteredCell;
+    });
+    
+    return { ...worldData, cells: filteredCells };
   };
 
   // Check if a hierarchy level should be visible at current zoom
@@ -739,6 +959,8 @@ function WorldMap({
   };
 
   // Recursive function to render a cell and its children
+  // Recursive function to render a cell and its children
+  // Year system disabled - textures are static (no time-based changes)
   const renderRecursiveCell = (cell, parentBbox, gSelection, xScale, yScale, level = 0) => {
     // Calculate this cell's position
     const cellX = level === 0 ? xScale(cell.y) : (parentBbox.x + (cell.bbox?.x || 0));
@@ -815,42 +1037,45 @@ function WorldMap({
         // Get original cell for intensity calculation (for gradient hotspots)
         const originalCell = d.originalCell || d;
         
+        // Year system disabled - always pass null
+        const yearForTexture = null;
+        
         if (level === 0) {
           // Original cell - use region texture (skip if ocean)
           if (d.region?.type !== "Ocean") {
-            texUrl = getRegionTex(d.region?.type, cellKeyForTexture, originalCell);
+            texUrl = getRegionTex(d.region?.type, cellKeyForTexture, originalCell, yearForTexture);
             patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
           }
         } else if (d.isOriginalCell || d.childType === "region") {
           // This is the original cell texture in a subdivision - use region texture
           const regionType = d.childData?.type || d.originalCell?.region?.type;
-          texUrl = getRegionTex(regionType, cellKeyForTexture, originalCell);
+          texUrl = getRegionTex(regionType, cellKeyForTexture, d, yearForTexture); // Pass year for time-sensitive textures
           patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
         } else if (d.childType === "site") {
           const siteType = d.childData?.fromFile2?.type || d.childData?.fromFile1?.type || d.childData?.type || "default";
-          texUrl = getSiteTex(siteType, cellKeyForTexture);
+          texUrl = getSiteTex(siteType, cellKeyForTexture, d, yearForTexture); // Pass year for time-sensitive textures
           patternKey = `site-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(siteType)}`;
         } else if (d.childType === "structure") {
           // Structures get procedural textures - use neutral palette
           const structId = d.childData?.id || d.childData?.local_id || 'default';
-          texUrl = getRegionTex(null, `${cellKeyForTexture}-struct-${structId}`, originalCell); // null type = default palette
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-struct-${structId}`, d, yearForTexture); // Pass year
           patternKey = `structure-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(structId))}`;
         } else if (d.childType === "figure" || d.childType === "cellFigure") {
-          texUrl = getFigureTex(d.childData, cellKeyForTexture);
+          texUrl = getFigureTex(d.childData, cellKeyForTexture, d, yearForTexture); // Pass year
           patternKey = `fig-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(d.childData?.id || 'default'))}`;
         } else if (d.childType === "undergroundRegion") {
           // Underground regions get procedural textures - use cavern palette
           const ugId = d.childData?.id || 'default';
-          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`, originalCell); // Use cavern palette
+          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`, d, yearForTexture); // Pass year
           patternKey = `underground-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(ugId))}`;
         } else if (d.childType === "writtenContent") {
           // Written contents get procedural textures - use neutral palette
           const wcId = d.childData?.id || d.childData?.title || 'default';
-          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`, originalCell); // null type = default palette
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`, d, yearForTexture); // Pass year
           patternKey = `written-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(wcId))}`;
         } else {
           // Fallback: generate a default texture for any unknown type
-          texUrl = getRegionTex(null, cellKeyForTexture, originalCell);
+          texUrl = getRegionTex(null, cellKeyForTexture, originalCell, yearForTexture);
           patternKey = `default-${sanitizeForSelector(cellKeyForTexture)}`;
         }
         
@@ -868,8 +1093,7 @@ function WorldMap({
         // Fallback: if texture wasn't applied, generate a default one
         if (!appliedTexture) {
           // Generate a fallback texture using the cell key
-          const originalCell = d.originalCell || d;
-          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture, originalCell);
+          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture, originalCell, yearForTexture);
           const fallbackPatternKey = `fallback-${sanitizeForSelector(cellKeyForTexture)}`;
           const fallbackPid = getOrCreatePattern(defs, fallbackPatternKey, fallbackTexUrl);
           if (fallbackPid) {
@@ -884,12 +1108,87 @@ function WorldMap({
         // Always set opacity to 1 (opaque) - no transparency
         rect.style("opacity", 1);
         
-        // Optional: add subtle stroke for cells with children
+        // Add visual indicators for cells with ACTIVE entities (time-sensitive, changes with year)
+        // Make it VERY visible when cells have active events/entities in current year
+        let strokeColor = null;
+        let strokeWidth = 0;
+        let glowEffect = false;
+        
+        // Check if this cell has ACTIVE entities in the current year (from filtered data)
+        // This shows what's actually active NOW, not just what exists
+        const activeSites = originalCell.sites && originalCell.sites.length > 0;
+        const hasActiveSites = !!activeSites; // Boolean flag for sites
+        
+        // Check for active events/occasions (most dynamic - highlight these!)
+        const hasActiveEvents = activeSites && originalCell.sites.some(site => {
+          const occasions = normalizeToArray(site.occasion || site.occasions || site.event || site.events);
+          return occasions && occasions.length > 0;
+        });
+        
+        // Historical figures (active in current year)
+        const hasDirectFigures = originalCell.historical_figures && originalCell.historical_figures.length > 0;
+        const hasFiguresInStructures = activeSites && originalCell.sites.some(site => {
+          const structs = normalizeToArray(site.structures?.structure || site.structures);
+          return structs && structs.some(struct => {
+            const inhabitants = normalizeToArray(struct.inhabitants || struct.inhabitant);
+            return inhabitants && inhabitants.length > 0;
+          });
+        });
+        const hasActiveHistoricalFigures = hasDirectFigures || hasFiguresInStructures;
+        
+        const hasActiveUndergroundRegions = originalCell.undergroundRegions && originalCell.undergroundRegions.length > 0;
+        
+        // Check for active structures
+        const hasActiveStructures = activeSites && originalCell.sites.some(site => {
+          if (site.structures) {
+            const structs = normalizeToArray(site.structures?.structure || site.structures);
+            return structs && structs.length > 0;
+          }
+          return false;
+        });
+        
+        // VISIBLE color-coded borders showing ACTIVE entities (what's happening NOW):
+        // - BRIGHT RED/ORANGE: has active events (most important - things happening!)
+        // - Yellow: has active structures
+        // - Green: has active historical figures
+        // - Blue: has active sites
+        // - Purple: has active underground regions
+        if (hasActiveEvents) {
+          strokeColor = "rgba(255, 100, 0, 1)"; // Bright orange/red for events
+          strokeWidth = 3;
+          glowEffect = true; // Make events really stand out
+        } else if (hasActiveStructures) {
+          strokeColor = "rgba(255, 255, 0, 0.9)"; // Yellow for structures
+          strokeWidth = 2;
+        } else if (hasActiveSites) {
+          strokeColor = "rgba(0, 200, 255, 0.8)"; // Bright blue for sites
+          strokeWidth = 1.5;
+        } else if (hasActiveHistoricalFigures) {
+          strokeColor = "rgba(0, 255, 0, 0.8)"; // Green for historical figures
+          strokeWidth = 1.5;
+        } else if (hasActiveUndergroundRegions) {
+          strokeColor = "rgba(255, 0, 255, 0.8)"; // Purple for underground regions
+          strokeWidth = 1.5;
+        }
+        
+        // White stroke for cells with visible children (fractal subdivision)
         const hasVisibleChildren = d.children && d.children.length > 0;
-        if (hasVisibleChildren) {
-          rect.style("stroke", "rgba(255,255,255,0.3)").style("stroke-width", 0.5);
+        if (hasVisibleChildren && !strokeColor) {
+          strokeColor = "rgba(255,255,255,0.3)";
+          strokeWidth = 0.5;
+        }
+        
+        if (strokeColor) {
+          rect.style("stroke", strokeColor).style("stroke-width", strokeWidth);
+          // Add glow effect for events
+          if (hasActiveEvents) {
+            rect.style("filter", "drop-shadow(0 0 6px rgba(255, 100, 0, 0.9))");
+          } else {
+            rect.style("filter", null);
+          }
         } else {
           rect.style("stroke", null).style("stroke-width", 0);
+          rect.style("filter", null);
         }
       });
     
@@ -1322,12 +1621,27 @@ function WorldMap({
   };
 
   // 1) build map & markers
+  // DISABLED: Initialize year range and start time progression (too slow)
+  // useEffect(() => {
+  //   ...
+  // }, [worldData]);
+  
+  // DISABLED: Update filtered worldData when currentYear changes
+  // useEffect(() => {
+  //   ...
+  // }, [worldData, currentYear]);
+  
+  // Track if initial render has been done (to avoid resetting camera on year updates)
+  const initialRenderDoneRef = useRef(false);
+  
   useEffect(() => {
-    if (!worldData || !worldData.cells?.length) return;
+    // Use worldData directly (year system disabled)
+    const dataToRender = worldData;
+    if (!dataToRender || !dataToRender.cells?.length) return;
 
     // All rendering is done through renderRecursiveCell - no old marker system needed
 
-    const cells = worldData.cells;
+    const cells = dataToRender.cells;
 
     const minX = d3.min(cells, (d) => d.x) ?? 0;
     const maxX = d3.max(cells, (d) => d.x) ?? 0;
@@ -1343,17 +1657,37 @@ function WorldMap({
     mapWidthRef.current = width;
     mapHeightRef.current = height;
 
-    const svg = d3
-      .select(svgRef.current)
-      .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("width", "100%")
-      .attr("height", "100%");
+    const svg = d3.select(svgRef.current);
+    
+    // Preserve current zoom transform to avoid resetting camera
+    const currentTransform = svg.property("__zoom") || d3.zoomIdentity;
+    const wasInitialized = initialRenderDoneRef.current;
+    
+    // Only do full initialization on first render
+    if (!wasInitialized) {
+      svg
+        .attr("viewBox", `0 0 ${width} ${height}`)
+        .attr("width", "100%")
+        .attr("height", "100%");
 
-    svg.selectAll("*").remove();
-
-    const defs = svg.append("defs");
-    const g = svg.append("g");
-
+      svg.selectAll("*").remove();
+      
+      svg.append("defs");
+      svg.append("g");
+      
+      initialRenderDoneRef.current = true;
+    }
+    
+    // Get defs and g (they should exist now)
+    const defs = svg.select("defs");
+    const g = svg.select("g");
+    
+    if (defs.empty() || g.empty()) {
+      // If somehow they don't exist, create them
+      if (defs.empty()) svg.append("defs");
+      if (g.empty()) svg.append("g");
+    }
+    
     const xScale = d3
       .scaleLinear()
       .domain([minY, maxY])
@@ -1415,17 +1749,28 @@ function WorldMap({
     MIN_ZOOM = calculatedMinZoom;
     
     // Set initial zoom to MIN_ZOOM (maximum zoom out - shows manageable area)
-    currentZoomRef.current = MIN_ZOOM;
-    focusedCellRef.current = null;
-
-    // Set initial transform to center of map at calculated zoom
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const initialTransform = d3.zoomIdentity
-      .translate(viewportWidth / 2 - centerX * MIN_ZOOM, viewportHeight / 2 - centerY * MIN_ZOOM)
-      .scale(MIN_ZOOM);
+    let initialTransform;
     
-    g.attr("transform", initialTransform);
+    // Only set initial transform if this is truly the first render (not a re-render)
+    if (!wasInitialized) {
+      currentZoomRef.current = MIN_ZOOM;
+      focusedCellRef.current = null;
+
+      // Set initial transform to center of map at calculated zoom
+      const centerX = width / 2;
+      const centerY = height / 2;
+      initialTransform = d3.zoomIdentity
+        .translate(viewportWidth / 2 - centerX * MIN_ZOOM, viewportHeight / 2 - centerY * MIN_ZOOM)
+        .scale(MIN_ZOOM);
+      
+      g.attr("transform", initialTransform);
+    } else {
+      // Preserve current transform - don't reset camera
+      const currentTransform = d3.zoomTransform(g.node());
+      initialTransform = currentTransform || d3.zoomIdentity
+        .translate(viewportWidth / 2 - (width / 2) * MIN_ZOOM, viewportHeight / 2 - (height / 2) * MIN_ZOOM)
+        .scale(MIN_ZOOM);
+    }
     
     // Clear all existing cells
     g.selectAll("rect.cell").remove();
@@ -1460,11 +1805,20 @@ function WorldMap({
     });
 
     // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
-  }, [worldData]);
+    // Only re-run initial render when worldData itself changes (not on year updates)
+    // Year updates will be handled separately to preserve camera position
+  }, [worldData]); // Only depend on worldData, not filteredWorldData or currentYear
+  
+  // DISABLED: Update all visible cells when year changes (too slow)
+  // useEffect(() => {
+  //   ...
+  // }, [currentYear, filteredWorldData]);
 
   // zoom
   useEffect(() => {
-    if (!worldData || !worldData.cells?.length) return;
+    // Use worldData directly (year system disabled)
+    const dataToRender = worldData;
+    if (!dataToRender || !dataToRender.cells?.length) return;
 
       const svg = d3.select(svgRef.current);
       const g = svg.select("g");
@@ -1527,7 +1881,8 @@ function WorldMap({
           const worldY = (viewportCenterY - y) / k;
           
           // Find which cell contains this point
-          const cells = worldData.cells;
+            const dataToRender = worldData;
+            const cells = dataToRender.cells;
           let focusedCell = null;
           
           for (const cell of cells) {
@@ -1564,8 +1919,10 @@ function WorldMap({
             lastRenderedZoomRef.current = k;
             
             // Rebuild based on current zoom and viewport
+            // Use worldData directly (year system disabled)
             const svgNode = svgRef.current;
-            const allCells = worldData.cells;
+            const dataToRender = worldData;
+            const allCells = dataToRender.cells;
             
             // Clear existing cells
             g.selectAll("rect.cell").remove();
@@ -1607,38 +1964,42 @@ function WorldMap({
     zoomBehaviorRef.current = zoom;
     svg.on("dblclick.zoom", null);
     
-    // Calculate initial transform to show manageable number of cells
-    const viewBox = svg.node().viewBox.baseVal;
-    const mapWidth = mapWidthRef.current;
-    const mapHeight = mapHeightRef.current;
-    const viewportWidth = viewBox.width;
-    const viewportHeight = viewBox.height;
-    
-    if (mapWidth > 0 && mapHeight > 0) {
-      const centerX = mapWidth / 2;
-      const centerY = mapHeight / 2;
-      const initialTransform = d3.zoomIdentity
-        .translate(viewportWidth / 2 - centerX * MIN_ZOOM, viewportHeight / 2 - centerY * MIN_ZOOM)
-        .scale(MIN_ZOOM);
+    // DON'T reset transform if it already exists - preserve camera position!
+    // Only set initial transform if this is truly the first time (no existing transform)
+    const existingTransform = d3.zoomTransform(g.node());
+    if (!existingTransform || (existingTransform.k === 1 && existingTransform.x === 0 && existingTransform.y === 0)) {
+      // Only set initial transform if there's no existing transform or it's the default identity
+      const viewBox = svg.node().viewBox.baseVal;
+      const mapWidth = mapWidthRef.current;
+      const mapHeight = mapHeightRef.current;
+      const viewportWidth = viewBox.width;
+      const viewportHeight = viewBox.height;
       
-      // Set initial transform
-      svg.call(zoom.transform, initialTransform);
-      
-      // Update transform state for minimap
-      setMainTransform(initialTransform);
-      setMainViewBox({ width: viewBox.width, height: viewBox.height });
+      if (mapWidth > 0 && mapHeight > 0) {
+        const centerX = mapWidth / 2;
+        const centerY = mapHeight / 2;
+        const initialTransform = d3.zoomIdentity
+          .translate(viewportWidth / 2 - centerX * MIN_ZOOM, viewportHeight / 2 - centerY * MIN_ZOOM)
+          .scale(MIN_ZOOM);
+        
+        // Set initial transform ONLY if there's no existing transform
+        svg.call(zoom.transform, initialTransform);
+        
+        // Update transform state for minimap
+        setMainTransform(initialTransform);
+        setMainViewBox({ width: viewBox.width, height: viewBox.height });
+      }
     } else {
-      // Fallback: use default transform
-      const defaultTransform = d3.zoomIdentity.translate(0, 0).scale(MIN_ZOOM);
-      svg.call(zoom.transform, defaultTransform);
-      setMainTransform(defaultTransform);
+      // Preserve existing transform - DON'T reset camera!
+      const viewBox = svg.node().viewBox.baseVal;
+      setMainTransform(existingTransform);
       setMainViewBox({ width: viewBox.width, height: viewBox.height });
     }
 
     return () => {
       svg.on(".zoom", null);
     };
-  }, [worldData]);
+  }, [worldData]); // Only re-setup zoom when worldData changes, not on year updates
 
   // highlight selected entity - optimized for recursive cells only
   useEffect(() => {

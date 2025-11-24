@@ -4,18 +4,184 @@
 
 import { getCellColorRGB, calculateInfoIntensity, GRADIENT_CONFIG } from './colorGradients';
 
-// Chinese characters for procedural texture generation
-const PHILOSOPHY_CHARS = [
-  "道", "德", "仁", "义", "礼", "智", "信", "和", "中", "正",
-  "理", "气", "心", "性", "天", "地", "人", "物", "生", "死",
-  "有", "无", "虚", "实", "阴", "阳", "动", "静", "变", "常",
-  "美", "艺", "文", "诗", "书", "画", "音", "乐", "舞", "戏",
-  "雅", "俗", "精", "神", "韵", "味", "境", "意", "情", "思",
-  "知", "行", "学", "问", "思", "辨", "修", "养", "悟", "觉",
-  "空", "色", "相", "法", "因", "果", "缘", "业", "苦", "乐",
-  "墨", "笔", "纸", "砚", "琴", "棋", "书", "画", "茶", "酒",
-  "山", "水", "花", "鸟", "竹", "梅", "兰", "菊", "松", "石",
+// Collection of weird/interesting Unicode characters for texture generation
+// Mix of geometric symbols, mathematical operators, ancient scripts, etc.
+const WEIRD_CHARS = [
+  // Geometric shapes and symbols
+  "⬰", "⬱", "⬲", "⬳", "⬴", "⬵", "⬶", "⬷", "⬸", "⬹", 
+  "⬺", "⬻", "⬼", "⬽", "⬾", "⬿", "⭀", "⭁", "⭂", "⭃",
+  "⭄", "⭅", "⭆", "⭇", "⭈", "⭉", "⭊", "⭋", "⭌",
+  // Square symbols
+  "⧠", "⧡", "⧢", "⧣", "⧤", "⧥", "⧦", "⧧", "⧨", "⧩",
+  "⧪", "⧫", "⧬", "⧭", "⧮", "⧯",
+  // Mathematical operators
+  "⨀", "⨁", "⨂", "⨃", "⨄", "⨅", "⨆", "⨇", "⨈", "⨉",
+  "⨊", "⨋", "⨌", "⨍", "⨎", "⨏", "⨐", "⨑", "⨒", "⨓",
+  "⨔", "⨕", "⨖", "⨗", "⨘", "⨙", "⨚", "⨛", "⨜",
+  // Coptic script
+  "Ⲁ", "ⲁ", "Ⲃ", "ⲃ", "Ⲅ", "ⲅ", "Ⲇ", "ⲇ", "Ⲉ", "ⲉ",
+  "Ⲋ", "ⲋ", "Ⲍ", "ⲍ", "Ⲏ", "ⲏ", "Ⲑ", "ⲑ", "Ⲓ", "ⲓ",
+  "Ⲕ", "ⲕ", "Ⲗ", "ⲗ", "Ⲙ", "ⲙ", "Ⲛ", "ⲛ", "Ⲝ", "ⲝ",
+  "Ⲟ", "ⲟ",
+  // Ugaritic script
+  "𐎠", "𐎡", "𐎢", "𐎣", "𐎤", "𐎥", "𐎦", "𐎧", "𐎨", "𐎩",
+  "𐎪", "𐎫", "𐎬", "𐎭", "𐎮", "𐎯",
+  // Mathematical symbols
+  "⅀", "⅁", "⅂", "⅃", "⅄", "ⅅ", "ⅆ", "ⅇ", "ⅈ", "ⅉ",
+  "⅊", "⅋", "⅌", "⅍", "ⅎ", "⅏",
+  // Relations
+  "⋔", "⋕", "⋖", "⋗", "⋘", "⋙", "⋚", "⋛", "⋜", "⋝",
+  "⋞", "⋟", "⋠", "⋡", "⋢", "⋣", "⋤", "⋥", "⋦", "⋧",
+  "⋨", "⋩",
+  // Additional weird characters
+  "◉", "◐", "◑", "◒", "◓", "◔", "◕", "◖", "◗", "◘",
+  "◙", "◚", "◛", "◜", "◝", "◞", "◟", "◠", "◡", "◢",
+  "◣", "◤", "◥", "◦", "◧", "◨", "◩", "◪", "◫", "◬",
+  "◭", "◮", "◯", "◰", "◱", "◲", "◳", "◴", "◵", "◶",
+  "◷", "◸", "◹", "◺", "◻", "◼", "◽", "◾", "◿",
+  // Mathematical operators continued
+  "⦀", "⦁", "⦂", "⦃", "⦄", "⦅", "⦆", "⦇", "⦈", "⦉",
+  "⦊", "⦋", "⦌", "⦍", "⦎", "⦏", "⦐", "⦑", "⦒", "⦓",
+  "⦔", "⦕", "⦖", "⦗", "⦘", "⦙", "⦚", "⦛", "⦜", "⦝",
+  // Braille patterns
+  "⠀", "⠁", "⠂", "⠃", "⠄", "⠅", "⠆", "⠇", "⠈", "⠉",
+  "⠊", "⠋", "⠌", "⠍", "⠎", "⠏", "⠐", "⠑", "⠒", "⠓",
+  "⠔", "⠕", "⠖", "⠗", "⠘", "⠙", "⠚", "⠛", "⠜", "⠝",
+  // Box drawing (subtle)
+  "▀", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▉",
+  "▊", "▋", "▌", "▍", "▎", "▏", "▐", "░", "▒", "▓",
+  // Miscellaneous symbols
+  "☀", "☁", "☂", "☃", "☄", "★", "☆", "☇", "☈", "☉",
+  "☊", "☋", "☌", "☍", "☎", "☏", "☐", "☑", "☒", "☓",
+  "☔", "☕", "☖", "☗", "☘", "☙", "☚", "☛", "☜", "☝",
+  "☞", "☟", "☠", "☡", "☢", "☣", "☤", "☥", "☦", "☧",
+  // Dingbats
+  "✁", "✂", "✃", "✄", "✅", "✆", "✇", "✈", "✉", "✊",
+  "✋", "✌", "✍", "✎", "✏", "✐", "✑", "✒", "✓", "✔",
+  "✕", "✖", "✗", "✘", "✙", "✚", "✛", "✜", "✝", "✞",
+  // Alchemical symbols
+  "⚛", "⚜", "⚠", "⚡", "⚢", "⚣", "⚤", "⚥", "⚦", "⚧",
+  "⚨", "⚩", "⚪", "⚫", "⚬", "⚭", "⚮", "⚯", "⚰", "⚱",
+  "⚲", "⚳", "⚴", "⚵", "⚶", "⚷", "⚸", "⚹", "⚺", "⚻",
+  "⚼", "⚽", "⚾", "⚿", "⛀", "⛁", "⛂", "⛃", "⛄", "⛅",
 ];
+
+// Extract the full name from a cell, considering active entities at current year
+// Returns a composite name based on active entities, or region name as fallback
+// This makes the texture change when entities appear/disappear with time
+const extractCellName = (cell, currentYear = null) => {
+  if (!cell) return null;
+  
+  // Get the original cell to check all its entities
+  const originalCell = cell.originalCell || cell;
+  
+  // Priority order for name generation (based on what's active in current year):
+  // 1. Active sites (most prominent)
+  // 2. Active structures within sites
+  // 3. Active historical figures
+  // 4. Active underground regions
+  // 5. Region name (always present)
+  
+  // For child cells, use the child data directly
+  if (cell.childData) {
+    if (cell.childType === "site") {
+      const name = cell.childData?.fromFile2?.name || cell.childData?.fromFile1?.name || cell.childData?.name;
+      if (name) return name.replace(/^(the|a|an)\s+/i, '').trim();
+    } else if (cell.childType === "structure") {
+      const name = cell.childData?.name || cell.childData?.type;
+      if (name) return name.replace(/^(the|a|an)\s+/i, '').trim();
+    } else if (cell.childType === "figure" || cell.childType === "cellFigure") {
+      const name = cell.childData?.name || cell.childData?.id;
+      if (name) return String(name).replace(/^(the|a|an)\s+/i, '').trim();
+    } else if (cell.childType === "undergroundRegion") {
+      const name = cell.childData?.name || (cell.childData?.type ? `Underground ${cell.childData.type}` : null);
+      if (name) return name.replace(/^(the|a|an)\s+/i, '').trim();
+    } else if (cell.childType === "writtenContent") {
+      const name = cell.childData?.title || cell.childData?.name;
+      if (name) return name.replace(/^(the|a|an)\s+/i, '').trim();
+    } else if (cell.childType === "region") {
+      const name = cell.childData?.name || originalCell?.region?.name;
+      if (name) return name.replace(/^(the|a|an)\s+/i, '').trim();
+    }
+  }
+  
+  // For base cells (level 0), combine active entities to create composite name
+  // This makes the texture change when entities appear/disappear
+  const activeEntities = [];
+  
+  // Check active events/occasions first (highest priority - most dynamic!)
+  if (originalCell.sites && originalCell.sites.length > 0) {
+    // Sites are already filtered by year in filteredWorldData, so we use what's here
+    for (const activeSite of originalCell.sites) {
+      // Check occasions/events within sites
+      const occasions = normalizeToArray(activeSite.occasion || activeSite.occasions || activeSite.event || activeSite.events);
+      for (const occasion of occasions) {
+        if (occasion.name) {
+          activeEntities.push(occasion.name);
+        } else if (occasion.event && occasion.event !== "-1") {
+          // If no name but has event ID, use event ID
+          activeEntities.push(`Event ${occasion.event}`);
+        }
+      }
+    }
+  }
+  
+  // Check active sites (if no events found)
+  if (activeEntities.length === 0 && originalCell.sites && originalCell.sites.length > 0) {
+    const activeSite = originalCell.sites[0]; // Use first active site
+    if (activeSite) {
+      const siteName = activeSite.fromFile2?.name || activeSite.fromFile1?.name || activeSite.name;
+      if (siteName) {
+        activeEntities.push(siteName);
+      } else {
+        // If no site name, check for active structures
+        const structures = normalizeToArray(activeSite.structures?.structure);
+        if (structures.length > 0) {
+          const structName = structures[0].name || structures[0].type;
+          if (structName) activeEntities.push(structName);
+        }
+      }
+    }
+  }
+  
+  // Check active historical figures (second priority)
+  if (originalCell.historical_figures && originalCell.historical_figures.length > 0) {
+    const activeFigure = originalCell.historical_figures[0];
+    if (activeFigure?.name) {
+      activeEntities.push(activeFigure.name);
+    }
+  }
+  
+  // Check active underground regions (third priority)
+  if (originalCell.undergroundRegions && originalCell.undergroundRegions.length > 0) {
+    const activeUg = originalCell.undergroundRegions[0];
+    if (activeUg) {
+      const ugName = activeUg.name || (activeUg.type ? `Underground ${activeUg.type}` : null);
+      if (ugName) activeEntities.push(ugName);
+    }
+  }
+  
+  // Combine active entities into a composite name
+  // This creates a unique identifier that changes when entities appear/disappear
+  if (activeEntities.length > 0) {
+    const compositeName = activeEntities.join(' ');
+    return compositeName.replace(/^(the|a|an)\s+/i, '').trim();
+  }
+  
+  // Fallback to region name (always present)
+  const regionName = cell.region?.name || originalCell?.region?.name;
+  if (regionName && typeof regionName === 'string') {
+    return regionName.replace(/^(the|a|an)\s+/i, '').trim();
+  }
+  
+  return null;
+};
+
+// Helper function (needed for normalizeToArray reference)
+const normalizeToArray = (value) => {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+};
 
 // Deterministic hash function for consistent results
 const hashString = (str) => {
@@ -267,14 +433,53 @@ const generateColors = (seed, regionType = null, cell = null) => {
 };
 
 // Generate procedural texture as data URL
-// Now supports cell parameter for intensity-based gradients
-const generateProceduralTexture = (cellKey, size = 128, regionType = null, cell = null) => {
+// Now supports cell parameter for intensity-based gradients and currentYear for time-sensitive textures
+// Uses first letters of cell name instead of Chinese characters
+// Texture changes when entities appear/disappear with time
+const generateProceduralTexture = (cellKey, size = 128, regionType = null, cell = null, currentYear = null) => {
   // Create a unique seed from the cell key
   const seed = hashString(cellKey);
   
-  // Get deterministic character and colors (with region type for color palette)
-  const charIdx = seed % PHILOSOPHY_CHARS.length;
-  const char = PHILOSOPHY_CHARS[charIdx];
+  // Extract full name from cell, considering active entities at current year
+  // This makes the texture change when entities appear/disappear
+  let displayText = extractCellName(cell, currentYear);
+  
+  // Create a composite key that includes current year and active entities
+  // This ensures texture changes when year changes and entities appear/disappear
+  let textureKey = cellKey;
+  if (currentYear !== null) {
+    textureKey += `-year-${currentYear}`;
+  }
+  
+  // If cell has active entities, include them in the key
+  if (cell && (cell.originalCell || cell)) {
+    const originalCell = cell.originalCell || cell;
+    const activeSites = (originalCell.sites || []).length;
+    const activeFigures = (originalCell.historical_figures || []).length;
+    const activeUgRegions = (originalCell.undergroundRegions || []).length;
+    
+    if (activeSites > 0 || activeFigures > 0 || activeUgRegions > 0) {
+      textureKey += `-sites:${activeSites}-figs:${activeFigures}-ug:${activeUgRegions}`;
+    }
+  }
+  
+  // Use the composite key for hash to ensure texture changes with active entities
+  const compositeHash = hashString(textureKey);
+  
+  // Fallback: if no name found, use a weird character based on composite hash
+  if (!displayText) {
+    // Use composite hash-based selection from WEIRD_CHARS
+    const charIdx = compositeHash % WEIRD_CHARS.length;
+    displayText = WEIRD_CHARS[charIdx];
+  } else {
+    // If we have a name, use composite hash to create symbol
+    // This ensures the same entity combination always gives the same symbol,
+    // but different combinations give different symbols
+    const nameHash = hashString(displayText + textureKey);
+    const charIdx = nameHash % WEIRD_CHARS.length;
+    displayText = WEIRD_CHARS[charIdx];
+  }
+  
   const colors = generateColors(seed, regionType, cell); // Pass cell for intensity gradients
   
   // Create canvas
@@ -290,32 +495,79 @@ const generateProceduralTexture = (cellKey, size = 128, regionType = null, cell 
   // Ensure canvas is fully opaque (no transparency)
   ctx.globalAlpha = 1.0;
   
-  // Draw character with better font support
-  ctx.fillStyle = `rgb(${colors.text[0]}, ${colors.text[1]}, ${colors.text[2]})`;
+  // Draw weird character symbol
+  // Ensure high contrast for visibility from far away
+  // Make text color varied and contrasting with background
+  const textRgb = colors.text;
+  const bgRgb = colors.bg;
+  
+  // Calculate luminance difference for contrast
+  const textLuminance = (textRgb[0] * 0.299 + textRgb[1] * 0.587 + textRgb[2] * 0.114);
+  const bgLuminance = (bgRgb[0] * 0.299 + bgRgb[1] * 0.587 + bgRgb[2] * 0.114);
+  
+  // Generate varied text color - not all the same, based on seed
+  const rng = (n) => {
+    const x = Math.sin(seed + n) * 10000;
+    return x - Math.floor(x);
+  };
+  
+  // Create varied color palette for text (darker, high contrast)
+  let finalTextColor;
+  if (bgLuminance > 180) {
+    // Light background - use dark, varied colors
+    const darkVariations = [
+      [20, 20, 20],    // Very dark
+      [40, 30, 50],    // Dark purple
+      [30, 40, 30],    // Dark green
+      [50, 30, 30],    // Dark red
+      [30, 30, 50],    // Dark blue
+      [45, 35, 20],    // Dark brown
+    ];
+    const colorIdx = Math.floor(rng(10) * darkVariations.length);
+    finalTextColor = darkVariations[colorIdx];
+  } else {
+    // Dark background - use light, varied colors
+    const lightVariations = [
+      [240, 240, 240], // Very light
+      [255, 220, 200], // Light peach
+      [200, 255, 220], // Light green
+      [220, 200, 255], // Light purple
+      [255, 255, 200], // Light yellow
+      [200, 220, 255], // Light blue
+    ];
+    const colorIdx = Math.floor(rng(10) * lightVariations.length);
+    finalTextColor = lightVariations[colorIdx];
+  }
+  
+  ctx.fillStyle = `rgb(${finalTextColor[0]}, ${finalTextColor[1]}, ${finalTextColor[2]})`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  // Try to use a font that supports Chinese characters
-  // Use larger font size for better visibility
-  const fontSize = Math.floor(size * 0.65);
+  // Use larger font to fill cell space better - single character so we can make it huge
+  let fontSize = Math.floor(size * 0.7); // Very large to fill space
+  // Use a serious, readable serif font for better visibility
   const fonts = [
-    'Microsoft YaHei',
-    'SimSun',
-    'SimHei',
-    'KaiTi',
-    'STKaiti',
-    'Arial Unicode MS',
-    'sans-serif'
+    'Times New Roman',
+    'Times',
+    'Georgia',
+    'serif'
   ];
   
-  // Set font and try to draw
-  ctx.font = `bold ${fontSize}px ${fonts.join(', ')}`;
+  // Set font (NOT bold - regular weight for serious look)
+  ctx.font = `normal ${fontSize}px ${fonts.join(', ')}`;
   
   try {
-    ctx.fillText(char, size / 2, size / 2);
+    // Draw single character with improved visibility
+    // Add subtle outline for better contrast
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = bgLuminance > 180 
+      ? `rgba(0, 0, 0, 0.3)`  // Dark outline on light bg
+      : `rgba(255, 255, 255, 0.3)`; // Light outline on dark bg
+    ctx.strokeText(displayText, size / 2, size / 2);
+    ctx.fillText(displayText, size / 2, size / 2);
   } catch (e) {
     // Fallback: draw a simple geometric pattern if font fails
-    ctx.fillStyle = `rgb(${colors.text[0]}, ${colors.text[1]}, ${colors.text[2]})`;
+    ctx.fillStyle = `rgb(${finalTextColor[0]}, ${finalTextColor[1]}, ${finalTextColor[2]})`;
     const margin = size * 0.15;
     ctx.fillRect(margin, margin, size - margin * 2, size - margin * 2);
   }
@@ -327,66 +579,86 @@ const generateProceduralTexture = (cellKey, size = 128, regionType = null, cell 
 // Cache for generated textures
 const textureCache = new Map();
 
+// Clear cache when year changes (to ensure textures update with new entities)
+export const clearTextureCache = () => {
+  textureCache.clear();
+};
+
 // Get procedural texture with caching
 // Now supports cell parameter for intensity-based gradients
-export const getProceduralTexture = (cellKey, size = 128, regionType = null, cell = null) => {
-  // Include intensity in cache key if cell is provided (for gradient variations)
+export const getProceduralTexture = (cellKey, size = 128, regionType = null, cell = null, currentYear = null) => {
+  // Include intensity and year in cache key to ensure textures change with time
   const intensityKey = cell ? `-intensity-${calculateInfoIntensity(cell).toFixed(2)}` : '';
-  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}${intensityKey}`;
+  const yearKey = currentYear !== null ? `-year-${currentYear}` : '';
+  
+  // Include active entities count in cache key so texture changes when entities appear/disappear
+  let entitiesKey = '';
+  if (cell && (cell.originalCell || cell)) {
+    const originalCell = cell.originalCell || cell;
+    const activeSites = (originalCell.sites || []).length;
+    const activeFigures = (originalCell.historical_figures || []).length;
+    const activeUgRegions = (originalCell.undergroundRegions || []).length;
+    entitiesKey = `-s:${activeSites}-f:${activeFigures}-u:${activeUgRegions}`;
+  }
+  
+  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}${intensityKey}${yearKey}${entitiesKey}`;
   if (textureCache.has(cacheKey)) {
     return textureCache.get(cacheKey);
   }
   
-  const textureUrl = generateProceduralTexture(cellKey, size, regionType, cell);
+  const textureUrl = generateProceduralTexture(cellKey, size, regionType, cell, currentYear);
   textureCache.set(cacheKey, textureUrl);
   return textureUrl;
 };
 
 // Get region texture (procedural) - uses region type for color palette
-// Now supports cell parameter for intensity-based gradients
-export const getRegionTex = (type, cellKey, cell = null) => {
+// Now supports cell parameter for intensity-based gradients and currentYear for time-sensitive textures
+export const getRegionTex = (type, cellKey, cell = null, currentYear = null) => {
   // Generate procedural texture based on cell key and region type
   // Type determines the color palette, cellKey determines the variation
   // Cell parameter enables intensity-based gradient hotspots
+  // currentYear makes texture change when entities appear/disappear with time
   if (cellKey) {
-    return getProceduralTexture(cellKey, 128, type, cell);
+    return getProceduralTexture(cellKey, 128, type, cell, currentYear);
   }
   // Fallback for cells without key
-  return getProceduralTexture(`region-${type || 'default'}`, 128, type, cell);
+  return getProceduralTexture(`region-${type || 'default'}`, 128, type, cell, currentYear);
 };
 
 // Get site texture (procedural) - sites use their own type for color palette
-export const getSiteTex = (type, cellKey) => {
+export const getSiteTex = (type, cellKey, cell = null, currentYear = null) => {
   // Generate procedural texture based on cell key and site type
   // Site type can also determine color palette if needed
   const key = cellKey ? `${cellKey}-site-${type || 'default'}` : `site-${type || 'default'}`;
   // Sites use a neutral palette unless we want to add site-specific palettes
-  return getProceduralTexture(key, 128, null);
+  // Pass currentYear so texture changes when entities appear/disappear
+  return getProceduralTexture(key, 128, null, cell, currentYear);
 };
 
 // Get figure texture (procedural) - figures use neutral palette
-export const getFigureTex = (hf, cellKey) => {
+export const getFigureTex = (hf, cellKey, cell = null, currentYear = null) => {
   // Generate procedural texture based on figure ID or cell key
   const key = cellKey ? `${cellKey}-fig-${hf?.id || 'default'}` : `fig-${hf?.id || 'default'}`;
-  return getProceduralTexture(key, 128, null);
+  // Pass currentYear so texture changes when entities appear/disappear
+  return getProceduralTexture(key, 128, null, cell, currentYear);
 };
 
 // Get structure texture (procedural)
-export const getStructureTex = (id, cellKey) => {
+export const getStructureTex = (id, cellKey, cell = null) => {
   const key = cellKey ? `${cellKey}-struct-${id || 'default'}` : `struct-${id || 'default'}`;
-  return getProceduralTexture(key, 128, null);
+  return getProceduralTexture(key, 128, null, cell);
 };
 
 // Get underground region texture (procedural)
-export const getUndergroundRegionTex = (id, cellKey) => {
+export const getUndergroundRegionTex = (id, cellKey, cell = null) => {
   const key = cellKey ? `${cellKey}-ug-${id || 'default'}` : `ug-${id || 'default'}`;
   // Underground regions could use a darker palette
-  return getProceduralTexture(key, 128, "Mountain"); // Use mountain-like palette for underground
+  return getProceduralTexture(key, 128, "cavern", cell); // Use cavern palette for underground
 };
 
 // Get written content texture (procedural)
-export const getWrittenContentTex = (id, cellKey) => {
+export const getWrittenContentTex = (id, cellKey, cell = null) => {
   const key = cellKey ? `${cellKey}-wc-${id || 'default'}` : `wc-${id || 'default'}`;
-  return getProceduralTexture(key, 128, null);
+  return getProceduralTexture(key, 128, null, cell);
 };
 
