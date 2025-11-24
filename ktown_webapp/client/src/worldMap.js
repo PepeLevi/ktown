@@ -1,11 +1,12 @@
 // src/WorldMap.jsx
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import {
   getRegionTex,
   getSiteTex,
   getFigureTex,
 } from "./proceduralTextures";
+import Minimap from "./Minimap";
 
 const regionColor = "yellow";
 const siteColor = "blue";
@@ -17,8 +18,12 @@ const CELL_SIZE = 30;
 const CELL_GAP = 0;
 
 // zoom limits
-const MIN_ZOOM = 1;
+// MIN_ZOOM will be calculated dynamically based on manageable cell count
+let MIN_ZOOM = 1; // Will be calculated
 const MAX_ZOOM = 160;
+
+// Performance: Maximum cells visible at minimum zoom (zoom out limit)
+const MAX_VISIBLE_CELLS_AT_MIN_ZOOM = 650; // Adjust this for performance
 
 // LOD Configuration - for optimizing large maps
 const LOD_CONFIG = {
@@ -217,6 +222,10 @@ function WorldMap({
     threshold: 5, // pixels to consider it a drag
     timeoutId: null,
   });
+  
+  // State for minimap
+  const [mainTransform, setMainTransform] = useState(null);
+  const [mainViewBox, setMainViewBox] = useState(null);
 
   const sanitizeKey = (val) => String(val || "Unknown").replace(/\s+/g, "");
 
@@ -474,18 +483,19 @@ function WorldMap({
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     // Subdivision radius based on zoom - cells closer to center subdivide first
-    // Only subdivide at very high zoom levels - fractal should appear only when zooming in a lot
-    // At zoom < 30: no subdivision (radius = 0)
-    // At zoom 30-50: small radius
-    // At zoom 50+: larger radius
-    const baseRadius = CELL_SIZE * 2.5; // Base radius
-    const zoomFactor = 1.2; // How much radius increases per zoom level
-    const minZoomForSubdivision = 30; // Only start subdividing at zoom 30+
+    // Start subdividing from zoom 1+ for smooth progression
+    // Radius grows gradually as you zoom in
+    const baseRadius = CELL_SIZE * 1.5; // Base radius (smaller for more gradual start)
+    const zoomFactor = 1.15; // How much radius increases per zoom level
+    const minZoomForSubdivision = 1; // Start subdividing from zoom 1
     const effectiveZoom = Math.max(0, zoom - minZoomForSubdivision);
-    const maxRadius = effectiveZoom > 0 ? baseRadius * Math.pow(zoomFactor, effectiveZoom / 5) : 0;
+    // Smooth growth: start small, grow gradually
+    const maxRadius = baseRadius * Math.pow(zoomFactor, effectiveZoom / 2);
     
     // Cells closer to center and within radius should subdivide
-    return distance <= maxRadius;
+    // Add a small minimum radius so cells at center always subdivide when zoom > 1
+    const minRadius = zoom > 1 ? CELL_SIZE * 0.5 : 0;
+    return distance <= Math.max(maxRadius, minRadius);
   };
   
   // Check if an element belongs to a cell that should subdivide
@@ -1111,15 +1121,18 @@ function WorldMap({
     if (totalChildren === 1) return 1; // Always show if only 1
     
     // Progressive formula: show children one by one as zoom increases
-    // Base: 1 child at zoom 1
-    // Add 1 child smoothly as zoom increases (1 by 1)
-    // Level 0 (cells): +1 every 2 zoom levels (zoom 1->2, 3->4, 5->6, etc.)
-    // Level 1 (sites/regions): +1 every 3 zoom levels
-    // Level 2+ (deeper): +1 every 4 zoom levels
-    const zoomFactor = level === 0 ? 2 : (level === 1 ? 3 : 4);
-    const baseCount = 1; // Start with 1, not 2
+    // Smooth progression: 1 -> 2 -> 3 -> 4 -> ... as zoom increases
+    // Level 0 (cells): very smooth - +1 child every 1.5 zoom levels
+    // Level 1 (sites/regions): +1 every 2 zoom levels
+    // Level 2+ (deeper): +1 every 2.5 zoom levels
+    const zoomFactor = level === 0 ? 1.5 : (level === 1 ? 2 : 2.5);
+    const baseCount = 1; // Always start with 1
+    // At zoom 1: show 1 child
+    // At zoom 2-3: show 2 children  
+    // At zoom 4-5: show 3 children
+    // etc.
     const additionalCount = Math.floor((zoom - 1) / zoomFactor);
-    const visibleCount = Math.min(totalChildren, baseCount + additionalCount);
+    const visibleCount = Math.min(totalChildren, baseCount + Math.max(0, additionalCount));
     
     // Ensure we show at least 1 (unless total is 0), but not more than total
     return Math.max(1, Math.min(visibleCount, totalChildren));
@@ -1378,18 +1391,45 @@ function WorldMap({
 
     // Patterns are now created dynamically per cell - no need to pre-create them
 
-    // Set initial zoom and clear focused cell
-    currentZoomRef.current = 1;
+    // Calculate initial zoom that shows manageable number of cells
+    // Goal: MAX_VISIBLE_CELLS_AT_MIN_ZOOM cells visible at minimum zoom
+    const viewBox = svg.node().viewBox.baseVal;
+    const viewportWidth = viewBox.width;
+    const viewportHeight = viewBox.height;
+    
+    // Calculate how many cells fit in viewport at different zoom levels
+    // Cell size in viewport = CELL_SIZE * zoom
+    // Visible cells = (viewportWidth / (CELL_SIZE * zoom)) * (viewportHeight / (CELL_SIZE * zoom))
+    
+    // Calculate zoom needed to show approximately MAX_VISIBLE_CELLS_AT_MIN_ZOOM cells
+    const cellsPerViewportAxis = Math.sqrt(MAX_VISIBLE_CELLS_AT_MIN_ZOOM);
+    const requiredZoomX = viewportWidth / (cellsPerViewportAxis * CELL_SIZE);
+    const requiredZoomY = viewportHeight / (cellsPerViewportAxis * CELL_SIZE);
+    const calculatedMinZoom = Math.max(requiredZoomX, requiredZoomY, 0.5); // At least 0.5 zoom
+    
+    // Update MIN_ZOOM to prevent zooming out further
+    MIN_ZOOM = calculatedMinZoom;
+    
+    // Set initial zoom to MIN_ZOOM (maximum zoom out - shows manageable area)
+    currentZoomRef.current = MIN_ZOOM;
     focusedCellRef.current = null;
 
+    // Set initial transform to center of map at calculated zoom
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const initialTransform = d3.zoomIdentity
+      .translate(viewportWidth / 2 - centerX * MIN_ZOOM, viewportHeight / 2 - centerY * MIN_ZOOM)
+      .scale(MIN_ZOOM);
+    
+    g.attr("transform", initialTransform);
+    
     // Clear all existing cells
     g.selectAll("rect.cell").remove();
 
     // Get ONLY visible cells in viewport
-    const currentTransform = d3.zoomTransform(svg.node());
     const visibleCells = cells.filter(cell => {
       if (!cell || cell.region?.type === "Ocean") return false;
-      return isCellVisible(cell, xScale, yScale, currentTransform, svg.node());
+      return isCellVisible(cell, xScale, yScale, initialTransform, svg.node());
     });
     
     // Get individual cells - no block combining, just render all cells with fractal logic
@@ -1409,7 +1449,7 @@ function WorldMap({
       // Build children for fractal subdivision
       const cellWithChildren = {
         ...cell,
-        children: buildCellChildren(cell, currentZoomRef.current, cellBbox, false, xScale, yScale, currentTransform, svg.node()),
+        children: buildCellChildren(cell, currentZoomRef.current, cellBbox, false, xScale, yScale, initialTransform, svg.node()),
       };
       
       renderRecursiveCell(cellWithChildren, cellBbox, g, xScale, yScale, 0);
@@ -1448,6 +1488,16 @@ function WorldMap({
       })
       .on("zoom", (event) => {
         const { x, y, k } = event.transform;
+        
+        // Clamp zoom to prevent zooming out beyond MIN_ZOOM
+        if (k < MIN_ZOOM) {
+          const clampedTransform = d3.zoomIdentity
+            .translate(event.transform.x, event.transform.y)
+            .scale(MIN_ZOOM);
+          svg.call(zoom.transform, clampedTransform);
+          return;
+        }
+        
         g.attr("transform", `translate(${x},${y}) scale(${k})`);
         // Patterns are fixed size, no need to update them on zoom
         
@@ -1460,8 +1510,11 @@ function WorldMap({
         const xScale = xScaleRef.current;
         const yScale = yScaleRef.current;
         
+        // Update transform state for minimap
         if (svgNode && worldData && worldData.cells && xScale && yScale) {
           const viewBox = svgNode.viewBox.baseVal;
+          setMainTransform(event.transform);
+          setMainViewBox({ width: viewBox.width, height: viewBox.height });
           const viewportCenterX = viewBox.width / 2;
           const viewportCenterY = viewBox.height / 2;
           
@@ -1550,11 +1603,33 @@ function WorldMap({
     zoomBehaviorRef.current = zoom;
     svg.on("dblclick.zoom", null);
     
-    // Enable panning: click and drag to move the map
-    // D3 zoom already handles this, but we ensure it works smoothly
-
-    const initialTransform = d3.zoomIdentity.translate(0, 0).scale(1);
-    svg.call(zoom.transform, initialTransform);
+    // Calculate initial transform to show manageable number of cells
+    const viewBox = svg.node().viewBox.baseVal;
+    const mapWidth = mapWidthRef.current;
+    const mapHeight = mapHeightRef.current;
+    const viewportWidth = viewBox.width;
+    const viewportHeight = viewBox.height;
+    
+    if (mapWidth > 0 && mapHeight > 0) {
+      const centerX = mapWidth / 2;
+      const centerY = mapHeight / 2;
+      const initialTransform = d3.zoomIdentity
+        .translate(viewportWidth / 2 - centerX * MIN_ZOOM, viewportHeight / 2 - centerY * MIN_ZOOM)
+        .scale(MIN_ZOOM);
+      
+      // Set initial transform
+      svg.call(zoom.transform, initialTransform);
+      
+      // Update transform state for minimap
+      setMainTransform(initialTransform);
+      setMainViewBox({ width: viewBox.width, height: viewBox.height });
+    } else {
+      // Fallback: use default transform
+      const defaultTransform = d3.zoomIdentity.translate(0, 0).scale(MIN_ZOOM);
+      svg.call(zoom.transform, defaultTransform);
+      setMainTransform(defaultTransform);
+      setMainViewBox({ width: viewBox.width, height: viewBox.height });
+    }
 
     return () => {
       svg.on(".zoom", null);
@@ -1594,9 +1669,39 @@ function WorldMap({
     });
   }, [selectedEntity]);
 
+  // Handle minimap click - move main viewport to clicked position
+  const handleMinimapClick = (worldX, worldY) => {
+    const svg = d3.select(svgRef.current);
+    const zoom = zoomBehaviorRef.current;
+    if (!zoom || !svgRef.current) return;
+
+    const viewBox = svgRef.current.viewBox.baseVal;
+    const currentZoom = currentZoomRef.current || MIN_ZOOM;
+    
+    // Calculate transform to center on clicked position
+    const newTransform = d3.zoomIdentity
+      .translate(viewBox.width / 2 - worldX * currentZoom, viewBox.height / 2 - worldY * currentZoom)
+      .scale(currentZoom);
+    
+    // Animate to new position
+    svg.transition()
+      .duration(300)
+      .call(zoom.transform, newTransform);
+  };
+
   return (
-    <div className="map-wrapper">
+    <div className="map-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
       <svg ref={svgRef} />
+      {worldData && worldData.cells && xScaleRef.current && yScaleRef.current && (
+        <Minimap
+          worldData={worldData}
+          mainTransform={mainTransform}
+          mainViewBox={mainViewBox}
+          xScale={xScaleRef.current}
+          yScale={yScaleRef.current}
+          onMinimapClick={handleMinimapClick}
+        />
+      )}
     </div>
   );
 }

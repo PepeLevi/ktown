@@ -4,8 +4,8 @@
   "description": "Express server + React+D3 map for worldData",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "server": "nodemon server.js",
+    "start": "node --max-old-space-size=8192 server.js",
+    "server": "nodemon --exec \"node --max-old-space-size=8192\" server.js",
     "client": "npm start --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "build": "npm run build --prefix client"
