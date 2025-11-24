@@ -84,42 +84,63 @@ for entry in os.listdir(FILES_PATH):
         continue
 
     if entry.endswith('legends.xml'):
-        print(f"processing {entry} !!")
+        print(f"loading in {entry} !!")
         with open(full_path, encoding='cp437', errors='ignore') as f:
-            xml_legends = f.read()
-            json_legends = xmltodict.parse(xml_legends)
+            json_legends = xmltodict.parse(f.read())
 
     elif entry.endswith('legends_plus.xml'):
-        print(f"processing {entry} !!")
+        print(f"loading in {entry} !!")
         with open(full_path, encoding='UTF-8', errors='ignore') as f:
-            xml_legends_plus = f.read()
-            json_legends_plus = xmltodict.parse(xml_legends_plus)
+            json_legends_plus = xmltodict.parse(f.read())
 
-    elif entry == "enhanced_books.json":
-        print(f"processing {entry} !!")
-        with open(full_path, encoding='UTF-8') as f:
-            json_books = json.load(f)
+    # elif entry == "enhanced_books.json":
+    #     print(f"loading in {entry} !!")
+    #     with open(full_path, encoding='UTF-8') as f:
+    #         json_books = json.load(f)
 
-# get df_world from the parsed legends safely
-json_legends_new = json_legends.get('df_world', {})
+# this is gonna be our output json with all the shit in it.
+# this approach is different from the old one. were not removing stuff from the old files were selectively putting the shit we want into a new one.
+queen_json = {}
 
-if json_legends_plus is not None:
-    json_legends_plus_new = json_legends_plus.get('df_world', {})
-    # remove raw creature data to save space
-    json_legends_plus_new.pop('creature_raw', None)
-else:
-    # keep an empty structure if no legends_plus present
-    # it just makes things easier for later lol
-    json_legends_plus_new = {}
+queen_json["regions"] = json_legends.get('df_world').get('regions')
+queen_json["sites"] = json_legends.get('df_world').get('sites').get('site')
 
-# process books data if available
-if json_books is not None:
-    attach_books_to_historical_figures(json_legends_new, json_books)
+sites_plus_length = len(json_legends_plus.get('df_world').get('sites').get('site'))
 
-json_encod_dict = {
-   'json_map': {'encoding': 'utf-8', 'data': json_legends_new},
-   'json_map_plus': {'encoding': 'utf-8', 'data': json_legends_plus_new},
-}
+#so we fill the site object with all the other shit
+for site in queen_json['sites']:
+    if(int(site['id']) < sites_plus_length):
+        site_plus = json_legends_plus.get('df_world').get('sites').get('site')[int(site['id'])]
+        if 'structures' in site_plus:
+            for structure in site_plus['structures']['structure']:
+                # structure = site_plus['structures']
+                historical_figures = []
+                if 'inhabitant' in structure:
+                    #check if its a list or array
+                    if isinstance(structure['inhabitant'], str):
+                        historical_figures.add(json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(structure['inhabitant'])])
+                    else:
+                        for figure in structure['inhabitant']:
+                            historical_figures.add(json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(figure)])
+                structure["historical_figures"] = historical_figures
+                site["structures"] = structure
+    
+
+# # get df_world from the parsed legends safely
+# json_legends_new = json_legends.get('df_world', {})
+
+# if json_legends_plus is not None:
+#     json_legends_plus_new = json_legends_plus.get('df_world', {})
+#     # remove raw creature data to save space
+#     json_legends_plus_new.pop('creature_raw', None)
+# else:
+#     # keep an empty structure if no legends_plus present
+#     # it just makes things easier for later lol
+#     json_legends_plus_new = {}
+
+# # process books data if available
+# if json_books is not None:
+#     attach_books_to_historical_figures(json_legends_new, json_books)
 
 # # Source - https://stackoverflow.com/a
 # # Posted by phihag, modified by community. See post 'Timeline' for change history
@@ -128,6 +149,7 @@ json_encod_dict = {
 if not os.path.exists(JSON_PATH):
     os.mkdir(JSON_PATH)
 
-for j, e in json_encod_dict.items():
-    with open(f'{JSON_PATH}/{j}.json', 'w', encoding=e['encoding']) as f:
-        json.dump(e['data'], f, ensure_ascii=False, indent=4)
+with open(f'{JSON_PATH}/queen.json', 'w', encoding='utf-8') as f:
+    json.dump(queen_json, f, ensure_ascii=False, indent=4)
+
+print("finito")
