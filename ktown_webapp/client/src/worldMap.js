@@ -16,7 +16,7 @@ const CELL_GAP = 0;
 // zoom limits
 // MIN_ZOOM will be calculated dynamically based on manageable cell count
 let MIN_ZOOM = 1; // Will be calculated
-const MAX_ZOOM = 3000;
+const MAX_ZOOM = 9000;
 
 // Performance: Maximum cells visible at minimum zoom (zoom out limit)
 const MAX_VISIBLE_CELLS_AT_MIN_ZOOM = 650; // Adjust this for performance
@@ -77,13 +77,13 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "undergroundRegion",
-    minZoom: 10, // Show underground regions when zoom >= 20 (much higher zoom)
+    minZoom: 2, // Show underground regions when zoom >= 20 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
   {
     name: "site",
-    minZoom: 15, // Show sites when zoom >= 30 - they subdivide the cell (much higher zoom)
+    minZoom: 3, // Show sites when zoom >= 30 - they subdivide the cell (much higher zoom)
     getChildren: (site) => {
       const structures =
         site.data?.structures?.structure || site.structures?.structure;
@@ -94,7 +94,7 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "structure",
-    minZoom: 20, // Show structures when zoom >= 50 - they subdivide the site (much higher zoom)
+    minZoom: 4, // Show structures when zoom >= 50 - they subdivide the site (much higher zoom)
     getChildren: (structure) => {
       // Structures contain inhabitants (historical figures)
       return structure.inhabitants || [];
@@ -103,19 +103,19 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "figure",
-    minZoom: 25, // Show figures when zoom >= 80 - they subdivide the structure (much higher zoom)
+    minZoom: 5, // Show figures when zoom >= 80 - they subdivide the structure (much higher zoom)
     getChildren: () => [], // Figures are leaf nodes
     sizeRatio: 1.0, // Figures fill the entire structure when visible (fractal subdivision)
   },
   {
     name: "cellFigure",
-    minZoom: 25, // Show cell-level figures when zoom >= 25 (much higher zoom)
+    minZoom: 5, // Show cell-level figures when zoom >= 25 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
   {
     name: "writtenContent",
-    minZoom: 30, // Show written contents (books) when zoom >= 35 (much higher zoom)
+    minZoom: 6, // Show written contents (books) when zoom >= 35 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
@@ -942,6 +942,24 @@ function WorldMap({
       .attr("y", cellY)
       .attr("width", cellWidth)
       .attr("height", cellHeight)
+      .attr("class", (d) => {
+        // Decide semantic type for styling
+        let type;
+
+        if (level === 0) {
+          // top-level cell
+          type = "region"; // or "ocean" if you want separate styling
+          if (d.region?.type === "Ocean") type = "ocean";
+        } else {
+          // children created in buildCellChildren
+          type = d.childType || d.nodeType || "generic";
+        }
+
+        const typeClass = `cell-type-${sanitizeForSelector(type)}`;
+
+        // keep your old classes + new type class
+        return `cell cell-level-${level} cell-${uniqueKey} ${typeClass}`;
+      })
       .style("cursor", "pointer")
       .style("pointer-events", "auto") // Ensure cells are clickable
       .each(function (d) {
@@ -1025,38 +1043,40 @@ function WorldMap({
 
         // Apply procedural texture - ensure we always have a texture
         // This is critical: every cell MUST have a texture
-        let appliedTexture = false;
-        if (texUrl && patternKey) {
-          const pid = getOrCreatePattern(defs, patternKey, texUrl);
-          if (pid) {
-            rect.style("fill", `url(#${pid})`).style("opacity", 1);
-            appliedTexture = true;
-          }
-        }
+        // let appliedTexture = false;
+        // if (texUrl && patternKey) {
+        //   const pid = getOrCreatePattern(defs, patternKey, texUrl);
+        //   if (pid) {
+        //     rect.style("fill", `url(#${pid})`).style("opacity", 1);
+        //     appliedTexture = true;
+        //   }
+        // }
 
-        // Fallback: if texture wasn't applied, generate a default one
-        if (!appliedTexture) {
-          // Generate a fallback texture using the cell key
-          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
-          const fallbackPatternKey = `fallback-${sanitizeForSelector(
-            cellKeyForTexture
-          )}`;
-          const fallbackPid = getOrCreatePattern(
-            defs,
-            fallbackPatternKey,
-            fallbackTexUrl
-          );
-          if (fallbackPid) {
-            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
-          } else {
-            // Last resort: solid color (should never happen)
-            rect.style("fill", "#f0f0f0").style("opacity", 1);
-            console.warn(
-              "Failed to create texture for cell:",
-              cellKeyForTexture
-            );
-          }
-        }
+        // // Fallback: if texture wasn't applied, generate a default one
+        // if (!appliedTexture) {
+        //   // Generate a fallback texture using the cell key
+        //   const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+        //   const fallbackPatternKey = `fallback-${sanitizeForSelector(
+        //     cellKeyForTexture
+        //   )}`;
+        //   const fallbackPid = getOrCreatePattern(
+        //     defs,
+        //     fallbackPatternKey,
+        //     fallbackTexUrl
+        //   );
+        //   if (fallbackPid) {
+
+        //     rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+
+        //   } else {
+        //     // Last resort: solid color (should never happen)
+        //     rect.style("fill", "#f0f0f0").style("opacity", 1);
+        //     console.warn(
+        //       "Failed to create texture for cell:",
+        //       cellKeyForTexture
+        //     );
+        //   }
+        // }
 
         // Always set opacity to 1 (opaque) - no transparency
         rect.style("opacity", 1);
@@ -1066,7 +1086,7 @@ function WorldMap({
         if (hasVisibleChildren) {
           rect.style("stroke", "blue").style("stroke-width", 0.1);
         } else {
-          rect.style("stroke", "black").style("stroke-width", 0.1);
+          rect.style("stroke", "black").style("stroke-width", 0);
         }
       });
 

@@ -327,6 +327,7 @@ function StructureDetailView({ structure, handleEntityClick, books, figures }) {
         <>
           <p className="cat_headline">structure inhabitant:</p>
           {structure.inhabitant &&
+            Array.isArray(structure.inhabitant) &&
             structure.inhabitant.map((si, i) => (
               <button
                 key={i}
