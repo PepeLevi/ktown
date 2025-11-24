@@ -68,10 +68,20 @@ function App() {
                     temp_figures.push(figure);
 
                     if (figure.books) {
+                      // console.log("has figure with books", figure);
+
                       for (let bi = 0; bi < figure.books.length; bi++) {
                         const book = figure.books[bi];
                         temp_books.push(book);
                       }
+                    } else {
+                      ///creating fake books for testing
+                      figure.books = [
+                        {
+                          name: "samplebook",
+                          raw: { text_content: "sample book content" },
+                        },
+                      ];
                     }
                   }
                 }
