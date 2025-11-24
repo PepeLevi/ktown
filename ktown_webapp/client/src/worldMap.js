@@ -1048,40 +1048,40 @@ function WorldMap({
 
         // Apply procedural texture - ensure we always have a texture
         // This is critical: every cell MUST have a texture
-        // let appliedTexture = false;
-        // if (texUrl && patternKey) {
-        //   const pid = getOrCreatePattern(defs, patternKey, texUrl);
-        //   if (pid) {
-        //     rect.style("fill", `url(#${pid})`).style("opacity", 1);
-        //     appliedTexture = true;
-        //   }
-        // }
+        let appliedTexture = false;
+        if (texUrl && patternKey) {
+          const pid = getOrCreatePattern(defs, patternKey, texUrl);
+          if (pid) {
+            rect.style("fill", `url(#${pid})`).style("opacity", 1);
+            appliedTexture = true;
+          }
+        }
 
-        // // Fallback: if texture wasn't applied, generate a default one
-        // if (!appliedTexture) {
-        //   // Generate a fallback texture using the cell key
-        //   const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
-        //   const fallbackPatternKey = `fallback-${sanitizeForSelector(
-        //     cellKeyForTexture
-        //   )}`;
-        //   const fallbackPid = getOrCreatePattern(
-        //     defs,
-        //     fallbackPatternKey,
-        //     fallbackTexUrl
-        //   );
-        //   if (fallbackPid) {
+        // Fallback: if texture wasn't applied, generate a default one
+        if (!appliedTexture) {
+          // Generate a fallback texture using the cell key
+          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+          const fallbackPatternKey = `fallback-${sanitizeForSelector(
+            cellKeyForTexture
+          )}`;
+          const fallbackPid = getOrCreatePattern(
+            defs,
+            fallbackPatternKey,
+            fallbackTexUrl
+          );
+          if (fallbackPid) {
 
-        //     rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
 
-        //   } else {
-        //     // Last resort: solid color (should never happen)
-        //     rect.style("fill", "#f0f0f0").style("opacity", 1);
-        //     console.warn(
-        //       "Failed to create texture for cell:",
-        //       cellKeyForTexture
-        //     );
-        //   }
-        // }
+          } else {
+            // Last resort: solid color (should never happen)
+            rect.style("fill", "#f0f0f0").style("opacity", 1);
+            console.warn(
+              "Failed to create texture for cell:",
+              cellKeyForTexture
+            );
+          }
+        }
 
         // Always set opacity to 1 (opaque) - no transparency
         rect.style("opacity", 1);
