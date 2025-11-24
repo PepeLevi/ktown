@@ -1280,9 +1280,9 @@ function WorldMap({
       console.log("Composed entity:", composed); // Debug log
 
       if (composed) {
-        // Call onEntityClick to show info in EntityDetailsView
+        // Call onEntityClick to show info in popup
         if (onEntityClick) {
-          onEntityClick(composed);
+          onEntityClick(composed, event);
         } else {
           console.warn("onEntityClick is not defined!");
         }

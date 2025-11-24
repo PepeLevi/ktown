@@ -62,16 +62,9 @@ p {
   top: 0;
   bottom: 0;
   left: 0;
-  width: calc(100% - 40%);
-  background-color: var(--primary-color);
-}
-.details-panel {
-  position: fixed;
-  top: 0;
-  bottom: 0;
   right: 0;
-  width: 40%;
-  overflow-y: scroll;
+  width: 100%;
+  background-color: var(--primary-color);
 }
 
 .map-wrapper {
