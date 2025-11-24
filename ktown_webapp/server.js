@@ -178,6 +178,16 @@ function normalizeToArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+// Helper to get the world data structure (handles both with and without df_world wrapper)
+function getWorldData(file) {
+  // Try with df_world wrapper first (old format)
+  if (file?.df_world) {
+    return file.df_world;
+  }
+  // Otherwise return the file itself (new format without wrapper)
+  return file || {};
+}
+
 function parseCoords(coordString) {
   if (!coordString || typeof coordString !== "string") return [];
   const nums = coordString.match(/-?\d+/g);
@@ -199,9 +209,11 @@ function shallowMerge(a, b) {
 
 function buildHistoricalFiguresMap(file1, file2) {
   const map = {};
+  const world1 = getWorldData(file1);
+  const world2 = getWorldData(file2);
 
   const hf1 = normalizeToArray(
-    file1?.df_world?.historical_figures?.historical_figure
+    world1?.historical_figures?.historical_figure
   );
   hf1.forEach((h) => {
     if (!h || !h.id) return;
@@ -209,7 +221,7 @@ function buildHistoricalFiguresMap(file1, file2) {
   });
 
   const hf2 = normalizeToArray(
-    file2?.df_world?.historical_figures?.historical_figure
+    world2?.historical_figures?.historical_figure
   );
   hf2.forEach((h) => {
     if (!h || !h.id) return;
@@ -223,8 +235,9 @@ function buildWrittenByAuthorMap(file1, file2) {
   const byAuthor = {};
 
   function addFromFile(file, sourceLabel) {
+    const world = getWorldData(file);
     const wcArray = normalizeToArray(
-      file?.df_world?.written_contents?.written_content
+      world?.written_contents?.written_content
     );
     wcArray.forEach((wc) => {
       if (!wc) return;
@@ -320,8 +333,11 @@ function buildWorldData(file1, file2, booksFile) {
   const booksByAuthor = buildBooksByAuthorMap(booksFile); // NEW
 
   // Regions
-  const regions1 = normalizeToArray(file1?.df_world?.regions?.region);
-  const regions2 = normalizeToArray(file2?.df_world?.regions?.region);
+  const world1 = getWorldData(file1);
+  const world2 = getWorldData(file2);
+  
+  const regions1 = normalizeToArray(world1?.regions?.region);
+  const regions2 = normalizeToArray(world2?.regions?.region);
 
   const region2ById = {};
   regions2.forEach((r) => {
@@ -330,10 +346,10 @@ function buildWorldData(file1, file2, booksFile) {
 
   // Underground regions
   const ugr1 = normalizeToArray(
-    file1?.df_world?.underground_regions?.underground_region
+    world1?.underground_regions?.underground_region
   );
   const ugr2 = normalizeToArray(
-    file2?.df_world?.underground_regions?.underground_region
+    world2?.underground_regions?.underground_region
   );
   const ugr2ById = {};
   ugr2.forEach((r) => {
@@ -341,8 +357,8 @@ function buildWorldData(file1, file2, booksFile) {
   });
 
   // Sites
-  const sites1 = normalizeToArray(file1?.df_world?.sites?.site);
-  const sites2 = normalizeToArray(file2?.df_world?.sites?.site);
+  const sites1 = normalizeToArray(world1?.sites?.site);
+  const sites2 = normalizeToArray(world2?.sites?.site);
   const site1ById = {};
   sites1.forEach((s) => {
     if (s && s.id) site1ById[s.id] = s;
@@ -455,8 +471,6 @@ function buildWorldData(file1, file2, booksFile) {
     }
 
     cell.sites.push(mergedSite);
-
-    console.log("building world data", cell);
   });
 
   // 4) Sort cells
