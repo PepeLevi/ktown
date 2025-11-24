@@ -1,5 +1,8 @@
 // Procedural texture generation for cells
 // Based on Chinese character texture generation logic
+// Now supports intensity-based gradient hotspots (see colorGradients.js)
+
+import { getCellColorRGB, calculateInfoIntensity, GRADIENT_CONFIG } from './colorGradients';
 
 // Chinese characters for procedural texture generation
 const PHILOSOPHY_CHARS = [
@@ -213,13 +216,38 @@ const generateTextColor = (bgColor, seed, regionType = null) => {
 };
 
 // Generate deterministic colors based on seed and region type
-const generateColors = (seed, regionType = null) => {
+// Now supports information intensity for gradient hotspots
+const generateColors = (seed, regionType = null, cell = null) => {
   const rng = (n) => {
     const x = Math.sin(seed + n) * 10000;
     return x - Math.floor(x);
   };
 
-  // Get palette for this region type
+  // If cell is provided, use intensity-based gradient
+  if (cell) {
+    const intensity = calculateInfoIntensity(cell);
+    const type = regionType || cell?.region?.type || "default";
+    
+    const baseColor = GRADIENT_CONFIG.baseColors[type] || GRADIENT_CONFIG.baseColors["default"];
+    const hotspotColor = GRADIENT_CONFIG.hotspotColors[type] || GRADIENT_CONFIG.hotspotColors["default"];
+    
+    // Get base color from gradient
+    const bgBase = getCellColorRGB(cell, regionType);
+    
+    // Add some variation based on seed for texture diversity
+    const bg = generateColorVariation(bgBase, seed, 15); // Less variation to preserve gradient
+    
+    // Text color - more varied and colorful, not just dark
+    const text = generateTextColor(bg, seed, regionType);
+    
+    return {
+      bg,
+      text,
+      intensity, // Return intensity for debugging
+    };
+  }
+  
+  // Fallback: original palette-based system (for backward compatibility)
   const palette = REGION_COLOR_PALETTES[regionType] || REGION_COLOR_PALETTES["default"];
   
   // Select a variation from the palette based on seed
@@ -239,14 +267,15 @@ const generateColors = (seed, regionType = null) => {
 };
 
 // Generate procedural texture as data URL
-const generateProceduralTexture = (cellKey, size = 128, regionType = null) => {
+// Now supports cell parameter for intensity-based gradients
+const generateProceduralTexture = (cellKey, size = 128, regionType = null, cell = null) => {
   // Create a unique seed from the cell key
   const seed = hashString(cellKey);
   
   // Get deterministic character and colors (with region type for color palette)
   const charIdx = seed % PHILOSOPHY_CHARS.length;
   const char = PHILOSOPHY_CHARS[charIdx];
-  const colors = generateColors(seed, regionType);
+  const colors = generateColors(seed, regionType, cell); // Pass cell for intensity gradients
   
   // Create canvas
   const canvas = document.createElement('canvas');
@@ -299,26 +328,31 @@ const generateProceduralTexture = (cellKey, size = 128, regionType = null) => {
 const textureCache = new Map();
 
 // Get procedural texture with caching
-export const getProceduralTexture = (cellKey, size = 128, regionType = null) => {
-  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}`;
+// Now supports cell parameter for intensity-based gradients
+export const getProceduralTexture = (cellKey, size = 128, regionType = null, cell = null) => {
+  // Include intensity in cache key if cell is provided (for gradient variations)
+  const intensityKey = cell ? `-intensity-${calculateInfoIntensity(cell).toFixed(2)}` : '';
+  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}${intensityKey}`;
   if (textureCache.has(cacheKey)) {
     return textureCache.get(cacheKey);
   }
   
-  const textureUrl = generateProceduralTexture(cellKey, size, regionType);
+  const textureUrl = generateProceduralTexture(cellKey, size, regionType, cell);
   textureCache.set(cacheKey, textureUrl);
   return textureUrl;
 };
 
 // Get region texture (procedural) - uses region type for color palette
-export const getRegionTex = (type, cellKey) => {
+// Now supports cell parameter for intensity-based gradients
+export const getRegionTex = (type, cellKey, cell = null) => {
   // Generate procedural texture based on cell key and region type
   // Type determines the color palette, cellKey determines the variation
+  // Cell parameter enables intensity-based gradient hotspots
   if (cellKey) {
-    return getProceduralTexture(cellKey, 128, type);
+    return getProceduralTexture(cellKey, 128, type, cell);
   }
   // Fallback for cells without key
-  return getProceduralTexture(`region-${type || 'default'}`, 128, type);
+  return getProceduralTexture(`region-${type || 'default'}`, 128, type, cell);
 };
 
 // Get site texture (procedural) - sites use their own type for color palette

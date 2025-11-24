@@ -1,6 +1,7 @@
 // Minimap component - shows simplified view of entire map with viewport indicator
 import React, { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
+import { getCellColorWithIntensity } from './colorGradients';
 
 const MINIMAP_SIZE = 200; // Size of minimap in pixels (square)
 const MINIMAP_CELL_SIZE = 2; // Size of each cell in minimap (much smaller)
@@ -57,19 +58,8 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
       const x = xScale(cell.y) - minX;
       const y = yScale(cell.x) - minY;
 
-      // Simple color based on region type
-      const regionColors = {
-        "Grassland": "#dce096",
-        "Wetland": "#c8dc9f",
-        "Desert": "#faf0b4",
-        "Forest": "#b4d282",
-        "Mountains": "#dcdcbe",
-        "Hills": "#d2dc9f",
-        "Tundra": "#dce6c3",
-        "Lake": "#d2e6be",
-      };
-
-      const color = regionColors[cell.region?.type] || "#f0f0f0";
+      // Use same gradient system as main map - intensity-based hotspots
+      const color = getCellColorWithIntensity(cell, cell.region?.type);
 
       g.append("rect")
         .attr("x", x)

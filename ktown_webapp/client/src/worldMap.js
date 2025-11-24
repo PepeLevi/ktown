@@ -812,16 +812,19 @@ function WorldMap({
         let texUrl = null;
         let patternKey = null;
         
+        // Get original cell for intensity calculation (for gradient hotspots)
+        const originalCell = d.originalCell || d;
+        
         if (level === 0) {
           // Original cell - use region texture (skip if ocean)
           if (d.region?.type !== "Ocean") {
-            texUrl = getRegionTex(d.region?.type, cellKeyForTexture);
+            texUrl = getRegionTex(d.region?.type, cellKeyForTexture, originalCell);
             patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
           }
         } else if (d.isOriginalCell || d.childType === "region") {
           // This is the original cell texture in a subdivision - use region texture
           const regionType = d.childData?.type || d.originalCell?.region?.type;
-          texUrl = getRegionTex(regionType, cellKeyForTexture);
+          texUrl = getRegionTex(regionType, cellKeyForTexture, originalCell);
           patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
         } else if (d.childType === "site") {
           const siteType = d.childData?.fromFile2?.type || d.childData?.fromFile1?.type || d.childData?.type || "default";
@@ -830,7 +833,7 @@ function WorldMap({
         } else if (d.childType === "structure") {
           // Structures get procedural textures - use neutral palette
           const structId = d.childData?.id || d.childData?.local_id || 'default';
-          texUrl = getRegionTex(null, `${cellKeyForTexture}-struct-${structId}`); // null type = default palette
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-struct-${structId}`, originalCell); // null type = default palette
           patternKey = `structure-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(structId))}`;
         } else if (d.childType === "figure" || d.childType === "cellFigure") {
           texUrl = getFigureTex(d.childData, cellKeyForTexture);
@@ -838,16 +841,16 @@ function WorldMap({
         } else if (d.childType === "undergroundRegion") {
           // Underground regions get procedural textures - use cavern palette
           const ugId = d.childData?.id || 'default';
-          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`); // Use cavern palette
+          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`, originalCell); // Use cavern palette
           patternKey = `underground-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(ugId))}`;
         } else if (d.childType === "writtenContent") {
           // Written contents get procedural textures - use neutral palette
           const wcId = d.childData?.id || d.childData?.title || 'default';
-          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`); // null type = default palette
+          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`, originalCell); // null type = default palette
           patternKey = `written-${sanitizeForSelector(cellKeyForTexture)}-${sanitizeForSelector(String(wcId))}`;
         } else {
           // Fallback: generate a default texture for any unknown type
-          texUrl = getRegionTex(null, cellKeyForTexture);
+          texUrl = getRegionTex(null, cellKeyForTexture, originalCell);
           patternKey = `default-${sanitizeForSelector(cellKeyForTexture)}`;
         }
         
@@ -865,7 +868,8 @@ function WorldMap({
         // Fallback: if texture wasn't applied, generate a default one
         if (!appliedTexture) {
           // Generate a fallback texture using the cell key
-          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+          const originalCell = d.originalCell || d;
+          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture, originalCell);
           const fallbackPatternKey = `fallback-${sanitizeForSelector(cellKeyForTexture)}`;
           const fallbackPid = getOrCreatePattern(defs, fallbackPatternKey, fallbackTexUrl);
           if (fallbackPid) {
