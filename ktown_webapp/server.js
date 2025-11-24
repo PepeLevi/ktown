@@ -2,45 +2,117 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
+const { chain } = require("stream-chain");
+const { parser } = require("stream-json");
+const { streamValues } = require("stream-json/streamers/StreamValues");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "map_plus.json";
-const map_location = "map.json";
-const book_location = "big/books.json";
+const map_plus_location = "json_big_xml_plus.json";
+const map_location = "json_big_xml.json";
+const book_location = "books.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
 const PUBLIC_DIR = path.join(__dirname, "public");
 app.use(express.static(PUBLIC_DIR));
 
+// ---------- Helper: load JSON file using streaming parser for large files ----------
+function loadJsonFileStreaming(filePath) {
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(filePath)) {
+      resolve(null);
+      return;
+    }
+
+    const fileSize = fs.statSync(filePath).size;
+    const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2);
+    console.log(`Loading ${path.basename(filePath)} (${fileSizeMB} MB) using streaming parser...`);
+
+    const pipeline = chain([
+      fs.createReadStream(filePath),
+      parser(),
+      streamValues(),
+    ]);
+
+    let result = null;
+    pipeline.on("data", (data) => {
+      result = data.value;
+    });
+
+    pipeline.on("end", () => {
+      if (result === null) {
+        reject(new Error(`Failed to parse JSON file: ${filePath}`));
+      } else {
+        console.log(`✓ Loaded ${path.basename(filePath)}`);
+        resolve(result);
+      }
+    });
+
+    pipeline.on("error", (err) => {
+      console.error(`Error loading ${filePath}:`, err);
+      reject(err);
+    });
+  });
+}
+
 // ---------- Helper: load default JSON files from /public ----------
-function loadDefaultFiles() {
+// Uses streaming parser to handle very large files that exceed Node.js string length limits
+async function loadDefaultFiles() {
   const file1Path = path.join(PUBLIC_DIR, map_plus_location);
   const file2Path = path.join(PUBLIC_DIR, map_location);
   const booksPath = path.join(PUBLIC_DIR, book_location);
 
   const hasFile1 = fs.existsSync(file1Path);
   const hasFile2 = fs.existsSync(file2Path);
-  const hasBooks = fs.existsSync(booksPath); // NEW
+  const hasBooks = fs.existsSync(booksPath); // Optional
 
-  if (!hasFile1 || !hasFile2 || !hasBooks) {
-    throw new Error(
-      `Default files missing. json_big_xml_plus.json: ${hasFile1}, json_big_xml.json: ${hasFile2}, books.json: ${hasBooks}`
-    );
+  // Files are optional - return empty structures if missing (they're in .gitignore)
+  let file1 = { sites: [], regions: [] };
+  let file2 = { sites: [] };
+  let books = { written_content: [] };
+
+  if (!hasFile1 && !hasFile2) {
+    console.warn(`Warning: Both ${map_plus_location} and ${map_location} not found. Using empty structures.`);
+    return { file1, file2, books };
   }
 
-  const file1Raw = fs.readFileSync(file1Path, "utf8");
-  const file2Raw = fs.readFileSync(file2Path, "utf8");
-  const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
+  try {
+    console.log("Loading JSON files using streaming parser...");
+    
+    // Use streaming parser for large files
+    const [file1Data, file2Data, booksData] = await Promise.all([
+      hasFile1 ? loadJsonFileStreaming(file1Path).catch(() => null) : Promise.resolve(null),
+      hasFile2 ? loadJsonFileStreaming(file2Path).catch(() => null) : Promise.resolve(null),
+      hasBooks ? loadJsonFileStreaming(booksPath).catch(() => null) : Promise.resolve(null),
+    ]);
 
-  const file1 = JSON.parse(file1Raw);
-  const file2 = JSON.parse(file2Raw);
-  const books = JSON.parse(booksRaw); // NEW
+    if (file1Data) {
+      file1 = file1Data;
+    } else if (hasFile1) {
+      console.warn(`Warning: Failed to load ${file1Path}. Using empty structure.`);
+    }
 
-  return { file1, file2, books }; // UPDATED
+    if (file2Data) {
+      file2 = file2Data;
+    } else if (hasFile2) {
+      console.warn(`Warning: Failed to load ${file2Path}. Using empty structure.`);
+    }
+
+    if (booksData) {
+      books = booksData;
+    }
+
+    console.log("JSON files loaded successfully");
+    return { file1, file2, books };
+  } catch (err) {
+    console.error("Error loading JSON files:", err);
+    throw new Error(
+      `Failed to load JSON files: ${err.message}`
+    );
+  }
 }
 
 // ---------- Existing endpoint to check default files ----------
@@ -398,9 +470,9 @@ function buildWorldData(file1, file2, booksFile) {
 }
 
 // ---------- NEW: GET / -> worldData from default files ----------
-app.get("/", (req, res) => {
+app.get("/", async (req, res) => {
   try {
-    const { file1, file2, books } = loadDefaultFiles();
+    const { file1, file2, books } = await loadDefaultFiles();
     const worldData = buildWorldData(file1, file2, books);
 
     const firstCellWithBooks = worldData.cells.find((cell) =>
@@ -433,17 +505,28 @@ app.get("/", (req, res) => {
   }
 });
 
-// ---------- Existing POST /api/world-data (still works with body) ----------
-app.post("/api/world-data", (req, res) => {
+// ---------- Existing POST /api/world-data (uses default files or body) ----------
+app.post("/api/world-data", async (req, res) => {
   try {
-    // const { file1, file2, books } = req.body;
+    let file1, file2, books;
 
-    const { file1, file2, books } = loadDefaultFiles();
+    // If body has files, use them; otherwise use default files
+    if (req.body && req.body.file1 && req.body.file2) {
+      file1 = req.body.file1;
+      file2 = req.body.file2;
+      books = req.body.books || null;
+    } else {
+      // Use default files from /public directory
+      const defaultFiles = await loadDefaultFiles();
+      file1 = defaultFiles.file1;
+      file2 = defaultFiles.file2;
+      books = defaultFiles.books;
+    }
 
     if (!file1 || !file2) {
       return res.status(400).json({
         error:
-          "Both file1 and file2 JSON must be provided in the request body.",
+          "Both file1 and file2 JSON must be provided. Either include them in the request body or place default files in the /public directory.",
       });
     }
 
