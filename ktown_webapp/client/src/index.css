@@ -266,30 +266,35 @@ rect.cell-type-region {
 
 rect.cell-type-site {
   fill: blue;
-  mix-blend-mode: difference;
+  /* mix-blend-mode: difference; */
 }
 
 rect.cell-type-structure {
   fill: #ec4899;
-  mix-blend-mode: screen;
+  /* mix-blend-mode: screen; */
 }
 
 rect.cell-type-figure {
   fill: red;
-  mix-blend-mode: difference;
+  /* mix-blend-mode: difference; */
 }
 
 rect.cell-type-writtenContent {
   fill: #f97316;
-  mix-blend-mode: screen;
+  /* mix-blend-mode: screen; */
 }
 
 rect.cell-type-undergroundRegion {
   fill: brown;
-  mix-blend-mode: screen;
+  /* mix-blend-mode: screen; */
 }
 
 rect.cell-type-ocean {
   stroke: #0f172a;
   opacity: 0;
+}
+
+.cell-label {
+  color: var(--primary-color);
+  fill: var(--primary-color);
 }
