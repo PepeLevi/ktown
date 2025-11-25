@@ -923,7 +923,7 @@ function WorldMap({
         return ug?.name || "Cavern";
       }
       case "region":
-        return originalCell.region?.type || "Region";
+        return originalCell.region?.name || "Region";
       default:
         // Fallback: show kind or coords
         if (childType) return childType;
@@ -974,14 +974,14 @@ function WorldMap({
     let finalLines = lines.slice(0, maxLines);
 
     // Ellipsis if truncated
-    // if (lines.length > maxLines) {
-    //   const last = finalLines[finalLines.length - 1] || "";
-    //   const ellipsis = "…";
-    //   const spaceForChars = Math.max(1, maxCharsPerLine - 1);
-    //   const truncated =
-    //     last.length > spaceForChars ? last.slice(0, spaceForChars) : last;
-    //   finalLines[finalLines.length - 1] = truncated + ellipsis;
-    // }
+    if (lines.length > maxLines) {
+      const last = finalLines[finalLines.length - 1] || "";
+      const ellipsis = "…";
+      const spaceForChars = Math.max(1, maxCharsPerLine - 1);
+      const truncated =
+        last.length > spaceForChars ? last.slice(0, spaceForChars) : last;
+      finalLines[finalLines.length - 1] = truncated + ellipsis;
+    }
 
     // Clear previous tspans
     textSelection.selectAll("tspan").remove();
@@ -1001,7 +1001,7 @@ function WorldMap({
     textSelection
       .style("display", "block")
       .style("font-size", `${fontSizeWorld}px`)
-      .style("fill", "var(--primary-color)") // font color
+      .style("fill", "var(--label-color)") // font color
       .style("font-family", "arial");
   };
 
@@ -1559,7 +1559,7 @@ function WorldMap({
       const labelText = getCellLabel(d, level); // always non-empty
       const zoom = currentZoomRef.current || 1;
 
-      const baseSize = Math.min(cellWidth, cellHeight) * 0.35;
+      const baseSize = Math.min(cellWidth, cellHeight) * 0.1;
       const zoomDamp = Math.sqrt(zoom);
       const fontSizeWorld = baseSize / zoomDamp;
 
@@ -1664,29 +1664,29 @@ function WorldMap({
       }
 
       // Underground regions
-      // if (
-      //   cell.undergroundRegions &&
-      //   cell.undergroundRegions.length > 0 &&
-      //   isLevelVisible("undergroundRegion")
-      // ) {
-      //   const ugLevel = HIERARCHY_LEVELS.find(
-      //     (l) => l.name === "undergroundRegion"
-      //   );
-      //   const ugZoomFactor = 3;
-      //   const ugBaseCount = 1;
-      //   const ugAdditionalCount = Math.floor(
-      //     (zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor
-      //   );
-      //   const visibleUgCount = Math.min(
-      //     cell.undergroundRegions.length,
-      //     ugBaseCount + Math.max(0, ugAdditionalCount)
-      //   );
-      //   cell.undergroundRegions
-      //     .slice(0, visibleUgCount)
-      //     .forEach((ug) =>
-      //       allChildData.push({ kind: "undergroundRegion", data: ug })
-      //     );
-      // }
+      if (
+        cell.undergroundRegions &&
+        cell.undergroundRegions.length > 0 &&
+        isLevelVisible("undergroundRegion")
+      ) {
+        const ugLevel = HIERARCHY_LEVELS.find(
+          (l) => l.name === "undergroundRegion"
+        );
+        const ugZoomFactor = 3;
+        const ugBaseCount = 1;
+        const ugAdditionalCount = Math.floor(
+          (zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor
+        );
+        const visibleUgCount = Math.min(
+          cell.undergroundRegions.length,
+          ugBaseCount + Math.max(0, ugAdditionalCount)
+        );
+        cell.undergroundRegions
+          .slice(0, visibleUgCount)
+          .forEach((ug) =>
+            allChildData.push({ kind: "undergroundRegion", data: ug })
+          );
+      }
 
       // Cell-level historical figures
       if (

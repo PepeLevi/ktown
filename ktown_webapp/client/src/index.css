@@ -1,10 +1,12 @@
 :root {
   --primary-bg-color: #020617;
   --primary-color: #39ff14;
+  --label-color: white;
   --regPad: 0.2px;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   width: 100%;
@@ -297,4 +299,8 @@ rect.cell-type-ocean {
 .cell-label {
   color: var(--primary-color);
   fill: var(--primary-color);
+}
+
+.hover {
+  mix-blend-mode: difference;
 }
