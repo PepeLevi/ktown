@@ -38,6 +38,9 @@ function App() {
   const [bookCells, setBookCells] = useState([]);
   const [currentBookCellIndex, setCurrentBookCellIndex] = useState(-1);
 
+  const [shouldShowLoader, setShouldShowLoader] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
   // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
 
@@ -143,6 +146,7 @@ function App() {
   //   }
   // };
   const fetchWorldData = async () => {
+    setShouldShowLoader(true);
     try {
       setStatus("Requesting world data from server...");
 
@@ -245,9 +249,8 @@ function App() {
 
         // If this cell has any books (via site/figure/structure), store it:
         if (cellHasBooks) {
-          console.log("HAS CELL WITH BOOKS", cell);
-
-          temp_bookCells.push(cell);
+          const composed = buildCellEntityFromCell(cell);
+          temp_bookCells.push(composed); // ✅ composed entity
         }
       });
 
@@ -259,6 +262,8 @@ function App() {
       setSelectedCell(null);
       setSelectedEntity(null);
       setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
+
+      setHasLoaded(true);
     } catch (err) {
       console.error(err);
       setStatus("Error loading world data.");
@@ -271,17 +276,32 @@ function App() {
     // backendUrl is constant, so no need to add it to deps
   }, []);
 
+  function buildCellEntityFromCell(originalCell) {
+    if (!originalCell) return null;
+
+    return {
+      kind: "cell",
+      name: `Cell (${originalCell.x}, ${originalCell.y})`,
+      type: originalCell.region?.type || null,
+      cellCoords: { x: originalCell.x, y: originalCell.y },
+      cell: originalCell,
+      region: originalCell.region,
+      sites: originalCell.sites || [],
+      undergroundRegions: originalCell.undergroundRegions || [],
+      historical_figures: originalCell.historical_figures || [],
+      written_contents: originalCell.written_contents || [],
+    };
+  }
+
   const goToNextBookCell = () => {
     if (!bookCells.length) return;
 
     setCurrentBookCellIndex((prev) => {
       const nextIndex = (prev + 1 + bookCells.length) % bookCells.length;
-      const nextCell = bookCells[nextIndex];
+      const entity = bookCells[nextIndex]; // already composed
 
-      const entity = createSelectedEntity("cell", nextCell);
-
-      // Programmatic select just like a click
-      handleEntityClick(entity); // second arg can be undefined
+      // Same as clicking a cell
+      handleEntityClick(entity);
 
       return nextIndex;
     });
@@ -366,10 +386,24 @@ function App() {
 
         {bookCells.length > 0 && (
           <button className="book-tour-button" onClick={goToNextBookCell}>
-            Next book cell
+            -xx-
           </button>
         )}
       </main>
+
+      {shouldShowLoader && (
+        <div className="loader">
+          {hasLoaded && (
+            <button
+              onClick={() => {
+                setShouldShowLoader(false);
+              }}
+            >
+              explore
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

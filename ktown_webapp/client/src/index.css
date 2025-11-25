@@ -304,22 +304,38 @@ rect.cell-type-ocean {
 .hover {
   mix-blend-mode: difference;
 }
-
+.book-content button {
+  width: auto;
+}
 .book-tour-button {
   position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
+  left: var(--regPad);
+  bottom: var(--regPad);
+  width: auto;
   z-index: 999;
   padding: 0.75rem 1.25rem;
   border-radius: 999px;
   border: none;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  backdrop-filter: blur(6px);
+  background-color: var(--primary-bg-color);
+  color: var(--primary-color);
 }
 
 .book-tour-button:hover {
-  background: rgba(0, 0, 0, 0.9);
+  color: var(--primary-bg-color);
+  background-color: var(--primary-color);
+}
+
+.loader {
+  background-color: var(--primary-bg-color);
+  position: fixed;
+  top: 20px;
+  bottom: 20px;
+  right: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
