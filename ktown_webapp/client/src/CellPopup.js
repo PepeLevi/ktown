@@ -80,7 +80,10 @@ function FigureDetailView({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        const entity = createSelectedEntity("figure", figures[s.hfid]);
+                        const entity = createSelectedEntity(
+                          "figure",
+                          figures[s.hfid]
+                        );
                         const x = e.clientX || window.innerWidth / 2;
                         const y = e.clientY || window.innerHeight / 2;
                         handleEntityClick(entity, { clientX: x, clientY: y });
@@ -159,10 +162,16 @@ function BookDetailView({
   );
 }
 
-function StructureDetailView({ structure, handleEntityClick, books, figures, createSelectedEntity }) {
+function StructureDetailView({
+  structure,
+  handleEntityClick,
+  books,
+  figures,
+  createSelectedEntity,
+}) {
   // Normalize inhabitant to array (can be single object or array)
   const inhabitants = normalizeToArray(
-    structure.inhabitant || structure.inhabitants
+    structure.historical_figures || structure.inhabitants
   );
 
   return (
@@ -209,7 +218,13 @@ function StructureDetailView({ structure, handleEntityClick, books, figures, cre
   );
 }
 
-function SiteDetailView({ site, handleEntityClick, figures, books, createSelectedEntity }) {
+function SiteDetailView({
+  site,
+  handleEntityClick,
+  figures,
+  books,
+  createSelectedEntity,
+}) {
   return (
     <div>
       <p>{site.fromFile2?.name || site.fromFile1?.name || site.name}</p>
@@ -244,7 +259,15 @@ function SiteDetailView({ site, handleEntityClick, figures, books, createSelecte
   );
 }
 
-function CellPopup({ entity, position, onClose, figures, books, handleEntityClick, createSelectedEntity }) {
+function CellPopup({
+  entity,
+  position,
+  onClose,
+  figures,
+  books,
+  handleEntityClick,
+  createSelectedEntity,
+}) {
   if (!entity) return null;
 
   const {
@@ -265,6 +288,9 @@ function CellPopup({ entity, position, onClose, figures, books, handleEntityClic
 
   // Calculate popup position
   const calculatePosition = () => {
+    const padding = 20; // <-- margin from all edges
+    const maxWidth = 600;
+
     if (!position) {
       return {
         left: "50%",
@@ -275,27 +301,27 @@ function CellPopup({ entity, position, onClose, figures, books, handleEntityClic
 
     const x = position.x || window.innerWidth / 2;
     const y = position.y || window.innerHeight / 2;
-    
+
     const offsetX = -50;
     const offsetY = -20;
-    
+
     let left = x + offsetX;
     let top = y + offsetY;
-    
-    const maxWidth = 600;
-    const padding = 10;
-    
-    if (left + maxWidth > window.innerWidth - padding) {
-      left = window.innerWidth - maxWidth - padding;
-    }
-    if (left < padding) {
-      left = padding;
-    }
-    
-    if (top < padding) {
-      top = y + 20;
-    }
-    
+
+    // --- Horizontal clamping ---
+    const rightLimit = window.innerWidth - maxWidth - padding;
+    if (left > rightLimit) left = rightLimit;
+    if (left < padding) left = padding;
+
+    // --- Vertical clamping ---
+    // The popup’s height is unknown until rendered, so clamp based on viewport
+    // This keeps the TOP of the popup on screen with at least padding
+    const estimatedHeight = 400; // optionally adjust or measure dynamically
+    const bottomLimit = window.innerHeight - estimatedHeight - padding;
+
+    if (top > bottomLimit) top = bottomLimit;
+    if (top < padding) top = padding;
+
     return {
       position: "fixed",
       left: `${left}px`,
@@ -308,9 +334,15 @@ function CellPopup({ entity, position, onClose, figures, books, handleEntityClic
 
   return (
     <div className="cell-popup-overlay" onClick={onClose}>
-      <div className="cell-popup" onClick={(e) => e.stopPropagation()} style={style}>
-        <button className="cell-popup-close" onClick={onClose}>×</button>
-        
+      <div
+        className="cell-popup"
+        onClick={(e) => e.stopPropagation()}
+        style={style}
+      >
+        <button className="cell-popup-close" onClick={onClose}>
+          ×
+        </button>
+
         <div className="cell-popup-content">
           <div className="flex-row-full">
             <p>{name || "Unknown"}</p>

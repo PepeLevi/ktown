@@ -83,7 +83,7 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "site",
-    minZoom: 3, // Show sites when zoom >= 30 - they subdivide the cell (much higher zoom)
+    minZoom: 1, // Show sites when zoom >= 30 - they subdivide the cell (much higher zoom)
     getChildren: (site) => {
       const structures =
         site.data?.structures?.structure || site.structures?.structure;
@@ -94,7 +94,7 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "structure",
-    minZoom: 4, // Show structures when zoom >= 50 - they subdivide the site (much higher zoom)
+    minZoom: 1, // Show structures when zoom >= 50 - they subdivide the site (much higher zoom)
     getChildren: (structure) => {
       // Structures contain inhabitants (historical figures)
       return structure.inhabitants || [];
@@ -103,19 +103,19 @@ const HIERARCHY_LEVELS = [
   },
   {
     name: "figure",
-    minZoom: 5, // Show figures when zoom >= 80 - they subdivide the structure (much higher zoom)
+    minZoom: 1, // Show figures when zoom >= 80 - they subdivide the structure (much higher zoom)
     getChildren: () => [], // Figures are leaf nodes
     sizeRatio: 1.0, // Figures fill the entire structure when visible (fractal subdivision)
   },
   {
     name: "cellFigure",
-    minZoom: 5, // Show cell-level figures when zoom >= 25 (much higher zoom)
+    minZoom: 0, // Show cell-level figures when zoom >= 25 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
   {
     name: "writtenContent",
-    minZoom: 6, // Show written contents (books) when zoom >= 35 (much higher zoom)
+    minZoom: 0, // Show written contents (books) when zoom >= 35 (much higher zoom)
     getChildren: () => [], // Leaf nodes
     sizeRatio: 1.0,
   },
@@ -160,7 +160,8 @@ const getStructureInhabitants = (structure) => {
   if (!structure) return [];
 
   // You might add structure.inhabitants later
-  if (Array.isArray(structure.inhabitants)) return structure.inhabitants;
+  if (Array.isArray(structure.historical_figures))
+    return structure.historical_figures;
 
   // In your sample, it's "inhabitant"
   if (Array.isArray(structure.inhabitant)) return structure.inhabitant;
@@ -172,8 +173,6 @@ const getStructureInhabitants = (structure) => {
 const getInhabitantBooks = (hf) => {
   if (!hf) return [];
 
-  console.log(hf);
-
   const raw =
     hf.books ||
     hf.book ||
@@ -182,7 +181,7 @@ const getInhabitantBooks = (hf) => {
     hf.book_list;
 
   if (raw) {
-    console.log("LOOKS for books", raw);
+    console.log("has books", raw);
   }
 
   return normalizeToArray(raw);
@@ -872,6 +871,126 @@ function WorldMap({
     }
   };
 
+  const getCellLabel = (d, level) => {
+    const originalCell = d.originalCell || d;
+    const childType = d.childType || d.nodeType;
+
+    // Level 0: top-level map cell
+    // if (level === 0) {
+    //   if (originalCell.region?.name) return originalCell.region.name;
+    //   if (originalCell.region?.type) return originalCell.region.type;
+    //   // Fallback: coords
+    //   return `(${originalCell.x}, ${originalCell.y})`;
+    // }
+
+    // Children: sites / structures / figures / books / underground / etc
+    switch (childType) {
+      case "site": {
+        const site = d.childData;
+        return (
+          site?.fromFile2?.name || site?.fromFile1?.name || site?.name || "Site"
+        );
+      }
+      case "structure": {
+        const s = d.childData;
+        return s?.name || s?.type || "Structure";
+      }
+      case "figure":
+      case "cellFigure": {
+        const hf = d.childData?.[0] || d.childData;
+        return hf?.name || (hf?.id != null ? `Figure ${hf.id}` : "Figure");
+      }
+      case "writtenContent": {
+        const wc = d.childData;
+        return wc?.title || "Text";
+      }
+      case "undergroundRegion": {
+        const ug = d.childData;
+        return ug?.name || "Cavern";
+      }
+      case "region":
+        return originalCell.region?.type || "Region";
+      default:
+        // Fallback: show kind or coords
+        if (childType) return childType;
+        return `(${originalCell.x}, ${originalCell.y})`;
+    }
+  };
+  const wrapCellLabel = (
+    textSelection,
+    fullText,
+    cellX,
+    cellY,
+    cellWidth,
+    cellHeight,
+    fontSizeWorld
+  ) => {
+    const padding = 2; // inner padding
+    const maxLineWidth = Math.max(1, cellWidth - padding * 2);
+
+    // Approximate char width in world units
+    const approxCharWidth = fontSizeWorld * 0.6;
+    const maxCharsPerLine = Math.max(
+      1,
+      Math.floor(maxLineWidth / approxCharWidth)
+    );
+
+    const words = String(fullText).split(/\s+/);
+    const lines = [];
+    let currentLine = "";
+
+    words.forEach((word) => {
+      const testLine = currentLine ? currentLine + " " + word : word;
+      if (testLine.length <= maxCharsPerLine) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    });
+    if (currentLine) lines.push(currentLine);
+
+    // Vertical fit
+    const lineHeight = fontSizeWorld * 1.1;
+    const maxLines = Math.max(
+      1,
+      Math.floor((cellHeight - padding * 2) / lineHeight)
+    );
+
+    let finalLines = lines.slice(0, maxLines);
+
+    // Ellipsis if truncated
+    // if (lines.length > maxLines) {
+    //   const last = finalLines[finalLines.length - 1] || "";
+    //   const ellipsis = "…";
+    //   const spaceForChars = Math.max(1, maxCharsPerLine - 1);
+    //   const truncated =
+    //     last.length > spaceForChars ? last.slice(0, spaceForChars) : last;
+    //   finalLines[finalLines.length - 1] = truncated + ellipsis;
+    // }
+
+    // Clear previous tspans
+    textSelection.selectAll("tspan").remove();
+
+    const baseX = cellX + padding;
+    const baseY = cellY + padding;
+
+    finalLines.forEach((lineText, i) => {
+      textSelection
+        .append("tspan")
+        .attr("x", baseX)
+        .attr("y", baseY + i * lineHeight)
+        .text(lineText);
+    });
+
+    // 🔥 Styling goes here
+    textSelection
+      .style("display", null)
+      .style("font-size", `${fontSizeWorld}px`)
+      .style("fill", "var(--primary-color)") // font color
+      .style("font-family", "arial");
+  };
+
   // Recursive function to render a cell and its children
   const renderRecursiveCell = (
     cell,
@@ -881,7 +1000,8 @@ function WorldMap({
     yScale,
     level = 0
   ) => {
-    // Calculate this cell's position
+    const zoom = currentZoomRef.current || 1;
+
     const cellX =
       level === 0 ? xScale(cell.y) : parentBbox.x + (cell.bbox?.x || 0);
     const cellY =
@@ -921,6 +1041,7 @@ function WorldMap({
     const sanitizedY = Math.round(cellY * 100) / 100;
     const uniqueKeyRaw = `${rawCellKey}-${level}-${sanitizedX}-${sanitizedY}`;
     const uniqueKey = sanitizeForSelector(uniqueKeyRaw); // Fully sanitize the key
+
     const cellRect = gSelection
       .selectAll(`rect.cell-${uniqueKey}`)
       .data(
@@ -1049,39 +1170,39 @@ function WorldMap({
         // Apply procedural texture - ensure we always have a texture
         // This is critical: every cell MUST have a texture
         let appliedTexture = false;
-        if (texUrl && patternKey) {
-          const pid = getOrCreatePattern(defs, patternKey, texUrl);
-          if (pid) {
-            rect.style("fill", `url(#${pid})`).style("opacity", 1);
-            appliedTexture = true;
-          }
-        }
+        // if (texUrl && patternKey) {
+        //   const pid = getOrCreatePattern(defs, patternKey, texUrl);
+        //   if (pid) {
+        //     rect.style("fill", `url(#${pid})`).style("opacity", 1);
+        //     appliedTexture = true;
+        //   }
+        // }
 
         // Fallback: if texture wasn't applied, generate a default one
-        if (!appliedTexture) {
-          // Generate a fallback texture using the cell key
-          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
-          const fallbackPatternKey = `fallback-${sanitizeForSelector(
-            cellKeyForTexture
-          )}`;
-          const fallbackPid = getOrCreatePattern(
-            defs,
-            fallbackPatternKey,
-            fallbackTexUrl
-          );
-          if (fallbackPid) {
+        // if (!appliedTexture) {
+        //   // Generate a fallback texture using the cell key
+        //   const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+        //   const fallbackPatternKey = `fallback-${sanitizeForSelector(
+        //     cellKeyForTexture
+        //   )}`;
+        //   const fallbackPid = getOrCreatePattern(
+        //     defs,
+        //     fallbackPatternKey,
+        //     fallbackTexUrl
+        //   );
+        //   if (fallbackPid) {
 
-            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+        //     rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
 
-          } else {
-            // Last resort: solid color (should never happen)
-            rect.style("fill", "#f0f0f0").style("opacity", 1);
-            console.warn(
-              "Failed to create texture for cell:",
-              cellKeyForTexture
-            );
-          }
-        }
+        //   } else {
+        //     // Last resort: solid color (should never happen)
+        //     rect.style("fill", "#f0f0f0").style("opacity", 1);
+        //     console.warn(
+        //       "Failed to create texture for cell:",
+        //       cellKeyForTexture
+        //     );
+        //   }
+        // }
 
         // Always set opacity to 1 (opaque) - no transparency
         rect.style("opacity", 1);
@@ -1094,6 +1215,47 @@ function WorldMap({
           rect.style("stroke", "black").style("stroke-width", 0);
         }
       });
+
+    // --- LABEL JOIN ------------------------------------------------------
+    // const uniqueKeyRaw = cell.key || `cell-${level}-${cellX}-${cellY}`;
+    // const uniqueKey = sanitizeForSelector(uniqueKeyRaw);
+    const cellDataForLabel = [{ ...cell, cellKey: uniqueKey, cellBbox }];
+
+    const labelSel = gSelection
+      .selectAll(`text.label-${uniqueKey}`)
+      .data(cellDataForLabel, (d) => d.cellKey || uniqueKey);
+
+    const labelEnter = labelSel
+      .enter()
+      .append("text")
+      .attr("class", `cell-label label-${uniqueKey}`)
+      .attr("text-anchor", "start")
+      .attr("dominant-baseline", "hanging")
+      .style("pointer-events", "none")
+      .style("user-select", "none");
+
+    labelEnter.merge(labelSel).each(function (d) {
+      // const labelText = getCellLabel(d, level);
+      const labelText = "sampleText";
+
+      const baseSize = Math.min(cellWidth, cellHeight) * 0.35;
+      const zoomDamp = Math.sqrt(zoom);
+      const fontSizeWorld = baseSize / zoomDamp;
+
+      const textSel = d3.select(this);
+      wrapCellLabel(
+        textSel,
+        labelText,
+        cellX,
+        cellY,
+        cellWidth,
+        cellHeight,
+        fontSizeWorld
+      );
+    });
+
+    labelSel.exit().remove();
+    // --- END LABEL JOIN --------------------------------------------------
 
     // Add click handler - make child cells selectable and show JSON info in right panel
     // Apply to both new and existing elements
@@ -1418,29 +1580,29 @@ function WorldMap({
       }
 
       // Underground regions
-      if (
-        cell.undergroundRegions &&
-        cell.undergroundRegions.length > 0 &&
-        isLevelVisible("undergroundRegion")
-      ) {
-        const ugLevel = HIERARCHY_LEVELS.find(
-          (l) => l.name === "undergroundRegion"
-        );
-        const ugZoomFactor = 3;
-        const ugBaseCount = 1;
-        const ugAdditionalCount = Math.floor(
-          (zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor
-        );
-        const visibleUgCount = Math.min(
-          cell.undergroundRegions.length,
-          ugBaseCount + Math.max(0, ugAdditionalCount)
-        );
-        cell.undergroundRegions
-          .slice(0, visibleUgCount)
-          .forEach((ug) =>
-            allChildData.push({ kind: "undergroundRegion", data: ug })
-          );
-      }
+      // if (
+      //   cell.undergroundRegions &&
+      //   cell.undergroundRegions.length > 0 &&
+      //   isLevelVisible("undergroundRegion")
+      // ) {
+      //   const ugLevel = HIERARCHY_LEVELS.find(
+      //     (l) => l.name === "undergroundRegion"
+      //   );
+      //   const ugZoomFactor = 3;
+      //   const ugBaseCount = 1;
+      //   const ugAdditionalCount = Math.floor(
+      //     (zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor
+      //   );
+      //   const visibleUgCount = Math.min(
+      //     cell.undergroundRegions.length,
+      //     ugBaseCount + Math.max(0, ugAdditionalCount)
+      //   );
+      //   cell.undergroundRegions
+      //     .slice(0, visibleUgCount)
+      //     .forEach((ug) =>
+      //       allChildData.push({ kind: "undergroundRegion", data: ug })
+      //     );
+      // }
 
       // Cell-level historical figures
       if (
@@ -1575,6 +1737,78 @@ function WorldMap({
             }
           });
         }
+
+        if (s.historical_figures && s.historical_figures.length > 0) {
+          const inhabitants = getStructureInhabitants(s);
+          if (inhabitants.length > 0 && isLevelVisible("figure")) {
+            const figLevel = HIERARCHY_LEVELS.find((l) => l.name === "figure");
+            const figZoomFactor = 4; // +1 figure every 4 zoom levels
+            const figBaseCount = 1;
+            const figAdditionalCount = Math.floor(
+              (zoom - (figLevel?.minZoom || 40)) / figZoomFactor
+            );
+            const visibleFigCount = Math.min(
+              inhabitants.length,
+              figBaseCount + Math.max(0, figAdditionalCount)
+            );
+            inhabitants.slice(0, visibleFigCount).forEach((hf) => {
+              allChildData.push({ kind: "figure", data: hf });
+            });
+            inhabitants.forEach((inh) => {
+              const hfBooks = getInhabitantBooks(inh);
+              if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
+                console.log("RENDERS A BOOK INTO THE MAP", hfBooks);
+
+                const wcLevel = HIERARCHY_LEVELS.find(
+                  (l) => l.name === "writtenContent"
+                );
+                const wcZoomFactor = 3;
+                const wcBaseCount = 1;
+                const wcAdditionalCount = Math.floor(
+                  (zoom - (wcLevel?.minZoom || 35)) / wcZoomFactor
+                );
+                const visibleWcCount = Math.min(
+                  hfBooks.length,
+                  wcBaseCount + Math.max(0, wcAdditionalCount)
+                );
+
+                hfBooks.slice(0, visibleWcCount).forEach((wc) => {
+                  allChildData.push({ kind: "writtenContent", data: wc });
+                });
+              }
+            });
+          }
+        }
+        if (s.books && s.books.length > 0) {
+          // ---------- HIERARCHY: FIGURE → BOOKS / WRITTEN CONTENT ----------
+          const hfBooks = getInhabitantBooks(s);
+
+          console.log(
+            "HAS BOOKS IN SITE",
+            hfBooks,
+            isLevelVisible("writtenContent")
+          );
+
+          if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
+            const wcLevel = HIERARCHY_LEVELS.find(
+              (l) => l.name === "writtenContent"
+            );
+            const wcZoomFactor = 3;
+            const wcBaseCount = 1;
+            const wcAdditionalCount = Math.floor(
+              (zoom - (wcLevel?.minZoom || 35)) / wcZoomFactor
+            );
+            const visibleWcCount = Math.min(
+              hfBooks.length,
+              wcBaseCount + Math.max(0, wcAdditionalCount)
+            );
+            hfBooks.slice(0, visibleWcCount).forEach((wc) => {
+              allChildData.push({ kind: "writtenContent", data: wc });
+
+              console.log("PUSHES BOOK  TO RENDER FROM SITE", wc);
+            });
+          }
+        }
       });
     }
 
@@ -1613,25 +1847,6 @@ function WorldMap({
 
     //   inhabitants.slice(0, visibleFigCount).forEach((hf) => {
     //     allChildData.push({ kind: "figure", data: hf });
-    //   });
-    // }
-
-    // ---------- HIERARCHY: FIGURE → BOOKS / WRITTEN CONTENT ----------
-    // const hfBooks = getInhabitantBooks(payload);
-    // if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
-    //   const wcLevel = HIERARCHY_LEVELS.find((l) => l.name === "writtenContent");
-    //   const wcZoomFactor = 3;
-    //   const wcBaseCount = 1;
-    //   const wcAdditionalCount = Math.floor(
-    //     (zoom - (wcLevel?.minZoom || 35)) / wcZoomFactor
-    //   );
-    //   const visibleWcCount = Math.min(
-    //     hfBooks.length,
-    //     wcBaseCount + Math.max(0, wcAdditionalCount)
-    //   );
-
-    //   hfBooks.slice(0, visibleWcCount).forEach((wc) => {
-    //     allChildData.push({ kind: "writtenContent", data: wc });
     //   });
     // }
 

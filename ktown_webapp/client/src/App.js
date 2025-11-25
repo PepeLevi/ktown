@@ -55,10 +55,29 @@ function App() {
       let temp_figures = {};
       let temp_books = {};
       wd.cells.forEach((cell) => {
+        // console.log("looks at cell directly from json", cell);
+
         if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
 
+            if (site.books) {
+              for (let sbi = 0; sbi < site.books.length; sbi++) {
+                const book = site.books[sbi];
+                if (book && book.id) {
+                  temp_books[book.id] = book;
+                }
+              }
+            }
+
+            if (site.historical_figures) {
+              for (let hfi = 0; hfi < site.historical_figures.length; hfi++) {
+                const hf = site.historical_figures[hfi];
+                if (hf && hf.id) {
+                  temp_figures[hf.id] = hf;
+                }
+              }
+            }
             if (site.structures) {
               const structures = Array.isArray(site.structures)
                 ? site.structures
@@ -66,7 +85,7 @@ function App() {
               for (let sti = 0; sti < structures.length; sti++) {
                 const structure = structures[sti];
                 const inhabitants = normalizeToArray(
-                  structure.inhabitant || structure.inhabitants
+                  structure.historical_figures || structure.inhabitants
                 );
 
                 if (inhabitants.length > 0) {
@@ -77,6 +96,8 @@ function App() {
                       temp_figures[figure.id] = figure;
 
                       if (figure.books) {
+                        // console.log("has figure with book", figure);
+
                         const books = normalizeToArray(figure.books);
                         for (let bi = 0; bi < books.length; bi++) {
                           const book = books[bi];
