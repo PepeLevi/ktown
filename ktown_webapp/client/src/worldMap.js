@@ -1364,9 +1364,15 @@ function WorldMap({
 
       if (level === 0) {
         // Original cell - show cell information
+        // Use region name if available, otherwise use coordinates
+        const regionName = originalCell.region?.name;
+        const cellName = regionName 
+          ? regionName 
+          : `Cell (${originalCell.x}, ${originalCell.y})`;
+        
         composed = {
           kind: "cell",
-          name: `Cell (${originalCell.x}, ${originalCell.y})`,
+          name: cellName,
           type: originalCell.region?.type || null,
           cellCoords: { x: originalCell.x, y: originalCell.y },
           cell: originalCell,
@@ -1415,6 +1421,7 @@ function WorldMap({
             historical_figures: site.historical_figures || [],
             inhabitants: site.inhabitants || [],
             written_contents: site.written_contents || [],
+            historicalEvents: site.historical_events || [],
           };
         } else if (d.childType === "structure") {
           const structure = d.childData;
@@ -1428,6 +1435,7 @@ function WorldMap({
             structure: structure,
             cell: originalCell,
             region: originalCell.region,
+            historicalEvents: structure.historical_events || [],
           };
         } else if (d.childType === "figure" || d.childType === "cellFigure") {
           const hf = d.childData[0] || d.childData;
@@ -1441,6 +1449,7 @@ function WorldMap({
             figure: hf,
             cell: originalCell,
             region: originalCell.region,
+            historicalEvents: hf.historical_events || [],
           };
         } else if (d.childType === "undergroundRegion") {
           const ug = d.childData;
@@ -1468,10 +1477,12 @@ function WorldMap({
         } else if (d.childType === "region") {
           // Region subdivision
           const region = d.childData || originalCell.region;
+          // Use region name if available, otherwise use type
+          const regionName = region?.name || region?.type || "Unknown";
 
           composed = {
             kind: "cell",
-            name: `Region: ${region?.type || "Unknown"}`,
+            name: regionName,
             type: region?.type || null,
             cellCoords: { x: originalCell.x, y: originalCell.y },
             cell: originalCell,
