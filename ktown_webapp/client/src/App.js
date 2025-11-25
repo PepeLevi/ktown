@@ -60,10 +60,14 @@ function App() {
             const site = cell.sites[si];
 
             if (site.structures) {
-              const structures = Array.isArray(site.structures) ? site.structures : [site.structures];
+              const structures = Array.isArray(site.structures)
+                ? site.structures
+                : [site.structures];
               for (let sti = 0; sti < structures.length; sti++) {
                 const structure = structures[sti];
-                const inhabitants = normalizeToArray(structure.inhabitant || structure.inhabitants);
+                const inhabitants = normalizeToArray(
+                  structure.inhabitant || structure.inhabitants
+                );
 
                 if (inhabitants.length > 0) {
                   for (let ii = 0; ii < inhabitants.length; ii++) {
@@ -115,9 +119,15 @@ function App() {
     setSelectedCell(null);
 
     // Get click position for popup
-    const x = clickEvent?.clientX || clickEvent?.nativeEvent?.clientX || window.innerWidth / 2;
-    const y = clickEvent?.clientY || clickEvent?.nativeEvent?.clientY || window.innerHeight / 2;
-    
+    const x =
+      clickEvent?.clientX ||
+      clickEvent?.nativeEvent?.clientX ||
+      window.innerWidth / 2;
+    const y =
+      clickEvent?.clientY ||
+      clickEvent?.nativeEvent?.clientY ||
+      window.innerHeight / 2;
+
     // Show popup instead of details panel
     setPopupData({
       cellData: entity,

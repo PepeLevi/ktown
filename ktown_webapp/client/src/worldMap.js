@@ -159,22 +159,21 @@ const getSiteStructures = (site) => {
 const getStructureInhabitants = (structure) => {
   if (!structure) return [];
 
-  let inhabitants = [];
-
   // You might add structure.inhabitants later
-  if (Array.isArray(structure.inhabitants)) inhabitants = structure.inhabitants;
+  if (Array.isArray(structure.inhabitants)) return structure.inhabitants;
 
   // In your sample, it's "inhabitant"
-  if (Array.isArray(structure.inhabitant)) inhabitants = structure.inhabitant;
-  if (structure.inhabitant) inhabitants = [structure.inhabitant];
+  if (Array.isArray(structure.inhabitant)) return structure.inhabitant;
+  if (structure.inhabitant) return [structure.inhabitant];
 
-  return inhabitants;
+  return [];
 };
 
 const getInhabitantBooks = (hf) => {
   if (!hf) return [];
 
-  console.log("LOOKS for books", hf);
+  console.log(hf);
+
   const raw =
     hf.books ||
     hf.book ||
@@ -1049,40 +1048,40 @@ function WorldMap({
 
         // Apply procedural texture - ensure we always have a texture
         // This is critical: every cell MUST have a texture
-        // let appliedTexture = false;
-        // if (texUrl && patternKey) {
-        //   const pid = getOrCreatePattern(defs, patternKey, texUrl);
-        //   if (pid) {
-        //     rect.style("fill", `url(#${pid})`).style("opacity", 1);
-        //     appliedTexture = true;
-        //   }
-        // }
+        let appliedTexture = false;
+        if (texUrl && patternKey) {
+          const pid = getOrCreatePattern(defs, patternKey, texUrl);
+          if (pid) {
+            rect.style("fill", `url(#${pid})`).style("opacity", 1);
+            appliedTexture = true;
+          }
+        }
 
-        // // Fallback: if texture wasn't applied, generate a default one
-        // if (!appliedTexture) {
-        //   // Generate a fallback texture using the cell key
-        //   const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
-        //   const fallbackPatternKey = `fallback-${sanitizeForSelector(
-        //     cellKeyForTexture
-        //   )}`;
-        //   const fallbackPid = getOrCreatePattern(
-        //     defs,
-        //     fallbackPatternKey,
-        //     fallbackTexUrl
-        //   );
-        //   if (fallbackPid) {
+        // Fallback: if texture wasn't applied, generate a default one
+        if (!appliedTexture) {
+          // Generate a fallback texture using the cell key
+          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
+          const fallbackPatternKey = `fallback-${sanitizeForSelector(
+            cellKeyForTexture
+          )}`;
+          const fallbackPid = getOrCreatePattern(
+            defs,
+            fallbackPatternKey,
+            fallbackTexUrl
+          );
+          if (fallbackPid) {
 
-        //     rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
 
-        //   } else {
-        //     // Last resort: solid color (should never happen)
-        //     rect.style("fill", "#f0f0f0").style("opacity", 1);
-        //     console.warn(
-        //       "Failed to create texture for cell:",
-        //       cellKeyForTexture
-        //     );
-        //   }
-        // }
+          } else {
+            // Last resort: solid color (should never happen)
+            rect.style("fill", "#f0f0f0").style("opacity", 1);
+            console.warn(
+              "Failed to create texture for cell:",
+              cellKeyForTexture
+            );
+          }
+        }
 
         // Always set opacity to 1 (opaque) - no transparency
         rect.style("opacity", 1);
@@ -1291,9 +1290,9 @@ function WorldMap({
       }
 
       // Also call onCellClick for cell selection
-      // if (onCellClick) {
-      //   onCellClick(d);
-      // }
+      if (onCellClick) {
+        onCellClick(d);
+      }
 
       // REMOVED: Auto-zoom on click - user should manually zoom if they want
       // This was causing unwanted camera movement when clicking on cells
@@ -1553,6 +1552,8 @@ function WorldMap({
               inhabitants.forEach((inh) => {
                 const hfBooks = getInhabitantBooks(inh);
                 if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
+                  console.log("RENDERS A BOOK INTO THE MAP", hfBooks);
+
                   const wcLevel = HIERARCHY_LEVELS.find(
                     (l) => l.name === "writtenContent"
                   );
