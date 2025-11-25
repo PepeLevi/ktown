@@ -228,19 +228,20 @@ print("holder links", found_holder_links)
 print("author links", found_author_links)
 
 def translate_event_to_string(event):
+    return_value = {}
     # GADEA STRING FILLING TREE GOES HERE
 
 
 
     # DAVID generic default return code
-    return_value = {}
-    string = ""
-    for (key, value) in event.items():
-        string += str(key) + str(value)
+    if 'event_string' not in return_value:
+        string = ""
+        for (key, value) in event.items():
+            string += str(key) + ":" + str(value) + ", "
+        return_value['event_string'] = string
 
-    return_value['event_string'] = string
-    # return_value['hf_links'] = event.items()
-    # return_value['site_links'] = event
+    return_value['hf_links'] = event.items()
+    return_value['site_links'] = event
     return return_value
 
 historical_events = []
