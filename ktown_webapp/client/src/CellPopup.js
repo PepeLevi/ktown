@@ -158,23 +158,24 @@ function BookDetailView({
 
   return (
     <div className="book">
-      <button
-        className="flex-row-full"
-        onClick={(e) => {
-          e.stopPropagation();
-          const entity = createSelectedEntity("book", book);
-          const x = e.clientX || window.innerWidth / 2;
-          const y = e.clientY || window.innerHeight / 2;
-          handleEntityClick(entity, { clientX: x, clientY: y });
-        }}
-      >
-        <p>{book.title}</p>
-        <p>is a book</p>
-      </button>
+      {!isTopLevel && (
+        <button
+          className="flex-row-full"
+          onClick={(e) => {
+            e.stopPropagation();
+            const entity = createSelectedEntity("book", book);
+            const x = e.clientX || window.innerWidth / 2;
+            const y = e.clientY || window.innerHeight / 2;
+            handleEntityClick(entity, { clientX: x, clientY: y });
+          }}
+        >
+          <p>{book.title}</p>
+        </button>
+      )}
 
       <div className="book-content">
         <RichBookContent
-          text={book?.raw?.text_content}
+          text={book?.text_content}
           handleEntityClick={handleEntityClick}
           createSelectedEntity={createSelectedEntity}
         />
@@ -182,6 +183,7 @@ function BookDetailView({
 
       {figures[book.author_hfid] && isTopLevel && (
         <>
+          <div className="flex-row-full"></div>
           <FigureDetailView
             figure={figures[book.author_hfid]}
             isTopLevel={false}
@@ -315,7 +317,7 @@ function CellPopup({
     site,
     structure,
     figure,
-    book,
+    writtenContent,
   } = entity;
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
@@ -391,7 +393,7 @@ function CellPopup({
             {kind && <p>{kind}**</p>}
           </div>
 
-          {mainTexture && (
+          {/* {mainTexture && (
             <div className="texture-previews">
               <TexturePreview label="Entity texture" src={mainTexture} />
               {siteTextureUrl && siteTextureUrl !== mainTexture && (
@@ -401,7 +403,7 @@ function CellPopup({
                 <TexturePreview label="Region texture" src={regionTextureUrl} />
               )}
             </div>
-          )}
+          )} */}
 
           <div className="flex-row-full"></div>
           <div className="specs">
@@ -416,9 +418,9 @@ function CellPopup({
               />
             )}
 
-            {kind === "book" && (
+            {kind === "writtenContent" && (
               <BookDetailView
-                book={book}
+                book={writtenContent}
                 isTopLevel={true}
                 figures={figures}
                 books={books}

@@ -297,6 +297,8 @@ function WorldMap({
   const zoomUpdateTimeoutRef = useRef(null); // Throttle zoom updates
   const lastRenderedZoomRef = useRef(1); // Track last rendered zoom level
 
+  const selectedEntityRef = useRef(null);
+
   const regionTypesRef = useRef([]);
   const siteTypesRef = useRef([]);
   const figureKindsRef = useRef(["default"]);
@@ -936,7 +938,7 @@ function WorldMap({
     cellHeight,
     fontSizeWorld
   ) => {
-    const padding = (cellWidth / 100) * 1; // inner padding
+    const padding = (cellWidth / 100) * 2.5; // inner padding
     const maxLineWidth = Math.max(1, cellWidth - padding * 2);
 
     // Approximate char width in world units
@@ -1280,11 +1282,12 @@ function WorldMap({
         // Optional: add subtle stroke for cells with children
         const labelText = getCellLabel(d, level);
         const isDefaultLabel = !labelText; // default case returns ""
-
+        const zoom = currentZoomRef.current || 1;
+        const strokeWidth = 2 / Math.sqrt(zoom * 100);
         if (!isDefaultLabel) {
           rect
             .style("stroke", "var(--label-color)")
-            .style("stroke-width", 0.05);
+            .style("stroke-width", strokeWidth);
         } else {
           rect.style("stroke", "none").style("stroke-width", 0);
         }
@@ -1554,12 +1557,14 @@ function WorldMap({
     labelEnter.merge(labelSel).each(function (d) {
       const labelText = getCellLabel(d, level); // always non-empty
       const zoom = currentZoomRef.current || 1;
-
       const baseSize = Math.min(cellWidth, cellHeight) * 0.1;
-      const zoomDamp = Math.sqrt(zoom);
-      const fontSizeWorld = baseSize / zoomDamp;
 
-      const textSel = d3.select(this);
+      const zoomNorm = Math.max(1, zoom); // don’t amplify below 1
+      const scaleExponent = 1; // tweak this between 0.6–1.0
+      // World size such that screenSize ≈ baseSize * zoom^scaleExponent
+      const fontSizeWorld = baseSize * Math.pow(zoomNorm, scaleExponent - 1);
+
+      const textSel = d3.select(this).style("display", "block");
 
       wrapCellLabel(
         textSel,
@@ -2344,126 +2349,269 @@ function WorldMap({
       cellRects.style("stroke", null).style("stroke-width", 0);
       return;
     }
+    const zoomToCellCoords = (cellCoords, targetK = 8, duration = 750) => {
+      const svgNode = svgRef.current;
+      const zoomBehavior = zoomBehaviorRef.current;
+      const xScale = xScaleRef.current;
+      const yScale = yScaleRef.current;
+
+      if (!svgNode || !zoomBehavior || !xScale || !yScale || !cellCoords)
+        return;
+
+      const x = xScale(cellCoords.y);
+      const y = yScale(cellCoords.x);
+
+      const cx = x + CELL_SIZE / 2;
+      const cy = y + CELL_SIZE / 2;
+
+      zoomToPoint(cx, cy, targetK, duration);
+    };
 
     // --- zoom helper: compute zoom from rect size ---
-    const zoomOnRect = (rectSelection) => {
-      if (!rectSelection || rectSelection.empty()) return;
-      const zoomBehavior = zoomBehaviorRef.current;
-      if (!zoomBehavior) return;
+    // const zoomOnRect = (rectSelection) => {
+    //   if (!rectSelection || rectSelection.empty()) return;
+    //   const zoomBehavior = zoomBehaviorRef.current;
+    //   if (!zoomBehavior) return;
 
-      const viewBox = svgNode.viewBox.baseVal;
-      const vw = viewBox.width || 1;
-      const vh = viewBox.height || 1;
+    //   const viewBox = svgNode.viewBox.baseVal;
+    //   const vw = viewBox.width || 1;
+    //   const vh = viewBox.height || 1;
 
-      const x = parseFloat(rectSelection.attr("x")) || 0;
-      const y = parseFloat(rectSelection.attr("y")) || 0;
-      const w = parseFloat(rectSelection.attr("width")) || CELL_SIZE;
-      const h = parseFloat(rectSelection.attr("height")) || CELL_SIZE;
+    //   const x = parseFloat(rectSelection.attr("x")) || 0;
+    //   const y = parseFloat(rectSelection.attr("y")) || 0;
+    //   const w = parseFloat(rectSelection.attr("width")) || CELL_SIZE;
+    //   const h = parseFloat(rectSelection.attr("height")) || CELL_SIZE;
 
-      const cx = x + w / 2;
-      const cy = y + h / 2;
+    //   const cx = x + w / 2;
+    //   const cy = y + h / 2;
 
-      // How much of the viewport should the rect occupy?
-      // paddingFactor = 2 → ~50% of viewport
-      // paddingFactor = 3 → ~33% of viewport
-      const paddingFactor = 3;
+    //   // How much of the viewport should the rect occupy?
+    //   // paddingFactor = 2 → ~50% of viewport
+    //   // paddingFactor = 3 → ~33% of viewport
+    //   const paddingFactor = 3;
 
-      const kx = vw / (w * paddingFactor);
-      const ky = vh / (h * paddingFactor);
-      let targetK = Math.min(kx, ky);
+    //   const kx = vw / (w * paddingFactor);
+    //   const ky = vh / (h * paddingFactor);
+    //   let targetK = Math.min(kx, ky);
 
-      // Clamp to your zoom limits
-      targetK = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetK));
+    //   // Clamp to your zoom limits
+    //   targetK = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetK));
 
-      zoomToPoint(cx, cy, targetK, 750);
-    };
+    //   zoomToPoint(cx, cy, targetK, 750);
+    // };
 
-    // Helper: describe what we’re selecting
-    const getSelectedDescriptor = (entity) => {
-      const kind = entity.kind;
+    // // Helper: describe what we’re selecting
+    // const getSelectedDescriptor = (entity) => {
+    //   const kind = entity.kind;
 
-      const cellCoords =
-        entity.cellCoords ||
-        (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
-        null;
+    //   const cellCoords =
+    //     entity.cellCoords ||
+    //     (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
+    //     null;
 
-      let id = null;
+    //   let id = null;
 
-      if (kind === "site" && entity.site) {
-        id = entity.site.id;
-      } else if (kind === "structure" && entity.structure) {
-        id = entity.structure.id ?? entity.structure.local_id;
-      } else if (kind === "figure" && entity.figure) {
-        id = entity.figure.id;
-      } else if (kind === "writtenContent" && entity.writtenContent) {
-        id = entity.writtenContent.id ?? entity.writtenContent.title;
-      } else if (kind === "undergroundRegion" && entity.undergroundRegion) {
-        id = entity.undergroundRegion.id;
-      } else if (entity.childData && entity.childData.id) {
-        id = entity.childData.id;
+    //   if (kind === "site" && entity.site) {
+    //     id = entity.site.id;
+    //   } else if (kind === "structure" && entity.structure) {
+    //     id = entity.structure.id ?? entity.structure.local_id;
+    //   } else if (kind === "figure" && entity.figure) {
+    //     id = entity.figure.id;
+    //   } else if (kind === "writtenContent" && entity.writtenContent) {
+    //     id = entity.writtenContent.id ?? entity.writtenContent.title;
+    //   } else if (kind === "undergroundRegion" && entity.undergroundRegion) {
+    //     id = entity.undergroundRegion.id;
+    //   } else if (entity.childData && entity.childData.id) {
+    //     id = entity.childData.id;
+    //   }
+
+    //   return {
+    //     kind,
+    //     id: id != null ? String(id) : null,
+    //     cellCoords,
+    //   };
+    // };
+
+    // const {
+    //   kind: selectedKind,
+    //   id: selectedId,
+    //   cellCoords,
+    // } = getSelectedDescriptor(selectedEntity);
+
+    // let didZoom = false;
+
+    // cellRects.each(function (d) {
+    //   const rect = d3.select(this);
+
+    //   const baseCell = d.originalCell || d;
+
+    //   let isSelected = false;
+
+    //   // 1) Cell selection – match by base cell coords
+    //   if (selectedEntity.kind === "cell" && cellCoords) {
+    //     if (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y) {
+    //       isSelected = true;
+
+    //       console.log("should move to cell", cellCoords);
+    //     }
+    //   } else if (selectedId && selectedKind) {
+    //     // 2) Child selection – match by kind + id + base cell
+    //     const child = d.childData || d;
+
+    //     const childIdRaw = child?.id ?? child?.local_id ?? null;
+    //     const childId = childIdRaw != null ? String(childIdRaw) : null;
+
+    //     const sameKind = d.childType === selectedKind;
+    //     const sameId = childId && childId === selectedId;
+
+    //     const sameBaseCell =
+    //       !cellCoords ||
+    //       (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y);
+
+    //     if (sameKind && sameId && sameBaseCell) {
+    //       isSelected = true;
+    //     }
+    //   }
+
+    //   if (isSelected) {
+    //     rect.style("stroke", "var(--primary-color)").style("stroke-width", 2);
+
+    //     if (!didZoom) {
+    //       didZoom = true;
+    //       zoomOnRect(rect);
+    //     }
+    //   } else {
+    //     rect.style("stroke", null).style("stroke-width", 0);
+    //   }
+    // });
+    const highlightSelection = (autoZoom = true) => {
+      const svgNode = svgRef.current;
+      if (!svgNode) return;
+
+      const svg = d3.select(svgNode);
+      if (svg.empty()) return;
+
+      const selected = selectedEntityRef.current;
+      const cellRects = svg.selectAll("rect.cell");
+
+      if (!selected) {
+        cellRects.style("stroke", null).style("stroke-width", 0);
+        return;
       }
 
-      return {
-        kind,
-        id: id != null ? String(id) : null,
+      const {
+        kind: selectedKind,
+        id: selectedId,
         cellCoords,
+      } = (function getSelectedDescriptor(entity) {
+        const kind = entity.kind;
+        const cellCoords =
+          entity.cellCoords ||
+          (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
+          null;
+
+        let id = null;
+
+        if (kind === "site" && entity.site) {
+          id = entity.site.id;
+        } else if (kind === "structure" && entity.structure) {
+          id = entity.structure.id ?? entity.structure.local_id;
+        } else if (kind === "figure" && entity.figure) {
+          id = entity.figure.id;
+        } else if (kind === "writtenContent" && entity.writtenContent) {
+          id = entity.writtenContent.id ?? entity.writtenContent.title;
+        } else if (kind === "undergroundRegion" && entity.undergroundRegion) {
+          id = entity.undergroundRegion.id;
+        } else if (entity.childData && entity.childData.id) {
+          id = entity.childData.id;
+        }
+
+        return {
+          kind,
+          id: id != null ? String(id) : null,
+          cellCoords,
+        };
+      })(selected);
+
+      let didZoomFromRect = false;
+      let foundMatch = false;
+
+      const zoomOnRect = (rectSelection) => {
+        if (!autoZoom || !rectSelection || rectSelection.empty()) return;
+
+        const viewBox = svgNode.viewBox.baseVal;
+        const vw = viewBox.width || 1;
+        const vh = viewBox.height || 1;
+
+        const x = parseFloat(rectSelection.attr("x")) || 0;
+        const y = parseFloat(rectSelection.attr("y")) || 0;
+        const w = parseFloat(rectSelection.attr("width")) || CELL_SIZE;
+        const h = parseFloat(rectSelection.attr("height")) || CELL_SIZE;
+
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+
+        const paddingFactor = 3;
+        const kx = vw / (w * paddingFactor);
+        const ky = vh / (h * paddingFactor);
+        let targetK = Math.min(kx, ky);
+        targetK = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetK));
+
+        zoomToPoint(cx, cy, targetK, 750);
       };
+
+      cellRects.each(function (d) {
+        const rect = d3.select(this);
+        const baseCell = d.originalCell || d;
+        let isSelected = false;
+
+        if (selected.kind === "cell" && cellCoords) {
+          if (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y) {
+            isSelected = true;
+          }
+        } else if (selectedId && selectedKind) {
+          const child = d.childData || d;
+          const childIdRaw = child?.id ?? child?.local_id ?? null;
+          const childId = childIdRaw != null ? String(childIdRaw) : null;
+
+          const sameKind = d.childType === selectedKind;
+          const sameId = childId && childId === selectedId;
+          const sameBaseCell =
+            !cellCoords ||
+            (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y);
+
+          if (sameKind && sameId && sameBaseCell) {
+            isSelected = true;
+          }
+        }
+
+        if (isSelected) {
+          foundMatch = true;
+
+          rect.style("stroke", "var(--primary-color)").style("stroke-width", 2);
+
+          if (!didZoomFromRect) {
+            didZoomFromRect = true;
+            zoomOnRect(rect);
+          }
+        } else {
+          rect.style("stroke", null).style("stroke-width", 0);
+        }
+      });
+
+      // 🔥 No rect found (likely offscreen) → zoom directly to cell center
+      if (autoZoom && !foundMatch && selected.kind === "cell" && cellCoords) {
+        zoomToCellCoords(cellCoords); // this will trigger re-render via zoom handler
+      }
     };
 
-    const {
-      kind: selectedKind,
-      id: selectedId,
-      cellCoords,
-    } = getSelectedDescriptor(selectedEntity);
+    selectedEntityRef.current = selectedEntity;
+    // apply highlight + possibly zoom
+    highlightSelection(true);
+  }, [selectedEntity]);
 
-    let didZoom = false;
-
-    console.log(selectedEntity, cellCoords, cellRects);
-
-    cellRects.each(function (d) {
-      const rect = d3.select(this);
-
-      const baseCell = d.originalCell || d;
-
-      let isSelected = false;
-
-      // 1) Cell selection – match by base cell coords
-      if (selectedEntity.kind === "cell" && cellCoords) {
-        if (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y) {
-          isSelected = true;
-
-          console.log("should move to cell", cellCoords);
-        }
-      } else if (selectedId && selectedKind) {
-        // 2) Child selection – match by kind + id + base cell
-        const child = d.childData || d;
-
-        const childIdRaw = child?.id ?? child?.local_id ?? null;
-        const childId = childIdRaw != null ? String(childIdRaw) : null;
-
-        const sameKind = d.childType === selectedKind;
-        const sameId = childId && childId === selectedId;
-
-        const sameBaseCell =
-          !cellCoords ||
-          (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y);
-
-        if (sameKind && sameId && sameBaseCell) {
-          isSelected = true;
-        }
-      }
-
-      if (isSelected) {
-        rect.style("stroke", "var(--primary-color").style("stroke-width", 2);
-
-        if (!didZoom) {
-          didZoom = true;
-          zoomOnRect(rect);
-        }
-      } else {
-        rect.style("stroke", null).style("stroke-width", 0);
-      }
-    });
+  useEffect(() => {
+    selectedEntityRef.current = selectedEntity;
   }, [selectedEntity]);
 
   // Handle minimap click - move main viewport to clicked position
