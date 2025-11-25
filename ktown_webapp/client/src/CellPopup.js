@@ -431,6 +431,17 @@ function CellPopup({
               />
             )}
 
+            {/* {kind === "cell" && (
+              <SiteDetailView
+                site={site}
+                isTopLevel={true}
+                figures={figures}
+                books={books}
+                handleEntityClick={handleEntityClick}
+                createSelectedEntity={createSelectedEntity}
+              />
+            )} */}
+
             {kind === "site" && (
               <SiteDetailView
                 site={site}
