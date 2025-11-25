@@ -11,9 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "big/map_plus.json";
-const map_location = "big/map.json";
-const book_location = "big/books.json";
+const map_plus_location = "map_plus.json";
+const map_location = "map.json";
+const book_location = "books.json";
 
 // Serve public directory (for file1.json/file2.json etc.)
 const PUBLIC_DIR = path.join(__dirname, "public");
