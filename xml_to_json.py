@@ -3,44 +3,12 @@ import json
 import os
 import math
 import random
-import pandas as pd
-import numpy as np
         
 ### MAIN SCRIPT ### 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # https://stackoverflow.com/a/38412504
 FILES_PATH = os.path.join(BASE_DIR, "files")
 JSON_PATH = os.path.join(FILES_PATH, "jsons")
-
-# /!\ for the script to work, the XML files need to be on the files/ folder. /!\
-for entry in os.listdir(FILES_PATH):
-    full_path = os.path.join(FILES_PATH, entry)
-    if not os.path.isfile(full_path):
-        continue
-
-    if entry.endswith('legends.xml'):
-        print(f"loading in {entry} !!")
-        with open(full_path, encoding='cp437', errors='ignore') as f:
-            json_legends = xmltodict.parse(f.read())
-
-    elif entry.endswith('legends_plus.xml'):
-        print(f"loading in {entry} !!")
-        with open(full_path, encoding='UTF-8', errors='ignore') as f:
-            json_legends_plus = xmltodict.parse(f.read())
-
-    elif entry == "enhanced_books.json":
-        print(f"loading in {entry} !!")
-        with open(full_path, encoding='UTF-8') as f:
-            json_books = json.load(f)
-
-# this is gonna be our output json with all the shit in it.
-# this approach is different from the old one. were not removing stuff from the old files were selectively putting the shit we want into a new one.
-queen_json = {}
-
-queen_json["regions"] = json_legends.get('df_world').get('regions').get('region')
-queen_json["sites"] = json_legends.get('df_world').get('sites').get('site')
-
-sites_plus_length = len(json_legends_plus.get('df_world').get('sites').get('site'))
 
 
 def process_structure(structure):
@@ -105,7 +73,51 @@ def find_site_by_entity(entity_id):
             return site
     return None
 
+
+# ---------- START CODE EXECUTION ----------- #
+
+
+# /!\ for the script to work, the XML files need to be on the files/ folder. /!\
+for entry in os.listdir(FILES_PATH):
+    full_path = os.path.join(FILES_PATH, entry)
+    if not os.path.isfile(full_path):
+        continue
+
+    if entry.endswith('legends.xml'):
+        print(f"loading in {entry} !!")
+        with open(full_path, encoding='cp437', errors='ignore') as f:
+            json_legends = xmltodict.parse(f.read())
+
+    elif entry.endswith('legends_plus.xml'):
+        print(f"loading in {entry} !!")
+        with open(full_path, encoding='UTF-8', errors='ignore') as f:
+            json_legends_plus = xmltodict.parse(f.read())
+
+    elif entry == "enhanced_books.json":
+        print(f"loading in {entry} !!")
+        with open(full_path, encoding='UTF-8') as f:
+            json_books = json.load(f)
+
+# this is gonna be our output json with all the shit in it.
+# this approach is different from the old one. were not removing stuff from the old files were selectively putting the shit we want into a new one.
+queen_json = {}
+
+queen_json["name"] = json_legends_plus.get('df_world').get('name')
+queen_json["altname"] = json_legends_plus.get('df_world').get('altname')
+queen_json["regions"] = json_legends.get('df_world').get('regions').get('region')
+queen_json["underground_regions"] = json_legends.get('df_world').get('underground_regions').get('underground_region')
+queen_json["sites"] = json_legends.get('df_world').get('sites').get('site')
+
+# get coords from legends plus
+for region in queen_json['regions']:
+    region_plus = json_legends_plus.get('df_world').get('regions').get('region')[int(region['id'])]
+    region['coords'] = region_plus['coords']
+for region in queen_json['underground_regions']:
+    region_plus = json_legends_plus.get('df_world').get('underground_regions').get('underground_region')[int(region['id'])]
+    region['coords'] = region_plus['coords']
+
 # so we fill the site object with all the other shit
+sites_plus_length = len(json_legends_plus.get('df_world').get('sites').get('site'))
 for site in queen_json['sites']:
     # so right now we're only assining HFs to structures that have them as an inhabitant which is shitt
     if(int(site['id']) < sites_plus_length):
@@ -215,14 +227,22 @@ print("artifact links ", found_artifact_links)
 print("holder links", found_holder_links)
 print("author links", found_author_links)
 
-# # Source - https://stackoverflow.com/a
-# # Posted by phihag, modified by community. See post 'Timeline' for change history
-# # Retrieved 2025-11-16, License - CC BY-SA 4.0
-
 if not os.path.exists(JSON_PATH):
     os.mkdir(JSON_PATH)
 
 with open(f'{JSON_PATH}/queen.json', 'w', encoding='utf-8') as f:
     json.dump(queen_json, f, ensure_ascii=False, indent=4)
+
+print("replacing double strings")
+
+with open(f'{JSON_PATH}/queen.json', encoding="utf-8") as f:
+    s = f.read()
+
+with open(f'{JSON_PATH}/queen.json', 'w', encoding="utf-8") as f:
+    s = s.replace("the the", "the")
+    s = s.replace("the The", "the")
+    s = s.replace("The the", "The")
+    s = s.replace("The The", "The")
+    f.write(s)
 
 print("finito")
