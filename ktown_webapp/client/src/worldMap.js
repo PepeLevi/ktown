@@ -999,7 +999,7 @@ function WorldMap({
 
     // 🔥 Styling goes here
     textSelection
-      .style("display", null)
+      .style("display", "block")
       .style("font-size", `${fontSizeWorld}px`)
       .style("fill", "var(--primary-color)") // font color
       .style("font-family", "arial");
@@ -1556,14 +1556,15 @@ function WorldMap({
       .style("user-select", "none");
 
     labelEnter.merge(labelSel).each(function (d) {
-      // const labelText = getCellLabel(d, level);
-      const labelText = "sampleText";
+      const labelText = getCellLabel(d, level); // always non-empty
+      const zoom = currentZoomRef.current || 1;
 
       const baseSize = Math.min(cellWidth, cellHeight) * 0.35;
       const zoomDamp = Math.sqrt(zoom);
       const fontSizeWorld = baseSize / zoomDamp;
 
       const textSel = d3.select(this);
+
       wrapCellLabel(
         textSel,
         labelText,
@@ -2091,7 +2092,9 @@ function WorldMap({
     g.attr("transform", initialTransform);
 
     // Clear all existing cells
+
     g.selectAll("rect.cell").remove();
+    g.selectAll("text.cell-label").remove();
 
     // Get ONLY visible cells in viewport
     const visibleCells = cells.filter((cell) => {
@@ -2250,6 +2253,7 @@ function WorldMap({
 
             // Clear existing cells
             g.selectAll("rect.cell").remove();
+            g.selectAll("text.cell-label").remove();
 
             // Get ONLY visible cells in viewport
             const visibleCells = allCells.filter((cell) => {
