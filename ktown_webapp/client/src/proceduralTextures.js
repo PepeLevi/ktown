@@ -818,6 +818,34 @@ const loadImage = (url, timeout = 3000) => {
 };
 
 
+// Convert hex to RGB
+const hexToRgb = (hex) => {
+  if (!hex) return [0, 0, 0];
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : [0, 0, 0];
+};
+
+// Convert RGB to hex
+const rgbToHex = (r, g, b) => {
+  return "#" + [r, g, b].map(x => {
+    const hex = Math.round(x).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  }).join("");
+};
+
+// Blend two RGB colors
+const blendRgb = (rgb1, rgb2, factor) => {
+  return [
+    Math.round(rgb1[0] * (1 - factor) + rgb2[0] * factor),
+    Math.round(rgb1[1] * (1 - factor) + rgb2[1] * factor),
+    Math.round(rgb1[2] * (1 - factor) + rgb2[2] * factor)
+  ];
+};
+
 // Calculate content amount for a cell to determine opacity
 const calculateCellContentAmount = (cellData) => {
   if (!cellData) return 0;
@@ -867,10 +895,10 @@ const calculateCellContentAmount = (cellData) => {
 
 // Generate texture with 2 random letters - low quality, black background, black letters with white outline
 // Determine colors based on cell information
-const getColorLogic = (regionType = null, cellData = null) => {
+const getColorLogic = (regionType = null, cellData = null, cellKey = null) => {
   let letterColor = 'black'; // Default letter color
   let outlineColor = 'white'; // Default outline color
-  let backgroundColor = 'black'; // Default background color
+  let backgroundColor = 'black'; // Always black background
   
   // Check if cell has content
   const hasSites = cellData?.sites && (Array.isArray(cellData.sites) ? cellData.sites.length > 0 : true);
@@ -891,27 +919,131 @@ const getColorLogic = (regionType = null, cellData = null) => {
   const hasWrittenContent = cellData?.writtenContent && 
     (Array.isArray(cellData.writtenContent) ? cellData.writtenContent.length > 0 : true);
   
-  // Color logic: prioritize by content richness
+  // Check if this is a hotspot (has important content)
+  const isHotspot = hasFigures || hasStructures || hasSites || hasWrittenContent;
+  // Check if ONLY has underground regions
+  const onlyUnderground = hasUndergroundRegions && !isHotspot;
+  
+  // Hotspot colors (pure, intense colors)
+  let hotspotColor = null;
+  let hotspotOutlineColor = null;
+  
   if (hasFigures) {
-    // Cells with figures - bright colors
-    letterColor = '#FF6B6B'; // Red/orange
-    outlineColor = '#FFD93D'; // Yellow
+    hotspotColor = '#FF6B6B'; // Red/orange
+    hotspotOutlineColor = '#FFD93D'; // Yellow
   } else if (hasStructures) {
-    // Cells with structures - medium colors
-    letterColor = '#4ECDC4'; // Cyan/turquoise
-    outlineColor = '#95E1D3'; // Light cyan
+    hotspotColor = '#4ECDC4'; // Cyan/turquoise
+    hotspotOutlineColor = '#95E1D3'; // Light cyan
   } else if (hasSites) {
-    // Cells with sites - cool colors
-    letterColor = '#A8E6CF'; // Light green
-    outlineColor = '#FFD3B6'; // Light orange
+    hotspotColor = '#A8E6CF'; // Light green
+    hotspotOutlineColor = '#FFD3B6'; // Light orange
   } else if (hasWrittenContent) {
-    // Cells with written content - warm colors
-    letterColor = '#FFAAA5'; // Light red
-    outlineColor = '#FFD3A5'; // Light peach
-  } else if (hasUndergroundRegions) {
-    // Cells with underground regions - dark/muted colors
-    letterColor = '#B4A7D6'; // Purple
-    outlineColor = '#D4AFB9'; // Mauve
+    hotspotColor = '#FFAAA5'; // Light red
+    hotspotOutlineColor = '#FFD3A5'; // Light peach
+  }
+  
+  // If it's a hotspot, use pure color
+  if (isHotspot && hotspotColor) {
+    letterColor = hotspotColor;
+    outlineColor = hotspotOutlineColor;
+  } else if (onlyUnderground && cellKey) {
+    // Only underground regions - check for nearby hotspots and create VERY subtle gradient
+    const purpleColor = '#B4A7D6';
+    const purpleOutline = '#D4AFB9';
+    
+    // Try to extract coordinates from cellKey
+    let cellX = null, cellY = null;
+    const coordMatch = cellKey.match(/(\d+)[-_](\d+)/);
+    if (coordMatch) {
+      cellX = parseInt(coordMatch[1]);
+      cellY = parseInt(coordMatch[2]);
+    }
+    
+    // Find nearest hotspot (very subtle effect)
+    let nearestHotspotColor = null;
+    let nearestDistance = Infinity;
+    let nearestOutlineColor = null;
+    
+    // Check only immediate neighbors (radius 1-2 for subtle effect)
+    const maxRadius = 2;
+    
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > radius || dist === 0) continue;
+          
+          let neighborKey;
+          if (cellX !== null && cellY !== null) {
+            neighborKey = `${cellX + dx}-${cellY + dy}`;
+          } else {
+            neighborKey = `${cellKey}-n${dx}-${dy}`;
+          }
+          
+          const neighborSeed = hashString(neighborKey);
+          const neighborRng = (n) => {
+            const x = Math.sin(neighborSeed + n) * 10000;
+            return x - Math.floor(x);
+          };
+          
+          // Lower probability for more subtle effect
+          const clusterFactor = Math.sin(neighborSeed * 0.1) * 0.5 + 0.5;
+          const neighborIsHotspot = neighborRng(100) < (0.08 + clusterFactor * 0.12); // 8-20% chance
+          
+          if (neighborIsHotspot) {
+            // Determine hotspot type
+            const neighborType = Math.floor(neighborRng(200) * 4);
+            let neighborColor = null;
+            let neighborOutline = null;
+            
+            if (neighborType === 0) {
+              neighborColor = '#FF6B6B';
+              neighborOutline = '#FFD93D';
+            } else if (neighborType === 1) {
+              neighborColor = '#4ECDC4';
+              neighborOutline = '#95E1D3';
+            } else if (neighborType === 2) {
+              neighborColor = '#A8E6CF';
+              neighborOutline = '#FFD3B6';
+            } else {
+              neighborColor = '#FFAAA5';
+              neighborOutline = '#FFD3A5';
+            }
+            
+            if (dist < nearestDistance) {
+              nearestDistance = dist;
+              nearestHotspotColor = neighborColor;
+              nearestOutlineColor = neighborOutline;
+            }
+          }
+        }
+      }
+      
+      if (nearestHotspotColor) break; // Use nearest hotspot
+    }
+    
+    // Very subtle blend - only slight tint of hotspot color
+    if (nearestHotspotColor && nearestDistance <= maxRadius) {
+      // Very subtle gradient: distance 1 = 20% hotspot, distance 2 = 10% hotspot
+      const maxBlend = 0.2; // Maximum 20% hotspot influence (very subtle)
+      const blendFactor = maxBlend * (1 - (nearestDistance - 1) / (maxRadius - 1));
+      
+      const purpleRgb = hexToRgb(purpleColor);
+      const hotspotRgb = hexToRgb(nearestHotspotColor);
+      const blendedRgb = blendRgb(purpleRgb, hotspotRgb, blendFactor);
+      
+      letterColor = rgbToHex(blendedRgb[0], blendedRgb[1], blendedRgb[2]);
+      
+      // Very subtle outline blend
+      const purpleOutlineRgb = hexToRgb(purpleOutline);
+      const hotspotOutlineRgb = hexToRgb(nearestOutlineColor);
+      const blendedOutlineRgb = blendRgb(purpleOutlineRgb, hotspotOutlineRgb, blendFactor * 0.7);
+      outlineColor = rgbToHex(blendedOutlineRgb[0], blendedOutlineRgb[1], blendedOutlineRgb[2]);
+    } else {
+      // No hotspot nearby, use pure purple
+      letterColor = purpleColor;
+      outlineColor = purpleOutline;
+    }
   } else {
     // Base cells - color by region type
     switch(regionType) {
@@ -944,7 +1076,6 @@ const getColorLogic = (regionType = null, cellData = null) => {
         outlineColor = '#D6EAF8'; // Light blue
         break;
       default:
-        // Default: keep black/white but maybe add slight tint
         letterColor = '#E8E8E8'; // Light grey
         outlineColor = '#FFFFFF'; // White
     }
@@ -963,8 +1094,8 @@ const generateTextureFromText = (cellKey, size = 128, regionType = null, textDat
     return x - Math.floor(x);
   };
   
-  // Get colors based on cell information
-  const { letterColor, outlineColor, backgroundColor } = getColorLogic(regionType, cellData);
+  // Get colors based on cell information (pass cellKey for subtle gradient)
+  const { letterColor, outlineColor, backgroundColor } = getColorLogic(regionType, cellData, cellKey);
   
   // VERY LOW QUALITY: Use extremely small canvas size for very low quality rendering
   const lowQualitySize = 16; // Extremely small for very low quality
