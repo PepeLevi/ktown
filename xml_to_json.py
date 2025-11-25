@@ -1,75 +1,10 @@
 import xmltodict
 import json
 import os
+import math
+import random
 import pandas as pd
 import numpy as np
-
-def attach_books_to_historical_figures(df_world_dict, json_books_arg):
-    """ Nests the JSON book to the historic figure (author) that wrote it :3 """
-    global df_books_flat
-
-    if not json_books_arg:
-        df_books_flat = None
-        # create the book key regardless of if it's empty
-        hf_container = df_world_dict.setdefault('historical_figures', {})
-        hf_container.setdefault('books', {})
-        return
-
-    # create df to transpose > json > df again. looks off but it works & makes sense on code logic
-    df_books = pd.DataFrame(json_books['data']).T
-    json_struct = json.loads(df_books.to_json(orient="records"))
-    df_books_flat = pd.json_normalize(json_struct)
-
-    books_map = {}
-    for _, row in df_books_flat.iterrows():
-        author_id = row.get('author_hfid')
-        if pd.isna(author_id):
-            continue
-        try: # id type inconsistent across jsons, so standarized through str
-            key = str(int(float(author_id)))
-        except Exception:
-            key = str(author_id)
-
-        book_rec = {
-            'title': row.get('title'),
-            'text_content': row.get('text_content'),
-            'written_content_id': row.get('written_content_id'),
-            'type': row.get('type')
-        }
-        books_map.setdefault(key, []).append(book_rec)
-
-    # modify only historic_figures
-    hf_container = df_world_dict.setdefault('historical_figures', {})
-
-    hist_list = hf_container.get('historical_figure')
-    single = isinstance(hist_list, dict)
-
-    if hist_list is None:
-        hist_list = []
-    elif single:
-        hist_list = [hist_list]
-
-    # create an empty list for hf regardless of the existence of authorship (it prevents issues)
-    for hf in hist_list:
-        if isinstance(hf, dict):
-            hf.setdefault('books', [])
-
-    for hf in hist_list:
-        hf_id = hf.get('id') if isinstance(hf, dict) else None
-        if hf_id is None:
-            hf_key = None
-        else:
-            try:
-                hf_key = str(int(float(hf_id)))
-            except Exception:
-                hf_key = str(hf_id)
-        # map book list again and link w/ authors
-        if isinstance(hf, dict):
-            hf['books'] = books_map.get(hf_key, [])
-    if single and hist_list:
-        hf_container['historical_figure'] = hist_list[0]
-    else:
-        hf_container['historical_figure'] = hist_list
         
 ### MAIN SCRIPT ### 
 
@@ -93,54 +28,192 @@ for entry in os.listdir(FILES_PATH):
         with open(full_path, encoding='UTF-8', errors='ignore') as f:
             json_legends_plus = xmltodict.parse(f.read())
 
-    # elif entry == "enhanced_books.json":
-    #     print(f"loading in {entry} !!")
-    #     with open(full_path, encoding='UTF-8') as f:
-    #         json_books = json.load(f)
+    elif entry == "enhanced_books.json":
+        print(f"loading in {entry} !!")
+        with open(full_path, encoding='UTF-8') as f:
+            json_books = json.load(f)
 
 # this is gonna be our output json with all the shit in it.
 # this approach is different from the old one. were not removing stuff from the old files were selectively putting the shit we want into a new one.
 queen_json = {}
 
-queen_json["regions"] = json_legends.get('df_world').get('regions')
+queen_json["regions"] = json_legends.get('df_world').get('regions').get('region')
 queen_json["sites"] = json_legends.get('df_world').get('sites').get('site')
 
 sites_plus_length = len(json_legends_plus.get('df_world').get('sites').get('site'))
 
-#so we fill the site object with all the other shit
+
+def process_structure(structure):
+    historical_figures = []
+    if 'inhabitant' in structure:
+        #check if its a list or array
+        if isinstance(structure['inhabitant'], str):
+            inhabitant = json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(structure['inhabitant'])]
+            historical_figures.append(inhabitant)
+            inhabitant["assigned"] = True
+        else:
+            for figure in structure['inhabitant']:
+                inhabitant = json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(figure)]
+                historical_figures.append(inhabitant)
+                inhabitant["assigned"] = True
+    structure["historical_figures"] = historical_figures
+    return structure
+
+def artifact_has_written_content(artifact, written_content_id):
+    if not 'item' in artifact:
+        return False
+    if 'writing_written_content_id' in artifact['item']:
+        return str(artifact['item']['writing_written_content_id']) == str(written_content_id)
+    if 'page_written_content_id' in artifact['item']:
+        return str(artifact['item']['page_written_content_id']) == str(written_content_id)
+    return False
+
+def get_hf_by_id(hfid):
+    for site in queen_json['sites']:
+        if 'historical_figures' in site:
+            for hf in site['historical_figures']:
+                if(str(hf['id']) == str(hfid)):
+                    return hf
+        if 'structures' not in site:
+            continue
+        for structure in site['structures']:
+            if 'historical_figures' not in structure:
+                continue
+            for hf in structure['historical_figures']:
+                if(str(hf['id']) == str(hfid)):
+                    return hf
+                
+def try_assign_book_to_hf(hfid, book):
+    holder = get_hf_by_id(hfid)
+    if not holder:
+        return False # since we're searching in the nested folder structure this should exclude any hfs that arent in a site
+    if not 'books' in holder:
+        holder["books"] = []
+    holder["books"].append(book)
+    return True
+
+def find_site_by_entity(entity_id):
+    for site in queen_json['sites']:
+        if 'cur_owner_id' not in site:
+            continue
+        if str(site['cur_owner_id']) == str(entity_id):
+            return site
+    for site in queen_json['sites']:
+        if 'civ_id' not in site:
+            continue
+        if str(site['civ_id']) == str(entity_id):
+            return site
+    return None
+
+# so we fill the site object with all the other shit
 for site in queen_json['sites']:
+    # so right now we're only assining HFs to structures that have them as an inhabitant which is shitt
     if(int(site['id']) < sites_plus_length):
-        site_plus = json_legends_plus.get('df_world').get('sites').get('site')[int(site['id'])]
+        site_plus = json_legends_plus.get('df_world').get('sites').get('site')[int(site['id'])-1]
+        if 'civ_id' in site_plus:
+            site['civ_id'] = site_plus['civ_id']
+        if 'cur_owner_id' in site_plus:
+            site['cur_owner_id'] = site_plus['cur_owner_id']
         if 'structures' in site_plus:
-            for structure in site_plus['structures']['structure']:
-                # structure = site_plus['structures']
-                historical_figures = []
-                if 'inhabitant' in structure:
-                    #check if its a list or array
-                    if isinstance(structure['inhabitant'], str):
-                        historical_figures.add(json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(structure['inhabitant'])])
-                    else:
-                        for figure in structure['inhabitant']:
-                            historical_figures.add(json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(figure)])
-                structure["historical_figures"] = historical_figures
-                site["structures"] = structure
+            site["structures"] = []
+            if isinstance(site_plus['structures']['structure'], list):
+                for structure in site_plus['structures']['structure']:
+                    site["structures"].append(process_structure(structure))
+            else:
+                site["structures"].append(process_structure(site_plus['structures']['structure']))
+
+print("total hf", len(json_legends.get('df_world').get('historical_figures').get('historical_figure')))
+assigned_hf_1 = 0
+assigned_hf_2 = 0
+assigned_hf_3 = 0
+
+for historical_figure in json_legends.get('df_world').get('historical_figures').get('historical_figure'):
+    if 'assigned' in historical_figure:
+        assigned_hf_1 += 1
+        continue
+    if 'site_link' in historical_figure:
+        site = queen_json.get('sites')[int(historical_figure['site_link']['site_id'])-1]
+        if not 'historical_figures' in site:
+            site["historical_figures"] = []
+        site["historical_figures"].append(historical_figure)
+        assigned_hf_2 += 1
+        continue
+    if 'entity_link' in historical_figure:
+        entity = None
+        if not isinstance(historical_figure['entity_link'], list): 
+            entity = historical_figure['entity_link']['entity_id']
+        else:
+            entities = list(filter(lambda e: e['link_type'] != 'enemy',  # should enemies be filtered idk
+            historical_figure['entity_link']))
+            if len(entities) > 0:
+                entity = historical_figure['entity_link'][0]['entity_id']
+        if not entity: continue
+        site = find_site_by_entity(entity)
+        if not site: continue
+        if not 'historical_figures' in site:
+            site["historical_figures"] = []
+        site["historical_figures"].append(historical_figure)
+        assigned_hf_3 += 1
+        continue
+
+print("figures assigned by inhabitant: ", assigned_hf_1)
+print("figures assigned by site-link: ", assigned_hf_2)
+print("figures assigned by entity: ", assigned_hf_3)
+
+
+found_artifacts = 0
+found_holder_links = 0
+found_artifact_links = 0
+found_author_links = 0
+
+print("total books: ", len(json_books['data']))
+
+for bookkey, book in json_books['data'].items():
+    assigned_book = False
+
+    # first try to locate by artifact because its the most true (ie the physical object of the book)
+    artifacts = list(filter(
+        lambda a: artifact_has_written_content(a, book['written_content_id']), 
+        json_legends['df_world']['artifacts']['artifact']))
+    if len(artifacts) != 0 and artifacts[0]:
+        artifact = artifacts[0]
+        if artifact:
+            found_artifacts += 1
+            if 'holder_hfid' in artifact:
+                assigned_book = try_assign_book_to_hf(artifact['holder_hfid'], book)
+                found_holder_links += 1 if assigned_book else 0
+            elif 'structure_local_id' in artifact:
+                site = queen_json.get('sites')[int(artifact['site_id'])-1]
+                structure = site.get('structures')[int(artifact['structure_local_id'])]
+                if not 'books' in structure:
+                    structure["books"] = []
+                structure["books"].append(book)
+                assigned_book = True
+            elif 'site_id' in artifact:
+                site = queen_json.get('sites')[int(artifact['site_id'])-1]
+                if not 'books' in site:
+                    site["books"] = []
+                site["books"].append(book)
+                assigned_book = True
+    found_artifact_links += 1 if assigned_book else 0
+
+    # if that fails try to assign by author
+    if not assigned_book:
+        assigned_book = try_assign_book_to_hf(book['author_hfid'], book)
+        found_author_links += 1 if assigned_book else 0
+
+    # if that fails too assign it to a random site (home to the same civ/entity?)
+    if not assigned_book:
+        site = queen_json.get('sites')[math.floor(random.random() * len(queen_json.get('sites')))]
+        if not 'books' in site:
+            site["books"] = []
+        site["books"].append(book)
+        assigned_book = True
     
-
-# # get df_world from the parsed legends safely
-# json_legends_new = json_legends.get('df_world', {})
-
-# if json_legends_plus is not None:
-#     json_legends_plus_new = json_legends_plus.get('df_world', {})
-#     # remove raw creature data to save space
-#     json_legends_plus_new.pop('creature_raw', None)
-# else:
-#     # keep an empty structure if no legends_plus present
-#     # it just makes things easier for later lol
-#     json_legends_plus_new = {}
-
-# # process books data if available
-# if json_books is not None:
-#     attach_books_to_historical_figures(json_legends_new, json_books)
+print("total found artifacts ", found_artifacts)
+print("artifact links ", found_artifact_links)
+print("holder links", found_holder_links)
+print("author links", found_author_links)
 
 # # Source - https://stackoverflow.com/a
 # # Posted by phihag, modified by community. See post 'Timeline' for change history
