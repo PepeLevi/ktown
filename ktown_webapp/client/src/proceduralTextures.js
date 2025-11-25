@@ -1,18 +1,83 @@
-// Procedural texture generation for cells
-// Based on Chinese character texture generation logic
+// Texture generation using text from queen.json
+// Creates text-based textures using region names and other data from queen.json
+// Uses deterministic seeds to ensure consistent textures for each cell
 
-// Chinese characters for procedural texture generation
-const PHILOSOPHY_CHARS = [
-  "道", "德", "仁", "义", "礼", "智", "信", "和", "中", "正",
-  "理", "气", "心", "性", "天", "地", "人", "物", "生", "死",
-  "有", "无", "虚", "实", "阴", "阳", "动", "静", "变", "常",
-  "美", "艺", "文", "诗", "书", "画", "音", "乐", "舞", "戏",
-  "雅", "俗", "精", "神", "韵", "味", "境", "意", "情", "思",
-  "知", "行", "学", "问", "思", "辨", "修", "养", "悟", "觉",
-  "空", "色", "相", "法", "因", "果", "缘", "业", "苦", "乐",
-  "墨", "笔", "纸", "砚", "琴", "棋", "书", "画", "茶", "酒",
-  "山", "水", "花", "鸟", "竹", "梅", "兰", "菊", "松", "石",
-];
+// Image services that provide real architectural/cathedral images (low quality for performance)
+const ARCHITECTURAL_IMAGE_SERVICES = {
+  // Picsum Photos - deterministic random photos (very reliable)
+  picsumArchitecture: (seed, size = 100) => {
+    // Use different seeds for variety - architecture, cathedral, building, stone, etc.
+    const themes = ['architecture', 'cathedral', 'building', 'stone', 'gothic', 'arch'];
+    const theme = themes[Math.floor(seed / 1000) % themes.length];
+    return `https://picsum.photos/seed/${theme}${seed}/${size}/${size}`;
+  },
+  
+  // Placeholder.com - simple placeholder (fastest fallback)
+  placeholderArchitecture: (seed, size = 100) => {
+    return `https://via.placeholder.com/${size}`;
+  },
+  
+  // Lorem Picsum with architectural seed variations
+  loremPicsum1: (seed, size = 100) => {
+    return `https://picsum.photos/seed/cathedral${seed}/${size}/${size}`;
+  },
+  
+  loremPicsum2: (seed, size = 100) => {
+    return `https://picsum.photos/seed/architecture${seed}/${size}/${size}`;
+  },
+  
+  loremPicsum3: (seed, size = 100) => {
+    return `https://picsum.photos/seed/building${seed}/${size}/${size}`;
+  }
+};
+
+// Try loading architectural image from multiple sources with fallbacks (low quality for performance)
+const loadImageWithFallback = async (primaryUrl, seed) => {
+  const lowQualitySize = 100; // Small size for low quality/performance
+  
+  // Try architectural image services with fallbacks (low quality thumbnails)
+  const services = [
+    () => loadImage(primaryUrl, 3000), // Primary URL
+    () => loadImage(ARCHITECTURAL_IMAGE_SERVICES.picsumArchitecture(seed, lowQualitySize), 3000), // Picsum architecture
+    () => loadImage(ARCHITECTURAL_IMAGE_SERVICES.loremPicsum1(seed, lowQualitySize), 3000), // Cathedral theme
+    () => loadImage(ARCHITECTURAL_IMAGE_SERVICES.loremPicsum2(seed, lowQualitySize), 3000), // Architecture theme
+    () => loadImage(ARCHITECTURAL_IMAGE_SERVICES.loremPicsum3(seed, lowQualitySize), 3000), // Building theme
+  ];
+  
+  for (const service of services) {
+    try {
+      const img = await service();
+      return img;
+    } catch (error) {
+      // Silently try next service (only log if all fail)
+      continue;
+    }
+  }
+  
+  // All services failed, create a simple fallback pattern
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  
+  // Create a simple stone-like pattern
+  ctx.fillStyle = '#C0C0C0';
+  ctx.fillRect(0, 0, 64, 64);
+  ctx.strokeStyle = '#808080';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * 8, 0);
+    ctx.lineTo(i * 8, 64);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i * 8);
+    ctx.lineTo(64, i * 8);
+    ctx.stroke();
+  }
+  
+  return canvas;
+};
 
 // Deterministic hash function for consistent results
 const hashString = (str) => {
@@ -238,121 +303,818 @@ const generateColors = (seed, regionType = null) => {
   };
 };
 
-// Generate procedural texture as data URL
-const generateProceduralTexture = (cellKey, size = 128, regionType = null) => {
+// Draw abstract character-like pattern on canvas
+const drawAbstractCharacter = (ctx, size, color, seed) => {
+  const rng = (n) => {
+    const x = Math.sin(seed + n) * 10000;
+    return x - Math.floor(x);
+  };
+  
+  const padding = size * 0.1;
+  const innerSize = size - padding * 2;
+  const baseX = padding;
+  const baseY = padding;
+  
+  // Set stroke style
+  ctx.strokeStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+  ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+  ctx.lineWidth = Math.max(1, size / 32);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  // Choose pattern style based on seed
+  const styleIdx = Math.floor(rng(0) * PATTERN_STYLES.length);
+  const style = PATTERN_STYLES[styleIdx];
+  
+  if (style === 'dense') {
+    // Many intersecting strokes
+    const numStrokes = 4 + Math.floor(rng(1) * 5);
+    for (let i = 0; i < numStrokes; i++) {
+      if (rng(i + 10) < 0.5) {
+        // Horizontal stroke
+        const y = baseY + Math.floor(rng(i + 20) * innerSize);
+        ctx.beginPath();
+        ctx.moveTo(baseX + 2, y);
+        ctx.lineTo(baseX + innerSize - 2, y);
+        ctx.stroke();
+      } else {
+        // Vertical stroke
+        const x = baseX + Math.floor(rng(i + 30) * innerSize);
+        ctx.beginPath();
+        ctx.moveTo(x, baseY + 2);
+        ctx.lineTo(x, baseY + innerSize - 2);
+        ctx.stroke();
+      }
+    }
+  } else if (style === 'sparse') {
+    // Fewer, longer strokes
+    const numStrokes = 2 + Math.floor(rng(1) * 3);
+    for (let i = 0; i < numStrokes; i++) {
+      const choice = rng(i + 40);
+      if (choice < 0.4) {
+        // Horizontal stroke
+        const y = baseY + 4 + Math.floor(rng(i + 50) * (innerSize - 8));
+        const startX = baseX + Math.floor(rng(i + 60) * (innerSize / 3));
+        const endX = baseX + innerSize * 2 / 3 + Math.floor(rng(i + 70) * (innerSize / 3));
+        ctx.beginPath();
+        ctx.moveTo(startX, y);
+        ctx.lineTo(endX, y);
+        ctx.stroke();
+      } else if (choice < 0.7) {
+        // Vertical stroke
+        const x = baseX + 4 + Math.floor(rng(i + 80) * (innerSize - 8));
+        const startY = baseY + Math.floor(rng(i + 90) * (innerSize / 3));
+        const endY = baseY + innerSize * 2 / 3 + Math.floor(rng(i + 100) * (innerSize / 3));
+        ctx.beginPath();
+        ctx.moveTo(x, startY);
+        ctx.lineTo(x, endY);
+        ctx.stroke();
+      } else {
+        // Diagonal stroke
+        if (rng(i + 110) < 0.5) {
+          ctx.beginPath();
+          ctx.moveTo(baseX + 4, baseY + 4);
+          ctx.lineTo(baseX + innerSize - 4, baseY + innerSize - 4);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(baseX + innerSize - 4, baseY + 4);
+          ctx.lineTo(baseX + 4, baseY + innerSize - 4);
+          ctx.stroke();
+        }
+      }
+    }
+  } else if (style === 'vertical') {
+    // Vertical lines with horizontal connectors
+    const numVert = 2 + Math.floor(rng(1) * 3);
+    const xPositions = [];
+    for (let i = 0; i < numVert; i++) {
+      xPositions.push(baseX + 2 + Math.floor(rng(i + 120) * (innerSize - 4)));
+    }
+    xPositions.sort((a, b) => a - b);
+    
+    // Draw vertical lines
+    xPositions.forEach(x => {
+      ctx.beginPath();
+      ctx.moveTo(x, baseY + 2);
+      ctx.lineTo(x, baseY + innerSize - 2);
+      ctx.stroke();
+    });
+    
+    // Add horizontal connectors
+    const numConnectors = 1 + Math.floor(rng(2) * 3);
+    for (let i = 0; i < numConnectors && xPositions.length > 1; i++) {
+      const y = baseY + 4 + Math.floor(rng(i + 130) * (innerSize - 8));
+      ctx.beginPath();
+      ctx.moveTo(xPositions[0], y);
+      ctx.lineTo(xPositions[xPositions.length - 1], y);
+      ctx.stroke();
+    }
+  } else if (style === 'horizontal') {
+    // Horizontal lines with vertical connectors
+    const numHoriz = 2 + Math.floor(rng(1) * 3);
+    const yPositions = [];
+    for (let i = 0; i < numHoriz; i++) {
+      yPositions.push(baseY + 2 + Math.floor(rng(i + 140) * (innerSize - 4)));
+    }
+    yPositions.sort((a, b) => a - b);
+    
+    // Draw horizontal lines
+    yPositions.forEach(y => {
+      ctx.beginPath();
+      ctx.moveTo(baseX + 2, y);
+      ctx.lineTo(baseX + innerSize - 2, y);
+      ctx.stroke();
+    });
+    
+    // Add vertical connectors
+    const numConnectors = 1 + Math.floor(rng(2) * 3);
+    for (let i = 0; i < numConnectors && yPositions.length > 1; i++) {
+      const x = baseX + 4 + Math.floor(rng(i + 150) * (innerSize - 8));
+      ctx.beginPath();
+      ctx.moveTo(x, yPositions[0]);
+      ctx.lineTo(x, yPositions[yPositions.length - 1]);
+      ctx.stroke();
+    }
+  } else if (style === 'boxy') {
+    // Box-like structures (radicals)
+    const numBoxes = 1 + Math.floor(rng(1) * 3);
+    for (let i = 0; i < numBoxes; i++) {
+      const boxX = baseX + Math.floor(rng(i + 160) * (innerSize / 2));
+      const boxY = baseY + Math.floor(rng(i + 170) * (innerSize / 2));
+      const boxW = 8 + Math.floor(rng(i + 180) * (innerSize / 3));
+      const boxH = 8 + Math.floor(rng(i + 190) * (innerSize / 3));
+      
+      if (rng(i + 200) < 0.7) {
+        // Draw box outline
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+      } else {
+        // Just top and left
+        ctx.beginPath();
+        ctx.moveTo(boxX, boxY);
+        ctx.lineTo(boxX + boxW, boxY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(boxX, boxY);
+        ctx.lineTo(boxX, boxY + boxH);
+        ctx.stroke();
+      }
+    }
+    
+    // Add some strokes inside/around boxes
+    const numExtraStrokes = 1 + Math.floor(rng(3) * 3);
+    for (let i = 0; i < numExtraStrokes; i++) {
+      if (rng(i + 210) < 0.5) {
+        const y = baseY + 2 + Math.floor(rng(i + 220) * (innerSize - 4));
+        ctx.beginPath();
+        ctx.moveTo(baseX + 2, y);
+        ctx.lineTo(baseX + innerSize - 2, y);
+        ctx.stroke();
+      } else {
+        const x = baseX + 2 + Math.floor(rng(i + 230) * (innerSize - 4));
+        ctx.beginPath();
+        ctx.moveTo(x, baseY + 2);
+        ctx.lineTo(x, baseY + innerSize - 2);
+        ctx.stroke();
+      }
+    }
+  } else if (style === 'curved') {
+    // More flowing, curved strokes
+    const numStrokes = 3 + Math.floor(rng(1) * 4);
+    for (let i = 0; i < numStrokes; i++) {
+      const numPoints = 2 + Math.floor(rng(i + 240) * 3);
+      ctx.beginPath();
+      for (let j = 0; j < numPoints; j++) {
+        const x = baseX + Math.floor(rng(i + j + 250) * innerSize);
+        const y = baseY + Math.floor(rng(i + j + 260) * innerSize);
+        if (j === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+  } else if (style === 'face') {
+    // Simple face pattern - eyes, nose, mouth
+    const centerX = baseX + innerSize / 2;
+    const centerY = baseY + innerSize / 2;
+    const faceWidth = innerSize * 0.6;
+    const faceHeight = innerSize * 0.7;
+    
+    // Face outline (oval)
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, faceWidth / 2, faceHeight / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Eyes
+    const eyeY = centerY - innerSize * 0.15;
+    const eyeSpacing = innerSize * 0.2;
+    const eyeSize = innerSize * 0.08;
+    
+    // Left eye
+    ctx.beginPath();
+    ctx.arc(centerX - eyeSpacing, eyeY, eyeSize, 0, Math.PI * 2);
+    ctx.stroke();
+    if (rng(1) < 0.5) {
+      ctx.fill();
+    }
+    
+    // Right eye
+    ctx.beginPath();
+    ctx.arc(centerX + eyeSpacing, eyeY, eyeSize, 0, Math.PI * 2);
+    ctx.stroke();
+    if (rng(2) < 0.5) {
+      ctx.fill();
+    }
+    
+    // Nose (simple line or triangle)
+    if (rng(3) < 0.5) {
+      // Vertical line
+      ctx.beginPath();
+      ctx.moveTo(centerX, eyeY + eyeSize);
+      ctx.lineTo(centerX, centerY + innerSize * 0.1);
+      ctx.stroke();
+    } else {
+      // Triangle
+      ctx.beginPath();
+      ctx.moveTo(centerX, eyeY + eyeSize);
+      ctx.lineTo(centerX - innerSize * 0.05, centerY + innerSize * 0.1);
+      ctx.lineTo(centerX + innerSize * 0.05, centerY + innerSize * 0.1);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    
+    // Mouth
+    const mouthY = centerY + innerSize * 0.2;
+    const mouthWidth = innerSize * 0.15;
+    if (rng(4) < 0.5) {
+      // Smile (arc)
+      ctx.beginPath();
+      ctx.arc(centerX, mouthY, mouthWidth, 0, Math.PI);
+      ctx.stroke();
+    } else {
+      // Straight line
+      ctx.beginPath();
+      ctx.moveTo(centerX - mouthWidth, mouthY);
+      ctx.lineTo(centerX + mouthWidth, mouthY);
+      ctx.stroke();
+    }
+  } else if (style === 'greek_mask') {
+    // Greek theater mask pattern - stylized face with dramatic features
+    const centerX = baseX + innerSize / 2;
+    const centerY = baseY + innerSize / 2;
+    const maskWidth = innerSize * 0.65;
+    const maskHeight = innerSize * 0.75;
+    
+    // Mask outline (rounded top, pointed or rounded bottom)
+    ctx.beginPath();
+    ctx.moveTo(centerX - maskWidth / 2, centerY - maskHeight / 2);
+    ctx.quadraticCurveTo(centerX - maskWidth / 2, centerY - maskHeight / 2 - innerSize * 0.1, centerX, centerY - maskHeight / 2 - innerSize * 0.1);
+    ctx.quadraticCurveTo(centerX + maskWidth / 2, centerY - maskHeight / 2 - innerSize * 0.1, centerX + maskWidth / 2, centerY - maskHeight / 2);
+    ctx.lineTo(centerX + maskWidth / 2, centerY + maskHeight / 2);
+    if (rng(1) < 0.5) {
+      // Pointed chin
+      ctx.lineTo(centerX, centerY + maskHeight / 2 + innerSize * 0.1);
+      ctx.lineTo(centerX - maskWidth / 2, centerY + maskHeight / 2);
+    } else {
+      // Rounded chin
+      ctx.quadraticCurveTo(centerX, centerY + maskHeight / 2 + innerSize * 0.1, centerX - maskWidth / 2, centerY + maskHeight / 2);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    
+    // Large dramatic eyes
+    const eyeY = centerY - innerSize * 0.1;
+    const eyeSpacing = innerSize * 0.25;
+    const eyeWidth = innerSize * 0.12;
+    const eyeHeight = innerSize * 0.15;
+    
+    // Left eye (almond shape)
+    ctx.beginPath();
+    ctx.ellipse(centerX - eyeSpacing, eyeY, eyeWidth, eyeHeight, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (rng(2) < 0.7) {
+      ctx.fill();
+    }
+    
+    // Right eye
+    ctx.beginPath();
+    ctx.ellipse(centerX + eyeSpacing, eyeY, eyeWidth, eyeHeight, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (rng(3) < 0.7) {
+      ctx.fill();
+    }
+    
+    // Nose (vertical line or simple shape)
+    ctx.beginPath();
+    ctx.moveTo(centerX, eyeY + eyeHeight);
+    ctx.lineTo(centerX, centerY + innerSize * 0.15);
+    ctx.stroke();
+    
+    // Mouth (dramatic expression)
+    const mouthY = centerY + innerSize * 0.25;
+    const mouthWidth = innerSize * 0.2;
+    if (rng(4) < 0.5) {
+      // Open mouth (O shape)
+      ctx.beginPath();
+      ctx.arc(centerX, mouthY, mouthWidth * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Wide mouth (arc)
+      ctx.beginPath();
+      ctx.arc(centerX, mouthY, mouthWidth, 0, Math.PI);
+      ctx.stroke();
+    }
+    
+    // Optional decorative lines (forehead, cheeks)
+    if (rng(5) < 0.5) {
+      // Forehead lines
+      ctx.beginPath();
+      ctx.moveTo(centerX - maskWidth / 3, centerY - maskHeight / 2);
+      ctx.lineTo(centerX + maskWidth / 3, centerY - maskHeight / 2);
+      ctx.stroke();
+    }
+  } else if (style === 'rostros') {
+    // Rostros (faces) - more detailed face pattern with variations
+    const centerX = baseX + innerSize / 2;
+    const centerY = baseY + innerSize / 2;
+    const faceWidth = innerSize * 0.55;
+    const faceHeight = innerSize * 0.65;
+    
+    // Face shape (can be round, oval, or square-ish)
+    const faceShape = Math.floor(rng(1) * 3);
+    if (faceShape === 0) {
+      // Round
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, faceWidth / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (faceShape === 1) {
+      // Oval
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, faceWidth / 2, faceHeight / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Square-ish with rounded corners
+      const cornerRadius = innerSize * 0.1;
+      ctx.beginPath();
+      ctx.moveTo(centerX - faceWidth / 2 + cornerRadius, centerY - faceHeight / 2);
+      ctx.lineTo(centerX + faceWidth / 2 - cornerRadius, centerY - faceHeight / 2);
+      ctx.quadraticCurveTo(centerX + faceWidth / 2, centerY - faceHeight / 2, centerX + faceWidth / 2, centerY - faceHeight / 2 + cornerRadius);
+      ctx.lineTo(centerX + faceWidth / 2, centerY + faceHeight / 2 - cornerRadius);
+      ctx.quadraticCurveTo(centerX + faceWidth / 2, centerY + faceHeight / 2, centerX + faceWidth / 2 - cornerRadius, centerY + faceHeight / 2);
+      ctx.lineTo(centerX - faceWidth / 2 + cornerRadius, centerY + faceHeight / 2);
+      ctx.quadraticCurveTo(centerX - faceWidth / 2, centerY + faceHeight / 2, centerX - faceWidth / 2, centerY + faceHeight / 2 - cornerRadius);
+      ctx.lineTo(centerX - faceWidth / 2, centerY - faceHeight / 2 + cornerRadius);
+      ctx.quadraticCurveTo(centerX - faceWidth / 2, centerY - faceHeight / 2, centerX - faceWidth / 2 + cornerRadius, centerY - faceHeight / 2);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    
+    // Eyes with more variation
+    const eyeY = centerY - innerSize * 0.12;
+    const eyeSpacing = innerSize * 0.18;
+    const eyeSize = innerSize * 0.06 + Math.floor(rng(2) * innerSize * 0.04);
+    
+    // Left eye
+    const leftEyeX = centerX - eyeSpacing;
+    if (rng(3) < 0.7) {
+      // Circular eye
+      ctx.beginPath();
+      ctx.arc(leftEyeX, eyeY, eyeSize, 0, Math.PI * 2);
+      ctx.stroke();
+      if (rng(4) < 0.6) {
+        ctx.fill();
+      }
+    } else {
+      // Almond eye
+      ctx.beginPath();
+      ctx.ellipse(leftEyeX, eyeY, eyeSize * 1.2, eyeSize * 0.8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Right eye
+    const rightEyeX = centerX + eyeSpacing;
+    if (rng(5) < 0.7) {
+      ctx.beginPath();
+      ctx.arc(rightEyeX, eyeY, eyeSize, 0, Math.PI * 2);
+      ctx.stroke();
+      if (rng(6) < 0.6) {
+        ctx.fill();
+      }
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(rightEyeX, eyeY, eyeSize * 1.2, eyeSize * 0.8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Eyebrows (optional)
+    if (rng(7) < 0.6) {
+      const browY = eyeY - eyeSize * 1.5;
+      // Left brow
+      ctx.beginPath();
+      ctx.moveTo(leftEyeX - eyeSize, browY);
+      ctx.lineTo(leftEyeX + eyeSize, browY);
+      ctx.stroke();
+      // Right brow
+      ctx.beginPath();
+      ctx.moveTo(rightEyeX - eyeSize, browY);
+      ctx.lineTo(rightEyeX + eyeSize, browY);
+      ctx.stroke();
+    }
+    
+    // Nose
+    const noseY = centerY + innerSize * 0.05;
+    const noseType = Math.floor(rng(8) * 3);
+    if (noseType === 0) {
+      // Vertical line
+      ctx.beginPath();
+      ctx.moveTo(centerX, eyeY + eyeSize);
+      ctx.lineTo(centerX, noseY);
+      ctx.stroke();
+    } else if (noseType === 1) {
+      // Two lines (nostrils)
+      ctx.beginPath();
+      ctx.moveTo(centerX - innerSize * 0.03, eyeY + eyeSize);
+      ctx.lineTo(centerX - innerSize * 0.05, noseY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(centerX + innerSize * 0.03, eyeY + eyeSize);
+      ctx.lineTo(centerX + innerSize * 0.05, noseY);
+      ctx.stroke();
+    } else {
+      // Triangle
+      ctx.beginPath();
+      ctx.moveTo(centerX, eyeY + eyeSize);
+      ctx.lineTo(centerX - innerSize * 0.04, noseY);
+      ctx.lineTo(centerX + innerSize * 0.04, noseY);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    
+    // Mouth
+    const mouthY = centerY + innerSize * 0.2;
+    const mouthWidth = innerSize * 0.12 + Math.floor(rng(9) * innerSize * 0.06);
+    const mouthType = Math.floor(rng(10) * 3);
+    if (mouthType === 0) {
+      // Smile
+      ctx.beginPath();
+      ctx.arc(centerX, mouthY, mouthWidth, 0, Math.PI);
+      ctx.stroke();
+    } else if (mouthType === 1) {
+      // Frown
+      ctx.beginPath();
+      ctx.arc(centerX, mouthY + mouthWidth * 0.3, mouthWidth, Math.PI, 0);
+      ctx.stroke();
+    } else {
+      // Straight line
+      ctx.beginPath();
+      ctx.moveTo(centerX - mouthWidth, mouthY);
+      ctx.lineTo(centerX + mouthWidth, mouthY);
+      ctx.stroke();
+    }
+  }
+};
+
+// Load image from URL with timeout (shorter timeout for faster services)
+const loadImage = (url, timeout = 3000) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    let timeoutId;
+    let resolved = false;
+    
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      img.onload = null;
+      img.onerror = null;
+    };
+    
+    img.onload = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(img);
+    };
+    
+    img.onerror = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      reject(new Error(`Failed to load image from ${url}`));
+    };
+    
+    // Set timeout (shorter for faster services)
+    timeoutId = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      reject(new Error(`Image load timeout for ${url}`));
+    }, timeout);
+    
+    img.src = url;
+  });
+};
+
+
+// Calculate content amount for a cell to determine opacity
+const calculateCellContentAmount = (cellData) => {
+  if (!cellData) return 0;
+  
+  let contentCount = 0;
+  
+  // Count sites
+  if (cellData.sites) {
+    contentCount += Array.isArray(cellData.sites) ? cellData.sites.length : 1;
+    
+    // Count structures within sites
+    if (Array.isArray(cellData.sites)) {
+      cellData.sites.forEach(site => {
+        const structures = site.structures?.structure || site.structures;
+        if (structures) {
+          contentCount += Array.isArray(structures) ? structures.length : 1;
+          
+          // Count figures in structures
+          (Array.isArray(structures) ? structures : [structures]).forEach(struct => {
+            const inhabitants = struct.inhabitants || struct.historical_figures;
+            if (inhabitants) {
+              contentCount += Array.isArray(inhabitants) ? inhabitants.length : 1;
+            }
+          });
+        }
+      });
+    }
+  }
+  
+  // Count underground regions
+  if (cellData.undergroundRegions) {
+    contentCount += Array.isArray(cellData.undergroundRegions) ? cellData.undergroundRegions.length : 1;
+  }
+  
+  // Count cell-level figures
+  if (cellData.historical_figures) {
+    contentCount += Array.isArray(cellData.historical_figures) ? cellData.historical_figures.length : 1;
+  }
+  
+  // Count written content
+  if (cellData.written_contents) {
+    contentCount += Array.isArray(cellData.written_contents) ? cellData.written_contents.length : 1;
+  }
+  
+  return contentCount;
+};
+
+// Generate texture with 2 random letters - low quality, black background, black letters with white outline
+// Determine colors based on cell information
+const getColorLogic = (regionType = null, cellData = null) => {
+  let letterColor = 'black'; // Default letter color
+  let outlineColor = 'white'; // Default outline color
+  let backgroundColor = 'black'; // Default background color
+  
+  // Check if cell has content
+  const hasSites = cellData?.sites && (Array.isArray(cellData.sites) ? cellData.sites.length > 0 : true);
+  const hasStructures = cellData?.sites?.some(site => 
+    (Array.isArray(site.structures) ? site.structures.length > 0 : site.structures)
+  );
+  const hasFigures = cellData?.sites?.some(site => {
+    const structures = Array.isArray(site.structures) ? site.structures : [site.structures];
+    return structures.some(struct => {
+      const inhabitants = Array.isArray(struct?.inhabitant || struct?.inhabitants) 
+        ? (struct.inhabitant || struct.inhabitants)
+        : struct?.inhabitant || struct?.inhabitants ? [struct.inhabitant || struct.inhabitants] : [];
+      return inhabitants.length > 0;
+    });
+  });
+  const hasUndergroundRegions = cellData?.undergroundRegions && 
+    (Array.isArray(cellData.undergroundRegions) ? cellData.undergroundRegions.length > 0 : true);
+  const hasWrittenContent = cellData?.writtenContent && 
+    (Array.isArray(cellData.writtenContent) ? cellData.writtenContent.length > 0 : true);
+  
+  // Color logic: prioritize by content richness
+  if (hasFigures) {
+    // Cells with figures - bright colors
+    letterColor = '#FF6B6B'; // Red/orange
+    outlineColor = '#FFD93D'; // Yellow
+  } else if (hasStructures) {
+    // Cells with structures - medium colors
+    letterColor = '#4ECDC4'; // Cyan/turquoise
+    outlineColor = '#95E1D3'; // Light cyan
+  } else if (hasSites) {
+    // Cells with sites - cool colors
+    letterColor = '#A8E6CF'; // Light green
+    outlineColor = '#FFD3B6'; // Light orange
+  } else if (hasWrittenContent) {
+    // Cells with written content - warm colors
+    letterColor = '#FFAAA5'; // Light red
+    outlineColor = '#FFD3A5'; // Light peach
+  } else if (hasUndergroundRegions) {
+    // Cells with underground regions - dark/muted colors
+    letterColor = '#B4A7D6'; // Purple
+    outlineColor = '#D4AFB9'; // Mauve
+  } else {
+    // Base cells - color by region type
+    switch(regionType) {
+      case 'Ocean':
+        letterColor = '#5DADE2'; // Blue
+        outlineColor = '#85C1E9'; // Light blue
+        break;
+      case 'Mountain':
+        letterColor = '#A569BD'; // Purple
+        outlineColor = '#BB8FCE'; // Light purple
+        break;
+      case 'Desert':
+        letterColor = '#F4D03F'; // Yellow
+        outlineColor = '#F7DC6F'; // Light yellow
+        break;
+      case 'Forest':
+        letterColor = '#52BE80'; // Green
+        outlineColor = '#7DCEA0'; // Light green
+        break;
+      case 'Grassland':
+        letterColor = '#F8C471'; // Orange
+        outlineColor = '#FAD7A0'; // Light orange
+        break;
+      case 'Tundra':
+        letterColor = '#AED6F1'; // Light blue
+        outlineColor = '#D6EAF8'; // Very light blue
+        break;
+      case 'Glacier':
+        letterColor = '#EBF5FB'; // Very light blue/white
+        outlineColor = '#D6EAF8'; // Light blue
+        break;
+      default:
+        // Default: keep black/white but maybe add slight tint
+        letterColor = '#E8E8E8'; // Light grey
+        outlineColor = '#FFFFFF'; // White
+    }
+  }
+  
+  return { letterColor, outlineColor, backgroundColor };
+};
+
+const generateTextureFromText = (cellKey, size = 128, regionType = null, textData = null, cellData = null) => {
   // Create a unique seed from the cell key
   const seed = hashString(cellKey);
   
-  // Get deterministic character and colors (with region type for color palette)
-  const charIdx = seed % PHILOSOPHY_CHARS.length;
-  const char = PHILOSOPHY_CHARS[charIdx];
-  const colors = generateColors(seed, regionType);
+  // Use seed for deterministic randomness
+  const rng = (n) => {
+    const x = Math.sin(seed + n) * 10000;
+    return x - Math.floor(x);
+  };
   
-  // Create canvas
+  // Get colors based on cell information
+  const { letterColor, outlineColor, backgroundColor } = getColorLogic(regionType, cellData);
+  
+  // VERY LOW QUALITY: Use extremely small canvas size for very low quality rendering
+  const lowQualitySize = 16; // Extremely small for very low quality
+  const scale = size / lowQualitySize;
+  
+  // Create canvas with background color
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = lowQualitySize;
+  canvas.height = lowQualitySize;
   const ctx = canvas.getContext('2d');
   
-  // Draw opaque background - ensure fully opaque pastel color
-  ctx.fillStyle = `rgb(${colors.bg[0]}, ${colors.bg[1]}, ${colors.bg[2]})`;
-  ctx.fillRect(0, 0, size, size);
+  // Disable image smoothing for pixelated/low quality look
+  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingQuality = 'low';
   
-  // Ensure canvas is fully opaque (no transparency)
-  ctx.globalAlpha = 1.0;
+  // Background color
+  ctx.fillStyle = backgroundColor;
+  ctx.fillRect(0, 0, lowQualitySize, lowQualitySize);
   
-  // Draw character with better font support
-  ctx.fillStyle = `rgb(${colors.text[0]}, ${colors.text[1]}, ${colors.text[2]})`;
+  // Generate 2 random lowercase letters (a-z) based on seed
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const letter1 = letters[Math.floor(rng(1) * letters.length)];
+  const letter2 = letters[Math.floor(rng(2) * letters.length)];
+  
+  // Large font size relative to small canvas
+  const fontSize = lowQualitySize * 0.7;
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  // Try to use a font that supports Chinese characters
-  // Use larger font size for better visibility
-  const fontSize = Math.floor(size * 0.65);
-  const fonts = [
-    'Microsoft YaHei',
-    'SimSun',
-    'SimHei',
-    'KaiTi',
-    'STKaiti',
-    'Arial Unicode MS',
-    'sans-serif'
-  ];
+  // Draw first letter (left side)
+  const letter1X = lowQualitySize * 0.35;
+  const letter1Y = lowQualitySize * 0.5;
   
-  // Set font and try to draw
-  ctx.font = `bold ${fontSize}px ${fonts.join(', ')}`;
+  // Outline (stroke) with color from logic
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 1;
+  ctx.strokeText(letter1, letter1X, letter1Y);
   
-  try {
-    ctx.fillText(char, size / 2, size / 2);
-  } catch (e) {
-    // Fallback: draw a simple geometric pattern if font fails
-    ctx.fillStyle = `rgb(${colors.text[0]}, ${colors.text[1]}, ${colors.text[2]})`;
-    const margin = size * 0.15;
-    ctx.fillRect(margin, margin, size - margin * 2, size - margin * 2);
+  // Fill with letter color from logic
+  ctx.fillStyle = letterColor;
+  ctx.fillText(letter1, letter1X, letter1Y);
+  
+  // Draw second letter (right side)
+  const letter2X = lowQualitySize * 0.65;
+  const letter2Y = lowQualitySize * 0.5;
+  
+  // Outline (stroke) with color from logic
+  ctx.strokeStyle = outlineColor;
+  ctx.strokeText(letter2, letter2X, letter2Y);
+  
+  // Fill with letter color from logic
+  ctx.fillStyle = letterColor;
+  ctx.fillText(letter2, letter2X, letter2Y);
+  
+  // Sometimes add a third overlapping letter on top (50% chance)
+  if (rng(3) < 0.5) {
+    const letter3 = letters[Math.floor(rng(4) * letters.length)];
+    const letter3X = lowQualitySize * 0.5;
+    const letter3Y = lowQualitySize * 0.5;
+    const letter3FontSize = lowQualitySize * 0.5;
+    
+    ctx.font = `bold ${letter3FontSize}px Arial, sans-serif`;
+    
+    // Outline with color from logic
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 1;
+    ctx.strokeText(letter3, letter3X, letter3Y);
+    
+    // Fill with letter color from logic
+    ctx.fillStyle = letterColor;
+    ctx.fillText(letter3, letter3X, letter3Y);
   }
   
-  // Return as data URL
-  return canvas.toDataURL('image/png');
+  // Scale up canvas to target size for final output (but keep low quality)
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = size;
+  finalCanvas.height = size;
+  const finalCtx = finalCanvas.getContext('2d');
+  finalCtx.imageSmoothingEnabled = false;
+  finalCtx.imageSmoothingQuality = 'low';
+  finalCtx.drawImage(canvas, 0, 0, lowQualitySize, lowQualitySize, 0, 0, size, size);
+  
+  // Return as PNG
+  return finalCanvas.toDataURL('image/png');
 };
 
-// Cache for generated textures
+// Cache for generated textures (stores promises to handle async loading)
 const textureCache = new Map();
+const imageCache = new Map(); // Cache for loaded images
 
-// Get procedural texture with caching
-export const getProceduralTexture = (cellKey, size = 128, regionType = null) => {
-  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}`;
+// Get texture with caching (synchronous - generates text-based textures locally)
+export const getProceduralTexture = (cellKey, size = 128, regionType = null, textData = null, cellData = null) => {
+  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}-${textData?.name || 'no-text'}`;
   if (textureCache.has(cacheKey)) {
     return textureCache.get(cacheKey);
   }
   
-  const textureUrl = generateProceduralTexture(cellKey, size, regionType);
+  // Generate text-based texture synchronously (fast, local generation)
+  const textureUrl = generateTextureFromText(cellKey, size, regionType, textData, cellData);
   textureCache.set(cacheKey, textureUrl);
   return textureUrl;
 };
 
-// Get region texture (procedural) - uses region type for color palette
-export const getRegionTex = (type, cellKey) => {
-  // Generate procedural texture based on cell key and region type
-  // Type determines the color palette, cellKey determines the variation
+// Get region texture - uses region type for color palette and region name for text
+export const getRegionTex = (type, cellKey, regionData = null, cellData = null) => {
+  // Generate texture based on cell key, region type, region name/text, and cell data for content calculation
+  const textData = regionData ? (typeof regionData === 'string' ? { name: regionData } : regionData) : null;
   if (cellKey) {
-    return getProceduralTexture(cellKey, 128, type);
+    return getProceduralTexture(cellKey, 128, type, textData, cellData);
   }
   // Fallback for cells without key
-  return getProceduralTexture(`region-${type || 'default'}`, 128, type);
+  return getProceduralTexture(`region-${type || 'default'}`, 128, type, textData, cellData);
 };
 
-// Get site texture (procedural) - sites use their own type for color palette
-export const getSiteTex = (type, cellKey) => {
-  // Generate procedural texture based on cell key and site type
-  // Site type can also determine color palette if needed
+// Get site texture - sites use their own type for color palette and site name for text
+export const getSiteTex = (type, cellKey, siteData = null, cellData = null) => {
+  // Generate texture based on cell key, site type, and site name/text
+  const textData = siteData ? { name: siteData.name || siteData } : null;
   const key = cellKey ? `${cellKey}-site-${type || 'default'}` : `site-${type || 'default'}`;
-  // Sites use a neutral palette unless we want to add site-specific palettes
-  return getProceduralTexture(key, 128, null);
+  return getProceduralTexture(key, 128, null, textData, cellData);
 };
 
-// Get figure texture (procedural) - figures use neutral palette
-export const getFigureTex = (hf, cellKey) => {
-  // Generate procedural texture based on figure ID or cell key
+// Get figure texture - figures use neutral palette and figure name for text
+export const getFigureTex = (hf, cellKey, cellData = null) => {
+  // Generate texture based on figure ID or cell key and figure name
+  const textData = hf ? { name: hf.name || hf.id || 'Unknown figure' } : null;
   const key = cellKey ? `${cellKey}-fig-${hf?.id || 'default'}` : `fig-${hf?.id || 'default'}`;
-  return getProceduralTexture(key, 128, null);
+  return getProceduralTexture(key, 128, null, textData, cellData);
 };
 
-// Get structure texture (procedural)
-export const getStructureTex = (id, cellKey) => {
+// Get structure texture
+export const getStructureTex = (id, cellKey, structureData = null, cellData = null) => {
+  const textData = structureData ? { name: structureData.name || structureData.type || 'Structure' } : null;
   const key = cellKey ? `${cellKey}-struct-${id || 'default'}` : `struct-${id || 'default'}`;
-  return getProceduralTexture(key, 128, null);
+  return getProceduralTexture(key, 128, null, textData, cellData);
 };
 
-// Get underground region texture (procedural)
-export const getUndergroundRegionTex = (id, cellKey) => {
+// Get underground region texture
+export const getUndergroundRegionTex = (id, cellKey, undergroundRegionData = null, cellData = null) => {
+  const textData = undergroundRegionData ? { name: undergroundRegionData.name || 'Underground Region' } : null;
   const key = cellKey ? `${cellKey}-ug-${id || 'default'}` : `ug-${id || 'default'}`;
   // Underground regions could use a darker palette
-  return getProceduralTexture(key, 128, "Mountain"); // Use mountain-like palette for underground
+  return getProceduralTexture(key, 128, "Mountain", textData, cellData); // Use mountain-like palette for underground
 };
 
-// Get written content texture (procedural)
-export const getWrittenContentTex = (id, cellKey) => {
+// Get written content texture
+export const getWrittenContentTex = (id, cellKey, writtenContentData = null, cellData = null) => {
+  const textData = writtenContentData ? { name: writtenContentData.title || writtenContentData.name || 'Written Content' } : null;
   const key = cellKey ? `${cellKey}-wc-${id || 'default'}` : `wc-${id || 'default'}`;
-  return getProceduralTexture(key, 128, null);
+  return getProceduralTexture(key, 128, null, textData, cellData);
 };
 

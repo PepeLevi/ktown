@@ -1,65 +1,136 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Chinese Character Texture Generator for Dwarf Fortress
-Replaces all 18x18 textures with Chinese characters related to philosophy and art
+Abstract Character-Like Texture Generator for Dwarf Fortress
+Replaces all 18x18 textures with abstract patterns that resemble Chinese-style characters
+but are completely made up and don't belong to any real language
 """
 
 import os
 import random
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
-import math
+from PIL import Image, ImageDraw
 
-# Chinese characters related to philosophy and art
-PHILOSOPHY_CHARS = [
-    # Philosophy concepts
-    "道", "德", "仁", "义", "礼", "智", "信", "和", "中", "正",
-    "理", "气", "心", "性", "天", "地", "人", "物", "生", "死",
-    "有", "无", "虚", "实", "阴", "阳", "动", "静", "变", "常",
-    # Art and aesthetics
-    "美", "艺", "文", "诗", "书", "画", "音", "乐", "舞", "戏",
-    "雅", "俗", "精", "神", "韵", "味", "境", "意", "情", "思",
-    # Additional philosophical terms
-    "知", "行", "学", "问", "思", "辨", "修", "养", "悟", "觉",
-    "空", "色", "相", "法", "因", "果", "缘", "业", "苦", "乐",
-    # More art-related
-    "墨", "笔", "纸", "砚", "琴", "棋", "书", "画", "茶", "酒",
-    "山", "水", "花", "鸟", "竹", "梅", "兰", "菊", "松", "石",
-]
-
-def get_chinese_font(size=16):
-    """Try to get a Chinese font, fallback to default if not available"""
-    font_paths = [
-        # Windows common fonts
-        "C:/Windows/Fonts/msyh.ttc",  # Microsoft YaHei
-        "C:/Windows/Fonts/simsun.ttc",  # SimSun
-        "C:/Windows/Fonts/simhei.ttf",  # SimHei
-        "C:/Windows/Fonts/STKAITI.TTF",  # KaiTi
-        # Linux common fonts
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/usr/share/fonts/truetype/arphic/uming.ttc",
-        # macOS common fonts
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-    ]
+def draw_abstract_character(draw, size, color):
+    """
+    Draw an abstract character-like pattern using strokes that resemble
+    Chinese-style characters but are completely fictional
+    """
+    padding = 2
+    inner_size = size - padding * 2
+    base_x = padding
+    base_y = padding
     
-    for font_path in font_paths:
-        if os.path.exists(font_path):
-            try:
-                return ImageFont.truetype(font_path, size)
-            except:
-                continue
+    # Choose a pattern style
+    style = random.choice(['dense', 'sparse', 'vertical', 'horizontal', 'boxy', 'curved'])
     
-    # Fallback to default font (may not support Chinese)
-    try:
-        return ImageFont.truetype("arial.ttf", size)
-    except:
-        return ImageFont.load_default()
-
-def generate_chinese_char():
-    """Get a random Chinese character related to philosophy/art"""
-    return random.choice(PHILOSOPHY_CHARS)
+    if style == 'dense':
+        # Many intersecting strokes
+        for _ in range(random.randint(4, 8)):
+            if random.random() < 0.5:
+                # Horizontal stroke
+                y = random.randint(base_y, base_y + inner_size - 2)
+                draw.line([(base_x + 1, y), (base_x + inner_size - 2, y)], fill=color, width=1)
+            else:
+                # Vertical stroke
+                x = random.randint(base_x, base_x + inner_size - 2)
+                draw.line([(x, base_y + 1), (x, base_y + inner_size - 2)], fill=color, width=1)
+    
+    elif style == 'sparse':
+        # Fewer, longer strokes
+        num_strokes = random.randint(2, 4)
+        for _ in range(num_strokes):
+            if random.random() < 0.4:
+                # Horizontal stroke
+                y = random.randint(base_y + 2, base_y + inner_size - 3)
+                start_x = random.randint(base_x, base_x + inner_size // 3)
+                end_x = random.randint(base_x + inner_size * 2 // 3, base_x + inner_size - 1)
+                draw.line([(start_x, y), (end_x, y)], fill=color, width=1)
+            elif random.random() < 0.7:
+                # Vertical stroke
+                x = random.randint(base_x + 2, base_x + inner_size - 3)
+                start_y = random.randint(base_y, base_y + inner_size // 3)
+                end_y = random.randint(base_y + inner_size * 2 // 3, base_y + inner_size - 1)
+                draw.line([(x, start_y), (x, end_y)], fill=color, width=1)
+            else:
+                # Diagonal stroke
+                if random.random() < 0.5:
+                    draw.line([(base_x + 2, base_y + 2), (base_x + inner_size - 3, base_y + inner_size - 3)], fill=color, width=1)
+                else:
+                    draw.line([(base_x + inner_size - 3, base_y + 2), (base_x + 2, base_y + inner_size - 3)], fill=color, width=1)
+    
+    elif style == 'vertical':
+        # Vertical lines with horizontal connectors
+        num_vert = random.randint(2, 4)
+        x_positions = sorted([random.randint(base_x + 1, base_x + inner_size - 2) for _ in range(num_vert)])
+        for x in x_positions:
+            draw.line([(x, base_y + 1), (x, base_y + inner_size - 2)], fill=color, width=1)
+        
+        # Add horizontal connectors
+        num_connectors = random.randint(1, 3)
+        for _ in range(num_connectors):
+            y = random.randint(base_y + 2, base_y + inner_size - 3)
+            if len(x_positions) > 1:
+                draw.line([(x_positions[0], y), (x_positions[-1], y)], fill=color, width=1)
+    
+    elif style == 'horizontal':
+        # Horizontal lines with vertical connectors
+        num_horiz = random.randint(2, 4)
+        y_positions = sorted([random.randint(base_y + 1, base_y + inner_size - 2) for _ in range(num_horiz)])
+        for y in y_positions:
+            draw.line([(base_x + 1, y), (base_x + inner_size - 2, y)], fill=color, width=1)
+        
+        # Add vertical connectors
+        num_connectors = random.randint(1, 3)
+        for _ in range(num_connectors):
+            x = random.randint(base_x + 2, base_x + inner_size - 3)
+            if len(y_positions) > 1:
+                draw.line([(x, y_positions[0]), (x, y_positions[-1])], fill=color, width=1)
+    
+    elif style == 'boxy':
+        # Box-like structures (radicals)
+        num_boxes = random.randint(1, 3)
+        for _ in range(num_boxes):
+            box_x = random.randint(base_x, base_x + inner_size // 2)
+            box_y = random.randint(base_y, base_y + inner_size // 2)
+            box_w = random.randint(3, inner_size // 2)
+            box_h = random.randint(3, inner_size // 2)
+            
+            # Draw box outline (not filled, just lines)
+            if random.random() < 0.7:
+                draw.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], outline=color, width=1)
+            else:
+                # Just top and left
+                draw.line([(box_x, box_y), (box_x + box_w, box_y)], fill=color, width=1)
+                draw.line([(box_x, box_y), (box_x, box_y + box_h)], fill=color, width=1)
+        
+        # Add some strokes inside/around boxes
+        for _ in range(random.randint(1, 3)):
+            if random.random() < 0.5:
+                y = random.randint(base_y + 1, base_y + inner_size - 2)
+                draw.line([(base_x + 1, y), (base_x + inner_size - 2, y)], fill=color, width=1)
+            else:
+                x = random.randint(base_x + 1, base_x + inner_size - 2)
+                draw.line([(x, base_y + 1), (x, base_y + inner_size - 2)], fill=color, width=1)
+    
+    elif style == 'curved':
+        # More flowing, curved strokes
+        num_strokes = random.randint(3, 6)
+        for _ in range(num_strokes):
+            # Create a curved path
+            points = []
+            start_x = random.randint(base_x, base_x + inner_size - 1)
+            start_y = random.randint(base_y, base_y + inner_size - 1)
+            
+            for i in range(random.randint(2, 4)):
+                x = random.randint(base_x, base_x + inner_size - 1)
+                y = random.randint(base_y, base_y + inner_size - 1)
+                points.append((x, y))
+            
+            # Draw connected line segments
+            if len(points) > 1:
+                for i in range(len(points) - 1):
+                    draw.line([points[i], points[i + 1]], fill=color, width=1)
 
 def generate_colors():
     """Generate random but readable color combinations"""
@@ -89,10 +160,8 @@ def generate_colors():
     
     return bg, text
 
-def create_chinese_texture(size=18, char=None, bg_color=None, text_color=None, preserve_alpha=False):
-    """Create a single 18x18 texture with a Chinese character"""
-    if char is None:
-        char = generate_chinese_char()
+def create_abstract_texture(size=18, bg_color=None, text_color=None, preserve_alpha=False):
+    """Create a single 18x18 texture with an abstract character-like pattern"""
     if bg_color is None or text_color is None:
         bg_color, text_color = generate_colors()
     
@@ -103,41 +172,14 @@ def create_chinese_texture(size=18, char=None, bg_color=None, text_color=None, p
         img = Image.new('RGB', (size, size), bg_color)
     draw = ImageDraw.Draw(img)
     
-    # Try to get Chinese font
-    font_size = size - 4  # Leave some padding
-    font = get_chinese_font(font_size)
-    
-    # Get text bounding box to center it
-    try:
-        bbox = draw.textbbox((0, 0), char, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-    except:
-        # Fallback if font doesn't work
-        text_width = size // 2
-        text_height = size // 2
-    
-    # Center the character
-    x = (size - text_width) // 2
-    y = (size - text_height) // 2 - 2  # Slight vertical adjustment
-    
-    # Draw the character
-    try:
-        if preserve_alpha:
-            draw.text((x, y), char, fill=text_color + (255,), font=font)
-        else:
-            draw.text((x, y), char, fill=text_color, font=font)
-    except Exception as e:
-        # Fallback: draw a simple rectangle if font fails
-        if preserve_alpha:
-            draw.rectangle([4, 4, size-4, size-4], fill=text_color + (255,))
-        else:
-            draw.rectangle([4, 4, size-4, size-4], fill=text_color)
+    # Draw abstract character pattern
+    draw_color = text_color + (255,) if preserve_alpha else text_color
+    draw_abstract_character(draw, size, draw_color)
     
     return img
 
 def process_texture_file(file_path, texture_size=18):
-    """Process a PNG file and replace all textures with Chinese characters"""
+    """Process a PNG file and replace all textures with abstract character-like patterns"""
     print(f"Processing: {file_path.name}")
     
     try:
@@ -170,8 +212,8 @@ def process_texture_file(file_path, texture_size=18):
                 x = col * texture_size
                 y = row * texture_size
                 
-                # Create Chinese character texture
-                char_texture = create_chinese_texture(texture_size, preserve_alpha=preserve_alpha)
+                # Create abstract character-like texture
+                char_texture = create_abstract_texture(texture_size, preserve_alpha=preserve_alpha)
                 
                 # Paste into the new image
                 # Always paste directly (no alpha mask) to ensure opaque backgrounds
@@ -180,7 +222,7 @@ def process_texture_file(file_path, texture_size=18):
         # Save the modified image
         output_path = file_path
         new_img.save(output_path, 'PNG')
-        print(f"  [OK] Saved {cols * rows} Chinese character textures")
+        print(f"  [OK] Saved {cols * rows} abstract character textures")
         
         return True
     except Exception as e:
@@ -198,7 +240,7 @@ def process_directory(directory_path, texture_size=18, recursive=True):
         return
     
     print("=" * 60)
-    print(f"Chinese Character Texture Generator")
+    print(f"Abstract Character-Like Texture Generator")
     print(f"Directory: {directory}")
     print(f"Texture size: {texture_size}x{texture_size}")
     print("=" * 60)
@@ -248,7 +290,7 @@ def process_directory(directory_path, texture_size=18, recursive=True):
     print("=" * 60)
     print()
     print("NOTE: The game applies color tints from colors.txt and creature")
-    print("      definitions. Your Chinese characters will be visible, but")
+    print("      definitions. Your abstract characters will be visible, but")
     print("      the game may overlay colors (blue for water, green for grass, etc.)")
     print("      This is normal game behavior and cannot be changed without")
     print("      modifying the game's color system.")

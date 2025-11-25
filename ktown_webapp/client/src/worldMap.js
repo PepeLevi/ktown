@@ -1,7 +1,7 @@
 // src/WorldMap.jsx
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import { getRegionTex, getSiteTex, getFigureTex } from "./proceduralTextures";
+import { getRegionTex, getSiteTex, getFigureTex, getStructureTex, getUndergroundRegionTex, getWrittenContentTex } from "./proceduralTextures";
 import Minimap from "./Minimap";
 
 const regionColor = "yellow";
@@ -19,7 +19,7 @@ let MIN_ZOOM = 1; // Will be calculated
 const MAX_ZOOM = 9000;
 
 // Performance: Maximum cells visible at minimum zoom (zoom out limit)
-const MAX_VISIBLE_CELLS_AT_MIN_ZOOM = 650; // Adjust this for performance
+const MAX_VISIBLE_CELLS_AT_MIN_ZOOM = 2500; // Adjust this for performance - higher = more cells visible, camera further away
 
 // LOD Configuration - for optimizing large maps
 const LOD_CONFIG = {
@@ -371,7 +371,7 @@ function WorldMap({
 
   // Get combined texture for a block - procedurally combines multiple cell textures
   // Uses the most common region type in the block for the texture
-  const getBlockTexture = (block, xScale, yScale) => {
+  const getBlockTexture = async (block, xScale, yScale) => {
     if (!block || !block.cells || block.cells.length === 0) return null;
 
     // Find the most common region type in the block
@@ -418,7 +418,7 @@ function WorldMap({
     // Use unique key based on block bounds for consistent texture
     const blockKey = `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
     const cellKey = representativeCell.key || blockKey;
-    return getRegionTex(representativeCell.region?.type, cellKey);
+    return getRegionTex(representativeCell.region?.type, blockKey, representativeCell.region, representativeCell);
   };
 
   // Render a single block - procedurally combined cells, respects original positions
@@ -985,20 +985,24 @@ function WorldMap({
           d.cellKey ||
           `cell-${level}-${cellX}-${cellY}`;
 
-        // Determine texture based on cell type - use procedural generation
-        let texUrl = null;
+        // Determine texture based on cell type - use procedural generation (async)
+        let texUrlPromise = null;
         let patternKey = null;
 
         if (level === 0) {
           // Original cell - use region texture (skip if ocean)
           if (d.region?.type !== "Ocean") {
-            texUrl = getRegionTex(d.region?.type, cellKeyForTexture);
+            // Pass the full cell data (d) so we can calculate content amount
+            texUrlPromise = Promise.resolve(getRegionTex(d.region?.type, cellKeyForTexture, d.region, d));
             patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
           }
         } else if (d.isOriginalCell || d.childType === "region") {
           // This is the original cell texture in a subdivision - use region texture
           const regionType = d.childData?.type || d.originalCell?.region?.type;
-          texUrl = getRegionTex(regionType, cellKeyForTexture);
+          const regionData = d.childData || d.originalCell?.region;
+          // Pass the original cell data for content calculation
+          const cellDataForContent = d.originalCell || d;
+          texUrlPromise = Promise.resolve(getRegionTex(regionType, cellKeyForTexture, regionData, cellDataForContent));
           patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
         } else if (d.kind === "site") {
           const siteType =
@@ -1006,7 +1010,9 @@ function WorldMap({
             d.childData?.fromFile1?.type ||
             d.childData?.type ||
             "default";
-          texUrl = getSiteTex(siteType, cellKeyForTexture);
+          const siteData = d.childData?.fromFile2 || d.childData?.fromFile1 || d.childData;
+          const cellDataForContent = d.originalCell || d;
+          texUrlPromise = Promise.resolve(getSiteTex(siteType, cellKeyForTexture, siteData, cellDataForContent));
           patternKey = `site-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(siteType)}`;
@@ -1014,74 +1020,80 @@ function WorldMap({
           // Structures get procedural textures - use neutral palette
           const structId =
             d.childData?.id || d.childData?.local_id || "default";
-          texUrl = getRegionTex(
-            null,
-            `${cellKeyForTexture}-struct-${structId}`
-          ); // null type = default palette
+          const cellDataForContent = d.originalCell || d;
+          texUrlPromise = Promise.resolve(getStructureTex(structId, cellKeyForTexture, d.childData, cellDataForContent));
           patternKey = `structure-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(structId))}`;
         } else if (d.kind === "figure" || d.kind === "cellFigure") {
-          texUrl = getFigureTex(d.childData, cellKeyForTexture);
+          const cellDataForContent = d.originalCell || d;
+          texUrlPromise = Promise.resolve(getFigureTex(d.childData, cellKeyForTexture, cellDataForContent));
           patternKey = `fig-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(d.childData?.id || "default"))}`;
         } else if (d.childType === "undergroundRegion") {
           // Underground regions get procedural textures - use cavern palette
           const ugId = d.childData?.id || "default";
-          texUrl = getRegionTex("cavern", `${cellKeyForTexture}-ug-${ugId}`); // Use cavern palette
+          const cellDataForContent = d.originalCell || d;
+          texUrlPromise = Promise.resolve(getUndergroundRegionTex(ugId, cellKeyForTexture, d.childData, cellDataForContent));
           patternKey = `underground-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(ugId))}`;
         } else if (d.kind === "writtenContent") {
           // Written contents get procedural textures - use neutral palette
           const wcId = d.childData?.id || d.childData?.title || "default";
-          texUrl = getRegionTex(null, `${cellKeyForTexture}-wc-${wcId}`); // null type = default palette
+          const cellDataForContent = d.originalCell || d;
+          texUrlPromise = Promise.resolve(getWrittenContentTex(wcId, cellKeyForTexture, d.childData, cellDataForContent));
           patternKey = `written-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(wcId))}`;
         } else {
           // Fallback: generate a default texture for any unknown type
-          texUrl = getRegionTex(null, cellKeyForTexture);
+          texUrlPromise = getRegionTex(null, cellKeyForTexture);
           patternKey = `default-${sanitizeForSelector(cellKeyForTexture)}`;
         }
 
-        // Apply procedural texture - ensure we always have a texture
+        // Apply procedural texture asynchronously - ensure we always have a texture
         // This is critical: every cell MUST have a texture
-        let appliedTexture = false;
-        if (texUrl && patternKey) {
-          const pid = getOrCreatePattern(defs, patternKey, texUrl);
-          if (pid) {
-            rect.style("fill", `url(#${pid})`).style("opacity", 1);
-            appliedTexture = true;
-          }
-        }
+        (async () => {
+          try {
+            // Wait for texture URL to resolve
+            const texUrl = texUrlPromise ? await texUrlPromise : null;
+            
+            if (texUrl && patternKey) {
+              const pid = getOrCreatePattern(defs, patternKey, texUrl);
+              if (pid) {
+                rect.style("fill", `url(#${pid})`).style("opacity", 1);
+                return;
+              }
+            }
 
-        // Fallback: if texture wasn't applied, generate a default one
-        if (!appliedTexture) {
-          // Generate a fallback texture using the cell key
-          const fallbackTexUrl = getRegionTex(null, cellKeyForTexture);
-          const fallbackPatternKey = `fallback-${sanitizeForSelector(
-            cellKeyForTexture
-          )}`;
-          const fallbackPid = getOrCreatePattern(
-            defs,
-            fallbackPatternKey,
-            fallbackTexUrl
-          );
-          if (fallbackPid) {
-
-            rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
-
-          } else {
-            // Last resort: solid color (should never happen)
-            rect.style("fill", "#f0f0f0").style("opacity", 1);
-            console.warn(
-              "Failed to create texture for cell:",
+            // Fallback: if texture wasn't applied, generate a default one
+            const fallbackTexUrl = getRegionTex(null, cellKeyForTexture, null, d);
+            const fallbackPatternKey = `fallback-${sanitizeForSelector(
               cellKeyForTexture
+            )}`;
+            const fallbackPid = getOrCreatePattern(
+              defs,
+              fallbackPatternKey,
+              fallbackTexUrl
             );
+            if (fallbackPid) {
+              rect.style("fill", `url(#${fallbackPid})`).style("opacity", 1);
+            } else {
+              // Last resort: solid color (should never happen)
+              rect.style("fill", "#f0f0f0").style("opacity", 1);
+              console.warn(
+                "Failed to create texture for cell:",
+                cellKeyForTexture
+              );
+            }
+          } catch (error) {
+            console.error("Error loading texture for cell:", cellKeyForTexture, error);
+            // Fallback to solid color on error
+            rect.style("fill", "#f0f0f0").style("opacity", 1);
           }
-        }
+        })();
 
         // Always set opacity to 1 (opaque) - no transparency
         rect.style("opacity", 1);
@@ -1127,7 +1139,7 @@ function WorldMap({
       }
     };
 
-    const handleCellClick = (event, d) => {
+    const handleCellClick = async (event, d) => {
       // Check if user was dragging
       const wasDragging = cellDragState.isDragging;
 
@@ -1196,8 +1208,8 @@ function WorldMap({
             kind: "site",
             name: siteName,
             type: siteType,
-            textureUrl: getSiteTex(siteType),
-            regionTextureUrl: getRegionTex(originalCell.region?.type),
+            textureUrl: getSiteTex(siteType, originalCell.key, site, originalCell),
+            regionTextureUrl: getRegionTex(originalCell.region?.type, originalCell.key, originalCell.region, originalCell),
             cellCoords: { x: originalCell.x, y: originalCell.y },
             site: site,
             cell: originalCell,
@@ -1228,7 +1240,7 @@ function WorldMap({
           composed = {
             kind: "figure",
             name: hfName,
-            textureUrl: getFigureTex(hf),
+            textureUrl: getFigureTex(hf, originalCell.key, originalCell),
             cellCoords: { x: originalCell.x, y: originalCell.y },
             figure: hf,
             cell: originalCell,
@@ -1715,11 +1727,33 @@ function WorldMap({
     mapWidthRef.current = width;
     mapHeightRef.current = height;
 
-    const svg = d3
-      .select(svgRef.current)
-      .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("width", "100%")
-      .attr("height", "100%");
+    // Get container dimensions for viewBox (fill whole window)
+    const updateViewBox = () => {
+      const svgNode = svgRef.current;
+      if (!svgNode) return;
+      
+      const container = svgNode.parentElement;
+      if (!container) return;
+      
+      const containerWidth = container.clientWidth || window.innerWidth;
+      const containerHeight = container.clientHeight || window.innerHeight;
+      
+      const svg = d3.select(svgNode);
+      svg.attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`);
+      svg.attr("width", "100%");
+      svg.attr("height", "100%");
+      
+      // Update mainViewBox state for minimap
+      setMainViewBox({ width: containerWidth, height: containerHeight });
+    };
+    
+    // Initial viewBox setup
+    updateViewBox();
+    
+    // Update viewBox on window resize
+    window.addEventListener('resize', updateViewBox);
+    
+    const svg = d3.select(svgRef.current);
     svg
       .append("g")
       .on("mouseover", function () {
@@ -1750,7 +1784,7 @@ function WorldMap({
 
     const regionTypesWithTextures = Array.from(
       new Set(
-        cells.map((c) => c.region?.type).filter((t) => t && getRegionTex(t))
+        cells.map((c) => c.region?.type).filter((t) => t)
       )
     );
 
@@ -1762,7 +1796,7 @@ function WorldMap({
           site?.fromFile1?.type ||
           site?.type ||
           "default";
-        if (getSiteTex(siteType)) siteTypesWithTextures.push(siteType);
+        siteTypesWithTextures.push(siteType);
       });
     });
     const uniqueSiteTypesWithTextures = Array.from(
@@ -1855,6 +1889,11 @@ function WorldMap({
     });
 
     // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
+    
+    // Cleanup resize listener
+    return () => {
+      window.removeEventListener('resize', updateViewBox);
+    };
   }, [worldData]);
 
   // zoom
