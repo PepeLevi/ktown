@@ -1,7 +1,14 @@
 // src/WorldMap.jsx
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import { getRegionTex, getSiteTex, getFigureTex, getStructureTex, getUndergroundRegionTex, getWrittenContentTex } from "./proceduralTextures";
+import {
+  getRegionTex,
+  getSiteTex,
+  getFigureTex,
+  getStructureTex,
+  getUndergroundRegionTex,
+  getWrittenContentTex,
+} from "./proceduralTextures";
 import Minimap from "./Minimap";
 
 const regionColor = "yellow";
@@ -417,7 +424,12 @@ function WorldMap({
     // Use unique key based on block bounds for consistent texture
     const blockKey = `block-${block.minX}-${block.minY}-${block.maxX}-${block.maxY}`;
     const cellKey = representativeCell.key || blockKey;
-    return getRegionTex(representativeCell.region?.type, blockKey, representativeCell.region, representativeCell);
+    return getRegionTex(
+      representativeCell.region?.type,
+      blockKey,
+      representativeCell.region,
+      representativeCell
+    );
   };
 
   // Render a single block - procedurally combined cells, respects original positions
@@ -798,15 +810,17 @@ function WorldMap({
     const zoomBehavior = zoomBehaviorRef.current;
     if (!svgNode || !zoomBehavior) return;
 
-    const width = mapWidthRef.current || svgNode.viewBox.baseVal.width || 1;
-    const height = mapHeightRef.current || svgNode.viewBox.baseVal.height || 1;
+    // Use the actual on-screen dimensions of the SVG
+    const rect = svgNode.getBoundingClientRect();
+    const width = rect.width || 1;
+    const height = rect.height || 1;
 
     const current = d3.zoomTransform(svgNode);
     const k = targetK ?? current.k;
 
     const next = d3.zoomIdentity
-      .translate(width / 2, height / 2) // center of viewport
-      .scale(k) // desired zoom
+      .translate(width / 2, height / 2) // center of *screen* viewport
+      .scale(k)
       .translate(-x, -y); // bring world point (x,y) to center
 
     d3.select(svgNode)
@@ -1114,7 +1128,9 @@ function WorldMap({
           // Original cell - use region texture (skip if ocean)
           if (d.region?.type !== "Ocean") {
             // Pass the full cell data (d) so we can calculate content amount
-            texUrlPromise = Promise.resolve(getRegionTex(d.region?.type, cellKeyForTexture, d.region, d));
+            texUrlPromise = Promise.resolve(
+              getRegionTex(d.region?.type, cellKeyForTexture, d.region, d)
+            );
             patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
           }
         } else if (d.isOriginalCell || d.childType === "region") {
@@ -1123,7 +1139,14 @@ function WorldMap({
           const regionData = d.childData || d.originalCell?.region;
           // Pass the original cell data for content calculation
           const cellDataForContent = d.originalCell || d;
-          texUrlPromise = Promise.resolve(getRegionTex(regionType, cellKeyForTexture, regionData, cellDataForContent));
+          texUrlPromise = Promise.resolve(
+            getRegionTex(
+              regionType,
+              cellKeyForTexture,
+              regionData,
+              cellDataForContent
+            )
+          );
           patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}`;
         } else if (d.kind === "site") {
           const siteType =
@@ -1131,9 +1154,17 @@ function WorldMap({
             d.childData?.fromFile1?.type ||
             d.childData?.type ||
             "default";
-          const siteData = d.childData?.fromFile2 || d.childData?.fromFile1 || d.childData;
+          const siteData =
+            d.childData?.fromFile2 || d.childData?.fromFile1 || d.childData;
           const cellDataForContent = d.originalCell || d;
-          texUrlPromise = Promise.resolve(getSiteTex(siteType, cellKeyForTexture, siteData, cellDataForContent));
+          texUrlPromise = Promise.resolve(
+            getSiteTex(
+              siteType,
+              cellKeyForTexture,
+              siteData,
+              cellDataForContent
+            )
+          );
           patternKey = `site-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(siteType)}`;
@@ -1142,13 +1173,22 @@ function WorldMap({
           const structId =
             d.childData?.id || d.childData?.local_id || "default";
           const cellDataForContent = d.originalCell || d;
-          texUrlPromise = Promise.resolve(getStructureTex(structId, cellKeyForTexture, d.childData, cellDataForContent));
+          texUrlPromise = Promise.resolve(
+            getStructureTex(
+              structId,
+              cellKeyForTexture,
+              d.childData,
+              cellDataForContent
+            )
+          );
           patternKey = `structure-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(structId))}`;
         } else if (d.kind === "figure" || d.kind === "cellFigure") {
           const cellDataForContent = d.originalCell || d;
-          texUrlPromise = Promise.resolve(getFigureTex(d.childData, cellKeyForTexture, cellDataForContent));
+          texUrlPromise = Promise.resolve(
+            getFigureTex(d.childData, cellKeyForTexture, cellDataForContent)
+          );
           patternKey = `fig-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(d.childData?.id || "default"))}`;
@@ -1156,7 +1196,14 @@ function WorldMap({
           // Underground regions get procedural textures - use cavern palette
           const ugId = d.childData?.id || "default";
           const cellDataForContent = d.originalCell || d;
-          texUrlPromise = Promise.resolve(getUndergroundRegionTex(ugId, cellKeyForTexture, d.childData, cellDataForContent));
+          texUrlPromise = Promise.resolve(
+            getUndergroundRegionTex(
+              ugId,
+              cellKeyForTexture,
+              d.childData,
+              cellDataForContent
+            )
+          );
           patternKey = `underground-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(ugId))}`;
@@ -1164,7 +1211,14 @@ function WorldMap({
           // Written contents get procedural textures - use neutral palette
           const wcId = d.childData?.id || d.childData?.title || "default";
           const cellDataForContent = d.originalCell || d;
-          texUrlPromise = Promise.resolve(getWrittenContentTex(wcId, cellKeyForTexture, d.childData, cellDataForContent));
+          texUrlPromise = Promise.resolve(
+            getWrittenContentTex(
+              wcId,
+              cellKeyForTexture,
+              d.childData,
+              cellDataForContent
+            )
+          );
           patternKey = `written-${sanitizeForSelector(
             cellKeyForTexture
           )}-${sanitizeForSelector(String(wcId))}`;
@@ -1180,7 +1234,7 @@ function WorldMap({
           try {
             // Wait for texture URL to resolve
             const texUrl = texUrlPromise ? await texUrlPromise : null;
-            
+
             if (texUrl && patternKey) {
               const pid = getOrCreatePattern(defs, patternKey, texUrl);
               if (pid) {
@@ -1190,7 +1244,12 @@ function WorldMap({
             }
 
             // Fallback: if texture wasn't applied, generate a default one
-            const fallbackTexUrl = getRegionTex(null, cellKeyForTexture, null, d);
+            const fallbackTexUrl = getRegionTex(
+              null,
+              cellKeyForTexture,
+              null,
+              d
+            );
             const fallbackPatternKey = `fallback-${sanitizeForSelector(
               cellKeyForTexture
             )}`;
@@ -1210,7 +1269,11 @@ function WorldMap({
               );
             }
           } catch (error) {
-            console.error("Error loading texture for cell:", cellKeyForTexture, error);
+            console.error(
+              "Error loading texture for cell:",
+              cellKeyForTexture,
+              error
+            );
             // Fallback to solid color on error
             rect.style("fill", "#f0f0f0").style("opacity", 1);
           }
@@ -1227,47 +1290,6 @@ function WorldMap({
           rect.style("stroke", "black").style("stroke-width", 0);
         }
       });
-
-    // --- LABEL JOIN ------------------------------------------------------
-    // const uniqueKeyRaw = cell.key || `cell-${level}-${cellX}-${cellY}`;
-    // const uniqueKey = sanitizeForSelector(uniqueKeyRaw);
-   /* const cellDataForLabel = [{ ...cell, cellKey: uniqueKey, cellBbox }];
-
-    const labelSel = gSelection
-      .selectAll(`text.label-${uniqueKey}`)
-      .data(cellDataForLabel, (d) => d.cellKey || uniqueKey);
-
-    const labelEnter = labelSel
-      .enter()
-      .append("text")
-      .attr("class", `cell-label label-${uniqueKey}`)
-      .attr("text-anchor", "start")
-      .attr("dominant-baseline", "hanging")
-      .style("pointer-events", "none")
-      .style("user-select", "none");
-
-    labelEnter.merge(labelSel).each(function (d) {
-      // const labelText = getCellLabel(d, level);
-      const labelText = "sampleText";
-
-      const baseSize = Math.min(cellWidth, cellHeight) * 0.35;
-      const zoomDamp = Math.sqrt(zoom);
-      const fontSizeWorld = baseSize / zoomDamp;
-
-      const textSel = d3.select(this);
-      wrapCellLabel(
-        textSel,
-        labelText,
-        cellX,
-        cellY,
-        cellWidth,
-        cellHeight,
-        fontSizeWorld
-      );
-    });
-
-    labelSel.exit().remove();*/
-    // --- END LABEL JOIN --------------------------------------------------
 
     // Add click handler - make child cells selectable and show JSON info in right panel
     // Apply to both new and existing elements
@@ -1370,8 +1392,18 @@ function WorldMap({
             kind: "site",
             name: siteName,
             type: siteType,
-            textureUrl: getSiteTex(siteType, originalCell.key, site, originalCell),
-            regionTextureUrl: getRegionTex(originalCell.region?.type, originalCell.key, originalCell.region, originalCell),
+            textureUrl: getSiteTex(
+              siteType,
+              originalCell.key,
+              site,
+              originalCell
+            ),
+            regionTextureUrl: getRegionTex(
+              originalCell.region?.type,
+              originalCell.key,
+              originalCell.region,
+              originalCell
+            ),
             cellCoords: { x: originalCell.x, y: originalCell.y },
             site: site,
             cell: originalCell,
@@ -1506,6 +1538,45 @@ function WorldMap({
     }
 
     cellRect.exit().remove();
+
+    // --- LABEL JOIN ------------------------------------------------------
+    const cellDataForLabel = [{ ...cell, cellKey: uniqueKey, cellBbox }];
+
+    const labelSel = gSelection
+      .selectAll(`text.label-${uniqueKey}`)
+      .data(cellDataForLabel, (d) => d.cellKey || uniqueKey);
+
+    const labelEnter = labelSel
+      .enter()
+      .append("text")
+      .attr("class", `cell-label label-${uniqueKey}`)
+      .attr("text-anchor", "start")
+      .attr("dominant-baseline", "hanging")
+      .style("pointer-events", "none")
+      .style("user-select", "none");
+
+    labelEnter.merge(labelSel).each(function (d) {
+      // const labelText = getCellLabel(d, level);
+      const labelText = "sampleText";
+
+      const baseSize = Math.min(cellWidth, cellHeight) * 0.35;
+      const zoomDamp = Math.sqrt(zoom);
+      const fontSizeWorld = baseSize / zoomDamp;
+
+      const textSel = d3.select(this);
+      wrapCellLabel(
+        textSel,
+        labelText,
+        cellX,
+        cellY,
+        cellWidth,
+        cellHeight,
+        fontSizeWorld
+      );
+    });
+
+    labelSel.exit().remove();
+    // --- END LABEL JOIN --------------------------------------------------
   };
 
   // Calculate how many children to show progressively based on zoom
@@ -1824,44 +1895,6 @@ function WorldMap({
       });
     }
 
-    // ---------- HIERARCHY: SITE → STRUCTURES ----------
-    // const siteStructures = getSiteStructures(payload);
-    // if (siteStructures.length > 0 && isLevelVisible("structure")) {
-    //   const structLevel = HIERARCHY_LEVELS.find((l) => l.name === "structure");
-    //   const structZoomFactor = 4; // +1 structure every 4 zoom levels
-    //   const structBaseCount = 1;
-    //   const structAdditionalCount = Math.floor(
-    //     (zoom - (structLevel?.minZoom || 15)) / structZoomFactor
-    //   );
-    //   const visibleStructCount = Math.min(
-    //     siteStructures.length,
-    //     structBaseCount + Math.max(0, structAdditionalCount)
-    //   );
-
-    //   siteStructures.slice(0, visibleStructCount).forEach((struct) => {
-    //     allChildData.push({ kind: "structure", data: struct });
-    //   });
-    // }
-
-    // ---------- HIERARCHY: STRUCTURE → INHABITANTS (FIGURES) ----------
-    // const inhabitants = getStructureInhabitants(payload);
-    // if (inhabitants.length > 0 && isLevelVisible("figure")) {
-    //   const figLevel = HIERARCHY_LEVELS.find((l) => l.name === "figure");
-    //   const figZoomFactor = 4; // +1 figure every 4 zoom levels
-    //   const figBaseCount = 1;
-    //   const figAdditionalCount = Math.floor(
-    //     (zoom - (figLevel?.minZoom || 40)) / figZoomFactor
-    //   );
-    //   const visibleFigCount = Math.min(
-    //     inhabitants.length,
-    //     figBaseCount + Math.max(0, figAdditionalCount)
-    //   );
-
-    //   inhabitants.slice(0, visibleFigCount).forEach((hf) => {
-    //     allChildData.push({ kind: "figure", data: hf });
-    //   });
-    // }
-
     // ---------- END: if no children, this node is a leaf ----------
     if (allChildData.length === 0) return [];
 
@@ -1946,28 +1979,28 @@ function WorldMap({
     const updateViewBox = () => {
       const svgNode = svgRef.current;
       if (!svgNode) return;
-      
+
       const container = svgNode.parentElement;
       if (!container) return;
-      
+
       const containerWidth = container.clientWidth || window.innerWidth;
       const containerHeight = container.clientHeight || window.innerHeight;
-      
+
       const svg = d3.select(svgNode);
       svg.attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`);
       svg.attr("width", "100%");
       svg.attr("height", "100%");
-      
+
       // Update mainViewBox state for minimap
       setMainViewBox({ width: containerWidth, height: containerHeight });
     };
-    
+
     // Initial viewBox setup
     updateViewBox();
-    
+
     // Update viewBox on window resize
-    window.addEventListener('resize', updateViewBox);
-    
+    window.addEventListener("resize", updateViewBox);
+
     const svg = d3.select(svgRef.current);
     svg
       .append("g")
@@ -1998,9 +2031,7 @@ function WorldMap({
     yScaleRef.current = yScale;
 
     const regionTypesWithTextures = Array.from(
-      new Set(
-        cells.map((c) => c.region?.type).filter((t) => t)
-      )
+      new Set(cells.map((c) => c.region?.type).filter((t) => t))
     );
 
     const siteTypesWithTextures = [];
@@ -2104,10 +2135,10 @@ function WorldMap({
     });
 
     // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
-    
+
     // Cleanup resize listener
     return () => {
-      window.removeEventListener('resize', updateViewBox);
+      window.removeEventListener("resize", updateViewBox);
     };
   }, [worldData]);
 
@@ -2431,7 +2462,7 @@ function WorldMap({
       }
 
       if (isSelected) {
-        rect.style("stroke", "#f97316").style("stroke-width", 2);
+        rect.style("stroke", "var(--primary-color").style("stroke-width", 2);
 
         if (!didZoom) {
           didZoom = true;
