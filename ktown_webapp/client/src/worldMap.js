@@ -1231,7 +1231,7 @@ function WorldMap({
     // --- LABEL JOIN ------------------------------------------------------
     // const uniqueKeyRaw = cell.key || `cell-${level}-${cellX}-${cellY}`;
     // const uniqueKey = sanitizeForSelector(uniqueKeyRaw);
-    const cellDataForLabel = [{ ...cell, cellKey: uniqueKey, cellBbox }];
+   /* const cellDataForLabel = [{ ...cell, cellKey: uniqueKey, cellBbox }];
 
     const labelSel = gSelection
       .selectAll(`text.label-${uniqueKey}`)
@@ -1266,7 +1266,7 @@ function WorldMap({
       );
     });
 
-    labelSel.exit().remove();
+    labelSel.exit().remove();*/
     // --- END LABEL JOIN --------------------------------------------------
 
     // Add click handler - make child cells selectable and show JSON info in right panel
