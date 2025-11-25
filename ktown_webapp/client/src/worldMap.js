@@ -1,7 +1,7 @@
 // src/WorldMap.jsx
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import { getRegionTex, getSiteTex, getFigureTex, getStructureTex, getUndergroundRegionTex, getWrittenContentTex } from "./proceduralTextures";
+import { getRegionTex, getSiteTex, getFigureTex, getStructureTex, getUndergroundRegionTex, getWrittenContentTex, setWorldDataForTextures } from "./proceduralTextures";
 import Minimap from "./Minimap";
 
 const regionColor = "yellow";
@@ -1592,29 +1592,29 @@ function WorldMap({
       }
 
       // Underground regions
-      // if (
-      //   cell.undergroundRegions &&
-      //   cell.undergroundRegions.length > 0 &&
-      //   isLevelVisible("undergroundRegion")
-      // ) {
-      //   const ugLevel = HIERARCHY_LEVELS.find(
-      //     (l) => l.name === "undergroundRegion"
-      //   );
-      //   const ugZoomFactor = 3;
-      //   const ugBaseCount = 1;
-      //   const ugAdditionalCount = Math.floor(
-      //     (zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor
-      //   );
-      //   const visibleUgCount = Math.min(
-      //     cell.undergroundRegions.length,
-      //     ugBaseCount + Math.max(0, ugAdditionalCount)
-      //   );
-      //   cell.undergroundRegions
-      //     .slice(0, visibleUgCount)
-      //     .forEach((ug) =>
-      //       allChildData.push({ kind: "undergroundRegion", data: ug })
-      //     );
-      // }
+      if (
+        cell.undergroundRegions &&
+        cell.undergroundRegions.length > 0 &&
+        isLevelVisible("undergroundRegion")
+      ) {
+        const ugLevel = HIERARCHY_LEVELS.find(
+          (l) => l.name === "undergroundRegion"
+        );
+        const ugZoomFactor = 3;
+        const ugBaseCount = 1;
+        const ugAdditionalCount = Math.floor(
+          (zoom - (ugLevel?.minZoom || 3)) / ugZoomFactor
+        );
+        const visibleUgCount = Math.min(
+          cell.undergroundRegions.length,
+          ugBaseCount + Math.max(0, ugAdditionalCount)
+        );
+        cell.undergroundRegions
+          .slice(0, visibleUgCount)
+          .forEach((ug) =>
+            allChildData.push({ kind: "undergroundRegion", data: ug })
+          );
+      }
 
       // Cell-level historical figures
       if (
@@ -1923,6 +1923,9 @@ function WorldMap({
   // 1) build map & markers
   useEffect(() => {
     if (!worldData || !worldData.cells?.length) return;
+
+    // Set worldData for texture generation (needed for color blending)
+    setWorldDataForTextures(worldData);
 
     // All rendering is done through renderRecursiveCell - no old marker system needed
 
