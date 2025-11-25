@@ -11,11 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
 
-const map_plus_location = "big/map_plus.json";
-const map_location = "big/map.json";
-const book_location = "big/books.json";
+const world_data_location = "big/queen.json";
 
-// Serve public directory (for file1.json/file2.json etc.)
+// Serve public directory (for queen.json)
 const PUBLIC_DIR = path.join(__dirname, "public");
 app.use(express.static(PUBLIC_DIR));
 
@@ -65,64 +63,40 @@ function loadJsonFileStreaming(filePath) {
 // ---------- Helper: load default JSON files from /public ----------
 // Uses streaming parser to handle very large files that exceed Node.js string length limits
 async function loadDefaultFiles() {
-  const file1Path = path.join(PUBLIC_DIR, map_plus_location);
-  const file2Path = path.join(PUBLIC_DIR, map_location);
-  const booksPath = path.join(PUBLIC_DIR, book_location);
+  const filePath = path.join(PUBLIC_DIR, world_data_location);
 
-  const hasFile1 = fs.existsSync(file1Path);
-  const hasFile2 = fs.existsSync(file2Path);
-  const hasBooks = fs.existsSync(booksPath); // Optional
+  const hasFile = fs.existsSync(filePath);
 
   // Files are optional - return empty structures if missing (they're in .gitignore)
-  let file1 = { sites: [], regions: [] };
-  let file2 = { sites: [] };
-  let books = { written_content: [] };
+  let file = { sites: [], regions: [] };
 
-  if (!hasFile1 && !hasFile2) {
+  if (!hasFile) {
     console.warn(
-      `Warning: Both ${map_plus_location} and ${map_location} not found. Using empty structures.`
+      `Warning: World data not found. Using empty structures.`
     );
-    return { file1, file2, books };
+    return file;
   }
 
   try {
     console.log("Loading JSON files using streaming parser...");
 
     // Use streaming parser for large files
-    const [file1Data, file2Data, booksData] = await Promise.all([
-      hasFile1
-        ? loadJsonFileStreaming(file1Path).catch(() => null)
-        : Promise.resolve(null),
-      hasFile2
-        ? loadJsonFileStreaming(file2Path).catch(() => null)
-        : Promise.resolve(null),
-      hasBooks
-        ? loadJsonFileStreaming(booksPath).catch(() => null)
-        : Promise.resolve(null),
+    const [fileData] = await Promise.all([
+      hasFile
+        ? loadJsonFileStreaming(filePath).catch(() => null)
+        : Promise.resolve(null)
     ]);
 
-    if (file1Data) {
-      file1 = file1Data;
-    } else if (hasFile1) {
+    if (fileData) {
+      file = fileData;
+    } else if (hasFile) {
       console.warn(
-        `Warning: Failed to load ${file1Path}. Using empty structure.`
+        `Warning: Failed to load ${filePath}. Using empty structure.`
       );
-    }
-
-    if (file2Data) {
-      file2 = file2Data;
-    } else if (hasFile2) {
-      console.warn(
-        `Warning: Failed to load ${file2Path}. Using empty structure.`
-      );
-    }
-
-    if (booksData) {
-      books = booksData;
     }
 
     console.log("JSON files loaded successfully");
-    return { file1, file2, books };
+    return file;
   } catch (err) {
     console.error("Error loading JSON files:", err);
     throw new Error(`Failed to load JSON files: ${err.message}`);
@@ -131,37 +105,25 @@ async function loadDefaultFiles() {
 
 // ---------- Existing endpoint to check default files ----------
 app.get("/api/default-files", (req, res) => {
-  const file1Path = path.join(PUBLIC_DIR, map_plus_location);
-  const file2Path = path.join(PUBLIC_DIR, map_location);
-  const booksPath = path.join(PUBLIC_DIR, book_location);
+  const filePath = path.join(PUBLIC_DIR, world_data_location);
 
-  const hasFile1 = fs.existsSync(file1Path);
-  const hasFile2 = fs.existsSync(file2Path);
-  const hasBooks = fs.existsSync(booksPath); // NEW
+  const hasFile = fs.existsSync(filePath);
 
-  if (!hasFile1 || !hasFile2 || !hasBooks) {
+  if (!hasFile) {
     return res.json({
       hasDefaults: false,
-      hasFile1,
-      hasFile2,
-      hasBooks,
+      hasFile
     });
   }
 
   try {
-    const file1Raw = fs.readFileSync(file1Path, "utf8");
-    const file2Raw = fs.readFileSync(file2Path, "utf8");
-    const booksRaw = fs.readFileSync(booksPath, "utf8"); // NEW
+    const fileRaw = fs.readFileSync(filePath, "utf8");
 
-    const file1 = JSON.parse(file1Raw);
-    const file2 = JSON.parse(file2Raw);
-    const books = JSON.parse(booksRaw); // NEW
+    const file = JSON.parse(fileRaw);
 
     return res.json({
       hasDefaults: true,
-      file1,
-      file2,
-      books, // NEW
+      file
     });
   } catch (err) {
     console.error("Error reading default JSON files:", err);
@@ -172,20 +134,11 @@ app.get("/api/default-files", (req, res) => {
     });
   }
 });
-// ---------- Utility functions (unchanged from your code) ----------
+
+// ---------- Utility functions ----------
 function normalizeToArray(value) {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
-}
-
-// Helper to get the world data structure (handles both with and without df_world wrapper)
-function getWorldData(file) {
-  // Try with df_world wrapper first (old format)
-  if (file?.df_world) {
-    return file.df_world;
-  }
-  // Otherwise return the file itself (new format without wrapper)
-  return file || {};
 }
 
 function parseCoords(coordString) {
@@ -207,156 +160,12 @@ function shallowMerge(a, b) {
   return Object.assign({}, a || {}, b || {});
 }
 
-function buildHistoricalFiguresMap(file1, file2) {
-  const map = {};
-  const world1 = getWorldData(file1);
-  const world2 = getWorldData(file2);
+// ---------- Core: buildWorldData from file ----------
+function buildWorldData(world) {
 
-  const hf1 = normalizeToArray(world1?.historical_figures?.historical_figure);
-  hf1.forEach((h) => {
-    if (!h || !h.id) return;
-    map[h.id] = shallowMerge(map[h.id], h);
-  });
-
-  const hf2 = normalizeToArray(world2?.historical_figures?.historical_figure);
-  hf2.forEach((h) => {
-    if (!h || !h.id) return;
-    map[h.id] = shallowMerge(map[h.id], h);
-  });
-
-  return map;
-}
-
-function buildWrittenByAuthorMap(file1, file2) {
-  const byAuthor = {};
-
-  function addFromFile(file, sourceLabel) {
-    const world = getWorldData(file);
-    const wcArray = normalizeToArray(world?.written_contents?.written_content);
-    wcArray.forEach((wc) => {
-      if (!wc) return;
-      const authorId =
-        wc.author_hfid || wc.author_hf_id || wc.author_hfid_id || null;
-
-      if (!authorId) return;
-
-      const normalized = {
-        id: wc.id,
-        title: wc.title,
-        style: wc.style ?? wc.form ?? null,
-        raw: wc,
-        source: sourceLabel,
-      };
-
-      if (!byAuthor[authorId]) byAuthor[authorId] = [];
-      byAuthor[authorId].push(normalized);
-    });
-  }
-
-  addFromFile(file1, "file1");
-  addFromFile(file2, "file2");
-
-  return byAuthor;
-}
-
-function buildBooksByAuthorMap(booksFile) {
-  const byAuthor = {};
-
-  if (!booksFile) return byAuthor;
-
-  // Adjust this path if your books JSON is shaped differently
-  const booksArr = normalizeToArray(booksFile);
-
-  // console.log("BOOKS ARRAY", booksArr);
-
-  booksArr.forEach((b) => {
-    if (!b) return;
-
-    const authorId =
-      b.author_hfid || b.author_hf_id || b.author || b.author_id || null;
-
-    if (!authorId) return;
-
-    const authorKey = String(authorId);
-
-    const normalized = {
-      id: b.id,
-      title: b.title,
-      raw: b,
-    };
-
-    if (!byAuthor[authorKey]) byAuthor[authorKey] = [];
-    byAuthor[authorKey].push(normalized);
-  });
-
-  return byAuthor;
-}
-
-function collectHistFigIdsForStructure(
-  structure,
-  histFigureById,
-  booksByAuthor
-) {
-  let tempInhabitants = [];
-  if (structure.inhabitant) {
-    if (Array.isArray(structure.inhabitant)) {
-      for (let index = 0; index < structure.inhabitant.length; index++) {
-        let figure = histFigureById[structure.inhabitant[index]];
-        figure.books = booksByAuthor[structure.inhabitant[index]];
-        tempInhabitants.push(figure);
-      }
-    } else {
-      let figure = histFigureById[structure.inhabitant];
-      figure.books = booksByAuthor[structure.inhabitant];
-      tempInhabitants.push(figure);
-
-      // if (booksByAuthor[structure.inhabitant]) {
-      //   console.log("has figure with book", figure);
-      // }
-    }
-  }
-  structure.inhabitant = tempInhabitants;
-  return;
-}
-
-// ---------- Core: buildWorldData from file1/file2 ----------
-function buildWorldData(file1, file2, booksFile) {
-  // Maps & helpers
-  const histFigureById = buildHistoricalFiguresMap(file1, file2);
-  // const writtenByAuthor = buildWrittenByAuthorMap(file1, file2);
-  const booksByAuthor = buildBooksByAuthorMap(booksFile); // NEW
-
-  // Regions
-  const world1 = getWorldData(file1);
-  const world2 = getWorldData(file2);
-
-  const regions1 = normalizeToArray(world1?.regions?.region);
-  const regions2 = normalizeToArray(world2?.regions?.region);
-
-  const region2ById = {};
-  regions2.forEach((r) => {
-    if (r && r.id) region2ById[r.id] = r;
-  });
-
-  // Underground regions
-  const ugr1 = normalizeToArray(
-    world1?.underground_regions?.underground_region
-  );
-  const ugr2 = normalizeToArray(
-    world2?.underground_regions?.underground_region
-  );
-  const ugr2ById = {};
-  ugr2.forEach((r) => {
-    if (r && r.id) ugr2ById[r.id] = r;
-  });
-
-  // Sites
-  const sites1 = normalizeToArray(world1?.sites?.site);
-  const sites2 = normalizeToArray(world2?.sites?.site);
-  const site1ById = {};
-  sites1.forEach((s) => {
-    if (s && s.id) site1ById[s.id] = s;
-  });
+  const regions = normalizeToArray(world?.regions);
+  const ugr = normalizeToArray( world?.underground_regions);
+  const sites = normalizeToArray(world?.sites);
 
   // Cells: key "x,y" -> cell object
   const cellsMap = new Map();
@@ -370,101 +179,41 @@ function buildWorldData(file1, file2, booksFile) {
         y,
         region: null,
         undergroundRegions: [],
-        sites: [],
-        historical_figures: [],
-        written_contents: [],
+        sites: []
       });
     }
     return cellsMap.get(key);
   }
 
   // 1) Regions -> create cells
-  regions1.forEach((r1) => {
-    if (!r1) return;
-    const coords = parseCoords(r1.coords);
-    const r2 = r1.id ? region2ById[r1.id] : null;
-    const mergedRegion = shallowMerge(r1, r2);
-
+  regions.forEach((r) => {
+    if (!r) return;
+    const coords = parseCoords(r.coords);
     coords.forEach(({ x, y }) => {
       const cell = getOrCreateCell(x, y);
-      cell.region = mergedRegion;
+      cell.region = r;
     });
   });
 
   // 2) Underground regions -> attach to cells
-  ugr1.forEach((ug1) => {
-    if (!ug1) return;
-    const coords = parseCoords(ug1.coords);
-    const ug2 = ug1.id ? ugr2ById[ug1.id] : null;
-    const merged = shallowMerge(ug1, ug2);
-
+  ugr.forEach((ug) => {
+    if (!ug) return;
+    const coords = parseCoords(ug.coords);
     coords.forEach(({ x, y }) => {
       const cell = getOrCreateCell(x, y);
-      cell.undergroundRegions.push(merged);
+      cell.undergroundRegions.push(ug);
     });
   });
 
-  // 3) Sites from file2, attach to cells, then hist figs + written contents
-  sites2.forEach((s2) => {
-    if (!s2 || !s2.coords) return;
-    const coords = parseCoords(s2.coords);
-    if (!coords.length) return;
+  // 3) push sites to cell
+  sites.forEach((s) => {
+    if (!s || !s.coords) return;
+    const coords = parseCoords(s.coords);
+    if (!coords.length) return; // esben you js brained motherfucker thats the kind of boolean logic we like to see
+    
     const { x, y } = coords[0];
-
     const cell = getOrCreateCell(x, y);
-    const s1 = s2.id ? site1ById[s2.id] : null;
-
-    // --- NEW: merge structures from s1 and s2 ---
-    const s1Structs = normalizeToArray(s1?.structures?.structure);
-    const s2Structs = normalizeToArray(s2?.structures?.structure);
-
-    // index file2 structures by id
-    const s2StructById = {};
-    s2Structs.forEach((st) => {
-      if (st && st.id != null) {
-        s2StructById[st.id] = st;
-      }
-    });
-
-    const mergedStructures = [];
-
-    // merge s1 + s2 structures that share the same id
-    s1Structs.forEach((st1) => {
-      if (!st1) return;
-      const st2 = st1.id != null ? s2StructById[st1.id] : null;
-      const mergedStruct = shallowMerge(st1, st2);
-      mergedStructures.push(mergedStruct);
-
-      // we've consumed this one from file2
-      if (st1.id != null) {
-        delete s2StructById[st1.id];
-      }
-    });
-
-    // any structures that exist only in file2
-    Object.values(s2StructById).forEach((st2) => {
-      if (st2) mergedStructures.push(st2);
-    });
-
-    const mergedSite = {
-      id: s2.id,
-      coords: { x, y },
-      fromFile1: s1 || null,
-      fromFile2: s2 || null,
-      structures: mergedStructures.length ? mergedStructures : null,
-      inhabitants: [],
-      historical_figures: [],
-      written_contents: [],
-    };
-
-    // now call collectHistFigIdsForStructure on the *merged* structures
-    if (mergedSite.structures) {
-      mergedSite.structures.forEach((struct) => {
-        collectHistFigIdsForStructure(struct, histFigureById, booksByAuthor);
-      });
-    }
-
-    cell.sites.push(mergedSite);
+    cell.sites.push(s);
   });
 
   // 4) Sort cells
@@ -496,13 +245,13 @@ function buildWorldData(file1, file2, booksFile) {
 // ---------- NEW: GET / -> worldData from default files ----------
 app.get("/", async (req, res) => {
   try {
-    const { file1, file2, books } = await loadDefaultFiles();
-    const worldData = buildWorldData(file1, file2, books);
+    const file = await loadDefaultFiles();
+    const worldData = buildWorldData(file);
 
     const firstCellWithBooks = worldData.cells.find((cell) =>
       cell.sites?.some((site) =>
         site.structures?.some((struct) =>
-          struct.inhabitant?.some((inh) => {
+          struct.historical_figures?.some((inh) => {
             const hasBooks = Array.isArray(inh.books) && inh.books.length > 0;
             if (hasBooks) {
               console.log("has inhabitant with book", inh);
@@ -514,7 +263,7 @@ app.get("/", async (req, res) => {
     );
 
     console.log("firstCellWithBooks", firstCellWithBooks);
-    res.json({ cell: firstCellWithBooks });
+    res.json(worldData);
 
     // console.log("FILTERED WORLD DATA", filtered);
     // res.json({ worldData });
@@ -532,29 +281,24 @@ app.get("/", async (req, res) => {
 // ---------- Existing POST /api/world-data (uses default files or body) ----------
 app.post("/api/world-data", async (req, res) => {
   try {
-    let file1, file2, books;
+    let file;
 
     // If body has files, use them; otherwise use default files
-    if (req.body && req.body.file1 && req.body.file2) {
-      file1 = req.body.file1;
-      file2 = req.body.file2;
-      books = req.body.books || null;
+    if (req.body && req.body.file) {
+      file = req.body.file;
     } else {
       // Use default files from /public directory
-      const defaultFiles = await loadDefaultFiles();
-      file1 = defaultFiles.file1;
-      file2 = defaultFiles.file2;
-      books = defaultFiles.books;
+      file = await loadDefaultFiles();
     }
 
-    if (!file1 || !file2) {
+    if (!file) {
       return res.status(400).json({
         error:
-          "Both file1 and file2 JSON must be provided. Either include them in the request body or place default files in the /public directory.",
+          "JSON file must be provided. Either include it in the request body or place default files in the /public directory.",
       });
     }
 
-    const worldData = buildWorldData(file1, file2, books);
+    const worldData = buildWorldData(file);
 
     res.json({ worldData });
     // console.log("WORLD DATA (from request body)", worldData);
