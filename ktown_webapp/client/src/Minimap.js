@@ -1,11 +1,18 @@
 // Minimap component - shows simplified view of entire map with viewport indicator
-import React, { useEffect, useRef } from 'react';
-import * as d3 from 'd3';
+import React, { useEffect, useRef } from "react";
+import * as d3 from "d3";
 
 const MINIMAP_SIZE = 200; // Size of minimap in pixels (square)
 const MINIMAP_CELL_SIZE = 2; // Size of each cell in minimap (much smaller)
 
-const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMinimapClick }) => {
+const Minimap = ({
+  worldData,
+  mainTransform,
+  mainViewBox,
+  xScale,
+  yScale,
+  onMinimapClick,
+}) => {
   const minimapRef = useRef(null);
   const svgRef = useRef(null);
 
@@ -19,14 +26,16 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
     svg.selectAll("*").remove();
 
     // Get all cells (filter ocean)
-    const cells = worldData.cells.filter(c => c && c.region?.type !== "Ocean");
+    const cells = worldData.cells.filter(
+      (c) => c && c.region?.type !== "Ocean"
+    );
     if (cells.length === 0) return;
 
     // Calculate map bounds
-    const minX = d3.min(cells, d => xScale(d.y)) ?? 0;
-    const maxX = d3.max(cells, d => xScale(d.y + 1)) ?? 0;
-    const minY = d3.min(cells, d => yScale(d.x)) ?? 0;
-    const maxY = d3.max(cells, d => yScale(d.x + 1)) ?? 0;
+    const minX = d3.min(cells, (d) => xScale(d.y)) ?? 0;
+    const maxX = d3.max(cells, (d) => xScale(d.y + 1)) ?? 0;
+    const minY = d3.min(cells, (d) => yScale(d.x)) ?? 0;
+    const maxY = d3.max(cells, (d) => yScale(d.x + 1)) ?? 0;
 
     const mapWidth = maxX - minX;
     const mapHeight = maxY - minY;
@@ -47,11 +56,12 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
     }
 
     // Create minimap group
-    const g = svg.append("g")
+    const g = svg
+      .append("g")
       .attr("transform", `translate(${offsetX}, ${offsetY}) scale(${scale})`);
 
     // Render simplified cells (just colors, no textures)
-    cells.forEach(cell => {
+    cells.forEach((cell) => {
       if (!cell.region?.type || cell.region?.type === "Ocean") return;
 
       const x = xScale(cell.y) - minX;
@@ -59,17 +69,17 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
 
       // Simple color based on region type
       const regionColors = {
-        "Grassland": "#dce096",
-        "Wetland": "#c8dc9f",
-        "Desert": "#faf0b4",
-        "Forest": "#b4d282",
-        "Mountains": "#dcdcbe",
-        "Hills": "#d2dc9f",
-        "Tundra": "#dce6c3",
-        "Lake": "#d2e6be",
+        Grassland: "orange",
+        Wetland: "#c8dc9f",
+        Desert: "#faf0b4",
+        Forest: "grey",
+        Mountains: "lightgray",
+        Hills: "#d2dc9f",
+        Tundra: "#dce6c3",
+        Lake: "#d2e6be",
       };
 
-      const color = regionColors[cell.region?.type] || "#f0f0f0";
+      const color = regionColors[cell.region?.type] || " var(--label-color)";
 
       g.append("rect")
         .attr("x", x)
@@ -84,8 +94,16 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
     svgRef.current = { scale, offsetX, offsetY, minX, minY };
 
     // Update viewport indicator
-    updateViewportIndicator(svg, mainTransform, mainViewBox, scale, offsetX, offsetY, minX, minY);
-
+    updateViewportIndicator(
+      svg,
+      mainTransform,
+      mainViewBox,
+      scale,
+      offsetX,
+      offsetY,
+      minX,
+      minY
+    );
   }, [worldData, xScale, yScale]);
 
   // Update viewport indicator when main transform changes
@@ -95,10 +113,28 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
     const svg = d3.select(minimapRef.current);
     const { scale, offsetX, offsetY, minX, minY } = svgRef.current;
 
-    updateViewportIndicator(svg, mainTransform, mainViewBox, scale, offsetX, offsetY, minX, minY);
+    updateViewportIndicator(
+      svg,
+      mainTransform,
+      mainViewBox,
+      scale,
+      offsetX,
+      offsetY,
+      minX,
+      minY
+    );
   }, [mainTransform, mainViewBox]);
 
-  const updateViewportIndicator = (svg, transform, viewBox, scale, offsetX, offsetY, minX, minY) => {
+  const updateViewportIndicator = (
+    svg,
+    transform,
+    viewBox,
+    scale,
+    offsetX,
+    offsetY,
+    minX,
+    minY
+  ) => {
     if (!transform || !viewBox) return;
 
     const { x, y, k } = transform;
@@ -121,14 +157,15 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
     svg.select(".viewport-indicator").remove();
 
     // Draw viewport indicator (white rectangle with border)
-    svg.append("rect")
+    svg
+      .append("rect")
       .attr("class", "viewport-indicator")
       .attr("x", minimapLeft)
       .attr("y", minimapTop)
       .attr("width", minimapWidth)
       .attr("height", minimapHeight)
       .attr("fill", "rgba(255, 255, 255, 0.2)")
-      .attr("stroke", "white")
+      .attr("stroke", "var(--label-color)")
       .attr("stroke-width", 2)
       .style("pointer-events", "none");
   };
@@ -152,15 +189,15 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
   return (
     <div
       style={{
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
+        position: "absolute",
+        top: "10px",
+        right: "10px",
         width: `${MINIMAP_SIZE}px`,
         height: `${MINIMAP_SIZE}px`,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        border: '2px solid white',
-        borderRadius: '4px',
-        cursor: 'pointer',
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        border: "1px solid var(--label-color)",
+        borderRadius: "4px",
+        cursor: "pointer",
         zIndex: 1000,
       }}
       onClick={handleMinimapClick}
@@ -169,11 +206,10 @@ const Minimap = ({ worldData, mainTransform, mainViewBox, xScale, yScale, onMini
         ref={minimapRef}
         width={MINIMAP_SIZE}
         height={MINIMAP_SIZE}
-        style={{ display: 'block' }}
+        style={{ display: "block" }}
       />
     </div>
   );
 };
 
 export default Minimap;
-

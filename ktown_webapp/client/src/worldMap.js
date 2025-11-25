@@ -187,10 +187,6 @@ const getInhabitantBooks = (hf) => {
     hf.written_content ||
     hf.book_list;
 
-  if (raw) {
-    console.log("has books", raw);
-  }
-
   return normalizeToArray(raw);
 };
 
@@ -920,14 +916,15 @@ function WorldMap({
       }
       case "undergroundRegion": {
         const ug = d.childData;
-        return ug?.name || "Cavern";
+        return ug?.type || "Cavern";
       }
       case "region":
         return originalCell.region?.name || "Region";
       default:
         // Fallback: show kind or coords
-        if (childType) return childType;
-        return `(${originalCell.x}, ${originalCell.y})`;
+        // if (childType) return childType;
+        // return `(${originalCell.x}, ${originalCell.y})`;
+        return "";
     }
   };
   const wrapCellLabel = (
@@ -939,7 +936,7 @@ function WorldMap({
     cellHeight,
     fontSizeWorld
   ) => {
-    const padding = 2; // inner padding
+    const padding = (cellWidth / 100) * 1; // inner padding
     const maxLineWidth = Math.max(1, cellWidth - padding * 2);
 
     // Approximate char width in world units
@@ -1014,8 +1011,6 @@ function WorldMap({
     yScale,
     level = 0
   ) => {
-    const zoom = currentZoomRef.current || 1;
-
     const cellX =
       level === 0 ? xScale(cell.y) : parentBbox.x + (cell.bbox?.x || 0);
     const cellY =
@@ -1283,11 +1278,15 @@ function WorldMap({
         rect.style("opacity", 1);
 
         // Optional: add subtle stroke for cells with children
-        const hasVisibleChildren = d.children && d.children.length > 0;
-        if (hasVisibleChildren) {
-          rect.style("stroke", "blue").style("stroke-width", 0.1);
+        const labelText = getCellLabel(d, level);
+        const isDefaultLabel = !labelText; // default case returns ""
+
+        if (!isDefaultLabel) {
+          rect
+            .style("stroke", "var(--label-color)")
+            .style("stroke-width", 0.05);
         } else {
-          rect.style("stroke", "black").style("stroke-width", 0);
+          rect.style("stroke", "none").style("stroke-width", 0);
         }
       });
 
@@ -1427,7 +1426,6 @@ function WorldMap({
             region: originalCell.region,
           };
         } else if (d.childType === "figure" || d.childType === "cellFigure") {
-          console.log("has figure on click", d);
           const hf = d.childData[0] || d.childData;
           const hfName = hf.name || hf.id || "Unknown figure";
 
@@ -1481,8 +1479,6 @@ function WorldMap({
           };
         }
       }
-
-      console.log("Composed entity:", composed); // Debug log
 
       if (composed) {
         // Call onEntityClick to show info in popup
@@ -1798,8 +1794,6 @@ function WorldMap({
               inhabitants.forEach((inh) => {
                 const hfBooks = getInhabitantBooks(inh);
                 if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
-                  console.log("RENDERS A BOOK INTO THE MAP", hfBooks);
-
                   const wcLevel = HIERARCHY_LEVELS.find(
                     (l) => l.name === "writtenContent"
                   );
@@ -1841,8 +1835,6 @@ function WorldMap({
             inhabitants.forEach((inh) => {
               const hfBooks = getInhabitantBooks(inh);
               if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
-                console.log("RENDERS A BOOK INTO THE MAP", hfBooks);
-
                 const wcLevel = HIERARCHY_LEVELS.find(
                   (l) => l.name === "writtenContent"
                 );
@@ -1867,12 +1859,6 @@ function WorldMap({
           // ---------- HIERARCHY: FIGURE → BOOKS / WRITTEN CONTENT ----------
           const hfBooks = getInhabitantBooks(s);
 
-          console.log(
-            "HAS BOOKS IN SITE",
-            hfBooks,
-            isLevelVisible("writtenContent")
-          );
-
           if (hfBooks.length > 0 && isLevelVisible("writtenContent")) {
             const wcLevel = HIERARCHY_LEVELS.find(
               (l) => l.name === "writtenContent"
@@ -1888,8 +1874,6 @@ function WorldMap({
             );
             hfBooks.slice(0, visibleWcCount).forEach((wc) => {
               allChildData.push({ kind: "writtenContent", data: wc });
-
-              console.log("PUSHES BOOK  TO RENDER FROM SITE", wc);
             });
           }
         }
@@ -2434,6 +2418,8 @@ function WorldMap({
 
     let didZoom = false;
 
+    console.log(selectedEntity, cellCoords, cellRects);
+
     cellRects.each(function (d) {
       const rect = d3.select(this);
 
@@ -2445,6 +2431,8 @@ function WorldMap({
       if (selectedEntity.kind === "cell" && cellCoords) {
         if (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y) {
           isSelected = true;
+
+          console.log("should move to cell", cellCoords);
         }
       } else if (selectedId && selectedKind) {
         // 2) Child selection – match by kind + id + base cell

@@ -73,7 +73,7 @@ function FigureDetailView({
         <>
           <p className="cat_headline">connections</p>
           <div className="flex-column subFigures">
-            {normalizeToArray(figure.hf_link).length > 0 &&
+            {normalizeToArray(figure.hf_link).length > 0 ? (
               normalizeToArray(figure.hf_link).map((s, i) => (
                 <React.Fragment key={i}>
                   {figures[s.hfid] ? (
@@ -100,9 +100,43 @@ function FigureDetailView({
                         createSelectedEntity={createSelectedEntity}
                       />
                     </button>
+                  ) : (
+                    <p>hej {s.hfid}</p>
+                  )}
+                </React.Fragment>
+              ))
+            ) : (
+              <>
+                <p>hej {figure.hf_link.hfid}</p>
+                <React.Fragment>
+                  {figures[figure.hf_link.hfid] ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const entity = createSelectedEntity(
+                          "figure",
+                          figures[figure.hf_link.hfid]
+                        );
+                        const x = e.clientX || window.innerWidth / 2;
+                        const y = e.clientY || window.innerHeight / 2;
+                        handleEntityClick(entity, { clientX: x, clientY: y });
+                      }}
+                      className={s.link_type + " subFigure"}
+                    >
+                      <p>{s.link_type}</p>
+                      <FigureDetailView
+                        figure={figures[figure.hf_link.hfid]}
+                        isTopLevel={false}
+                        figures={figures}
+                        books={books}
+                        handleEntityClick={handleEntityClick}
+                        createSelectedEntity={createSelectedEntity}
+                      />
+                    </button>
                   ) : null}
                 </React.Fragment>
-              ))}
+              </>
+            )}
           </div>
         </>
       )}

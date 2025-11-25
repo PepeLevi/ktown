@@ -6,12 +6,24 @@ import RichBookContent from "./RichBookContent";
 import CellPopup from "./CellPopup";
 
 function createSelectedEntity(kind, payload) {
-  return {
+  const base = {
     kind,
-    [kind]: payload,
+    [kind]: payload, // e.g. entity.cell = payload when kind === "cell"
     id: payload?.id ?? null,
     name: payload?.name ?? null,
   };
+
+  if (kind === "cell") {
+    const x = payload?.x ?? payload?.cellCoords?.x;
+    const y = payload?.y ?? payload?.cellCoords?.y;
+
+    return {
+      ...base,
+      cellCoords: x != null && y != null ? { x, y } : null,
+    };
+  }
+
+  return base;
 }
 
 function App() {
@@ -23,9 +35,113 @@ function App() {
   const [books, setBooks] = useState([]);
   const [level, setLevel] = React.useState(5);
 
+  const [bookCells, setBookCells] = useState([]);
+  const [currentBookCellIndex, setCurrentBookCellIndex] = useState(-1);
+
   // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
 
+  // const fetchWorldData = async () => {
+  //   try {
+  //     setStatus("Requesting world data from server...");
+
+  //     const res = await fetch(`${backendUrl}/api/world-data`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //     });
+
+  //     if (!res.ok) {
+  //       const err = await res.json().catch(() => ({}));
+  //       throw new Error(err.error || "Request failed");
+  //     }
+
+  //     const data = await res.json();
+
+  //     // Support both { worldData: {...} } and direct worldData payloads
+  //     const wd = data.worldData || data;
+
+  //     if (!wd || !wd.cells) {
+  //       throw new Error("Invalid worldData format from server");
+  //     }
+
+  //     setWorldData(wd);
+
+  //     // Build figures and books as objects indexed by ID (for links like figures[s.hfid])
+  //     let temp_figures = {};
+  //     let temp_books = {};
+  //     wd.cells.forEach((cell) => {
+  //       // console.log("looks at cell directly from json", cell);
+
+  //       if (cell.sites && cell.sites.length > 0) {
+  //         for (let si = 0; si < cell.sites.length; si++) {
+  //           const site = cell.sites[si];
+
+  //           if (site.books) {
+  //             for (let sbi = 0; sbi < site.books.length; sbi++) {
+  //               const book = site.books[sbi];
+  //               if (book && book.id) {
+  //                 temp_books[book.id] = book;
+  //               }
+  //             }
+  //           }
+
+  //           if (site.historical_figures) {
+  //             for (let hfi = 0; hfi < site.historical_figures.length; hfi++) {
+  //               const hf = site.historical_figures[hfi];
+  //               if (hf && hf.id) {
+  //                 temp_figures[hf.id] = hf;
+  //               }
+  //             }
+  //           }
+  //           if (site.structures) {
+  //             const structures = Array.isArray(site.structures)
+  //               ? site.structures
+  //               : [site.structures];
+  //             for (let sti = 0; sti < structures.length; sti++) {
+  //               const structure = structures[sti];
+  //               const inhabitants = normalizeToArray(
+  //                 structure.historical_figures || structure.inhabitants
+  //               );
+
+  //               if (inhabitants.length > 0) {
+  //                 for (let ii = 0; ii < inhabitants.length; ii++) {
+  //                   const figure = inhabitants[ii];
+
+  //                   if (figure && figure.id) {
+  //                     temp_figures[figure.id] = figure;
+
+  //                     if (figure.books) {
+  //                       // console.log("has figure with book", figure);
+
+  //                       const books = normalizeToArray(figure.books);
+  //                       for (let bi = 0; bi < books.length; bi++) {
+  //                         const book = books[bi];
+  //                         if (book && book.id) {
+  //                           temp_books[book.id] = book;
+  //                         }
+  //                       }
+  //                     }
+  //                   }
+  //                 }
+  //               }
+  //             }
+  //           }
+  //         }
+  //       }
+  //     });
+
+  //     setFigures(temp_figures);
+  //     setBooks(temp_books);
+
+  //     setSelectedCell(null);
+  //     setSelectedEntity(null);
+  //     setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
+  //   } catch (err) {
+  //     console.error(err);
+  //     setStatus("Error loading world data.");
+  //     alert("Error: " + err.message);
+  //   }
+  // };
   const fetchWorldData = async () => {
     try {
       setStatus("Requesting world data from server...");
@@ -41,8 +157,6 @@ function App() {
       }
 
       const data = await res.json();
-
-      // Support both { worldData: {...} } and direct worldData payloads
       const wd = data.worldData || data;
 
       if (!wd || !wd.cells) {
@@ -51,11 +165,12 @@ function App() {
 
       setWorldData(wd);
 
-      // Build figures and books as objects indexed by ID (for links like figures[s.hfid])
       let temp_figures = {};
       let temp_books = {};
+      let temp_bookCells = []; // NEW
+
       wd.cells.forEach((cell) => {
-        // console.log("looks at cell directly from json", cell);
+        let cellHasBooks = false; // NEW
 
         if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
@@ -64,8 +179,10 @@ function App() {
             if (site.books) {
               for (let sbi = 0; sbi < site.books.length; sbi++) {
                 const book = site.books[sbi];
-                if (book && book.id) {
-                  temp_books[book.id] = book;
+
+                if (book && book.author_hfid) {
+                  temp_books[book.author_hfid] = book;
+                  cellHasBooks = true; // NEW
                 }
               }
             }
@@ -75,9 +192,22 @@ function App() {
                 const hf = site.historical_figures[hfi];
                 if (hf && hf.id) {
                   temp_figures[hf.id] = hf;
+
+                  // historical figure may have books
+                  if (hf.books) {
+                    const hfBooks = normalizeToArray(hf.books);
+                    for (let bi = 0; bi < hfBooks.length; bi++) {
+                      const book = hfBooks[bi];
+                      if (book && book.author_hfid) {
+                        temp_books[book.author_hfid] = book;
+                        cellHasBooks = true; // NEW
+                      }
+                    }
+                  }
                 }
               }
             }
+
             if (site.structures) {
               const structures = Array.isArray(site.structures)
                 ? site.structures
@@ -96,13 +226,12 @@ function App() {
                       temp_figures[figure.id] = figure;
 
                       if (figure.books) {
-                        // console.log("has figure with book", figure);
-
                         const books = normalizeToArray(figure.books);
                         for (let bi = 0; bi < books.length; bi++) {
                           const book = books[bi];
-                          if (book && book.id) {
-                            temp_books[book.id] = book;
+                          if (book && book.author_hfid) {
+                            temp_books[book.author_hfid] = book;
+                            cellHasBooks = true; // NEW
                           }
                         }
                       }
@@ -113,10 +242,19 @@ function App() {
             }
           }
         }
+
+        // If this cell has any books (via site/figure/structure), store it:
+        if (cellHasBooks) {
+          console.log("HAS CELL WITH BOOKS", cell);
+
+          temp_bookCells.push(cell);
+        }
       });
 
       setFigures(temp_figures);
       setBooks(temp_books);
+      setBookCells(temp_bookCells); // NEW
+      setCurrentBookCellIndex(-1); // NEW
 
       setSelectedCell(null);
       setSelectedEntity(null);
@@ -132,6 +270,22 @@ function App() {
     fetchWorldData();
     // backendUrl is constant, so no need to add it to deps
   }, []);
+
+  const goToNextBookCell = () => {
+    if (!bookCells.length) return;
+
+    setCurrentBookCellIndex((prev) => {
+      const nextIndex = (prev + 1 + bookCells.length) % bookCells.length;
+      const nextCell = bookCells[nextIndex];
+
+      const entity = createSelectedEntity("cell", nextCell);
+
+      // Programmatic select just like a click
+      handleEntityClick(entity); // second arg can be undefined
+
+      return nextIndex;
+    });
+  };
 
   const [popupData, setPopupData] = useState(null);
 
@@ -165,7 +319,7 @@ function App() {
       setLevel(3);
     }
     if (entity.kind === "figure") {
-      setLevel(1);
+      setLevel(0);
     }
     if (entity.kind === "book") {
       setLevel(0);
@@ -208,6 +362,12 @@ function App() {
             handleEntityClick={handleEntityClick}
             createSelectedEntity={createSelectedEntity}
           />
+        )}
+
+        {bookCells.length > 0 && (
+          <button className="book-tour-button" onClick={goToNextBookCell}>
+            Next book cell
+          </button>
         )}
       </main>
     </div>

@@ -1,7 +1,7 @@
 :root {
-  --primary-bg-color: #020617;
-  --primary-color: #39ff14;
-  --label-color: white;
+  --primary-bg-color: grey;
+  --primary-color: #ffcc01;
+  --label-color: #ffcc01;
   --regPad: 0.2px;
 }
 
@@ -303,4 +303,23 @@ rect.cell-type-ocean {
 
 .hover {
   mix-blend-mode: difference;
+}
+
+.book-tour-button {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 999;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  backdrop-filter: blur(6px);
+}
+
+.book-tour-button:hover {
+  background: rgba(0, 0, 0, 0.9);
 }
