@@ -180,7 +180,7 @@ found_author_links = 0
 
 print("total books: ", len(json_books['data']))
 
-for bookkey, book in json_books['data'].items():
+for book in json_books['data']:
     assigned_book = False
 
     # first try to locate by artifact because its the most true (ie the physical object of the book)
@@ -226,6 +226,21 @@ print("total found artifacts ", found_artifacts)
 print("artifact links ", found_artifact_links)
 print("holder links", found_holder_links)
 print("author links", found_author_links)
+
+def translate_event_to_string(event):
+    # GADEA STRING FILLING TREE GOES HERE
+
+    for (key, value) in event.items():
+        string += str(key) + str(value)
+        return string
+
+historical_events = []
+#start adding historical events to shit
+# my proposal: -save them in an array as a single string with hyperlinks -give sites/figures a list of historical_event ids
+for event in json_legends.get('df_world').get('historical_events').get('historical_event'):
+    historical_events.append(translate_event_to_string(event))
+    # for related_objects:
+    #     add_event_link_to_object(event['id'])
 
 if not os.path.exists(JSON_PATH):
     os.mkdir(JSON_PATH)
