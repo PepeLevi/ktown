@@ -1284,6 +1284,7 @@ function WorldMap({
         const isDefaultLabel = !labelText; // default case returns ""
         const zoom = currentZoomRef.current || 1;
         const strokeWidth = 2 / Math.sqrt(zoom * 100);
+
         if (!isDefaultLabel) {
           rect
             .style("stroke", "var(--label-color)")

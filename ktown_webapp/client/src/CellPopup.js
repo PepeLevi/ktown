@@ -184,14 +184,27 @@ function BookDetailView({
       {figures[book.author_hfid] && isTopLevel && (
         <>
           <div className="flex-row-full"></div>
-          <FigureDetailView
-            figure={figures[book.author_hfid]}
-            isTopLevel={false}
-            figures={figures}
-            books={books}
-            handleEntityClick={handleEntityClick}
-            createSelectedEntity={createSelectedEntity}
-          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const entity = createSelectedEntity(
+                "figure",
+                figures[book.author_hfid]
+              );
+              const x = e.clientX || window.innerWidth / 2;
+              const y = e.clientY || window.innerHeight / 2;
+              handleEntityClick(entity, { clientX: x, clientY: y });
+            }}
+          >
+            <FigureDetailView
+              figure={figures[book.author_hfid]}
+              isTopLevel={false}
+              figures={figures}
+              books={books}
+              handleEntityClick={handleEntityClick}
+              createSelectedEntity={createSelectedEntity}
+            />
+          </button>
         </>
       )}
     </div>
@@ -204,6 +217,7 @@ function StructureDetailView({
   books,
   figures,
   createSelectedEntity,
+  isTopLevel,
 }) {
   // Normalize inhabitant to array (can be single object or array)
   const inhabitants = normalizeToArray(
