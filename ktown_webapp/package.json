@@ -1,0 +1,35 @@
+{
+  "name": "worlddata-map-viewer",
+  "version": "1.0.0",
+  "description": "Express server + React+D3 map for worldData",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --max-old-space-size=8192 server.js",
+    "server": "nodemon --exec \"node --max-old-space-size=8192\" server.js",
+    "client": "npm start --prefix client",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build": "npm run build --prefix client"
+  },
+  "keywords": [
+    "express",
+    "react",
+    "d3",
+    "map",
+    "visualization",
+    "worlddata",
+    "dwarf-fortress"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "canvas": "^3.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "stream-chain": "^3.4.0",
+    "stream-json": "^1.9.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.11"
+  }
+}

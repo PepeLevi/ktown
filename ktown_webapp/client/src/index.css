@@ -1,0 +1,300 @@
+:root {
+  --primary-bg-color: #020617;
+  --primary-color: #39ff14;
+  --regPad: 0.2px;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--primary-bg-color);
+  color: var(--primary-color);
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+p {
+  margin: 0;
+  color: var(--primary-color);
+}
+.app-header {
+  padding: var(--regPad);
+  left: 0;
+  right: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--primary-color);
+  z-index: 9999;
+  display: flex;
+  flex-direction: row-reverse;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.app-header p {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+}
+
+.controls {
+  border-bottom: 1px solid var(--primary-color);
+}
+
+.file-inputs {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 0.85rem;
+}
+
+.layout {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+.map-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  background-color: var(--primary-color);
+}
+
+.map-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.map-wrapper svg {
+  width: 100%;
+  height: calc(100% - 0px);
+  background: #020617;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid #020617;
+}
+
+.swatch-sites-region {
+  background: #10b981;
+}
+
+.swatch-sites {
+  background: #22c55e;
+}
+
+.swatch-region {
+  background: #64748b;
+}
+
+.swatch-empty {
+  background: #1f2933;
+}
+
+.details-panel .placeholder,
+.map-panel .placeholder {
+  padding: 0.75rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+.details-content {
+  flex: 1;
+  padding: 0.75rem 0.9rem;
+  overflow: auto;
+  font-size: 0.85rem;
+  height: 100%;
+}
+
+.details-content pre {
+  border-radius: 6px;
+  border: 1px solid #111827;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+}
+
+/* experiement with blend modes on map objects */
+/* .site-marker {
+  mix-blend-mode: screen;
+}
+.figure-marker {
+  mix-blend-mode: difference;
+}
+.cell {
+  mix-blend-mode: color-dodge;
+} */
+
+.texture-previews {
+  width: 100px;
+  height: 100px;
+  position: relative;
+}
+
+.texture-previews img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: exclusion;
+}
+
+.flex-row-full {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--primary-color);
+}
+
+.flex-row-full p {
+  max-width: 80%;
+}
+
+.specs {
+  margin-top: 10px;
+}
+
+.enemy p {
+  color: red !important;
+}
+
+.subFigures {
+  margin: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 3 columns */
+  gap: 1rem; /* space between children */
+}
+
+.subFigure {
+  border: 1px solid var(--primary-color);
+}
+
+button {
+  margin-top: 5px;
+  border: 1px solid var(--primary-color);
+  background-color: rgba(0, 0, 0, 0);
+  color: var(--primary-color);
+  width: 100%;
+  border-radius: 6px;
+  text-align: left;
+}
+
+button p {
+  color: var(--primary-color);
+}
+
+button:hover {
+  background-color: var(--primary-color);
+  color: var(--primary-bg-color);
+}
+
+button:hover p {
+  color: var(--primary-bg-color);
+}
+
+.progressBar {
+  position: fixed;
+  left: 0;
+  margin: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 999999;
+}
+
+.cat_headline {
+  margin-top: 50px;
+  border-top: 2px solid var(--primary-color);
+}
+
+button:hover .cat_headline {
+  margin-top: 50px;
+  border-top: 2px solid var(--primary-bg-color);
+}
+
+g.hover {
+  border: 2px solid blue;
+  background-color: green;
+}
+
+rect.cell-type-region {
+  fill: green;
+}
+
+rect.cell-type-site {
+  fill: blue;
+  /* mix-blend-mode: difference; */
+}
+
+rect.cell-type-structure {
+  fill: #ec4899;
+  /* mix-blend-mode: screen; */
+}
+
+rect.cell-type-figure {
+  fill: red;
+  /* mix-blend-mode: difference; */
+}
+
+rect.cell-type-writtenContent {
+  fill: #f97316;
+  /* mix-blend-mode: screen; */
+}
+
+rect.cell-type-undergroundRegion {
+  fill: brown;
+  /* mix-blend-mode: screen; */
+}
+
+rect.cell-type-ocean {
+  stroke: #0f172a;
+  opacity: 0;
+}
+
+.cell-label {
+  color: var(--primary-color);
+  fill: var(--primary-color);
+}
