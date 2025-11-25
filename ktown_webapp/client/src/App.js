@@ -354,19 +354,6 @@ function App() {
 
   return (
     <div className="app">
-      {shouldShowLoader && (
-        <div className="loader">
-          {hasLoaded && (
-            <button
-              onClick={() => {
-                setShouldShowLoader(false);
-              }}
-            >
-              explore
-            </button>
-          )}
-        </div>
-      )}
       <div className="progressBar">
         <JourneyVerticalProgress level={level} />
       </div>
@@ -403,6 +390,20 @@ function App() {
           </button>
         )}
       </main>
+
+      {shouldShowLoader && (
+        <div className="loader">
+          {hasLoaded && (
+            <button
+              onClick={() => {
+                setShouldShowLoader(false);
+              }}
+            >
+              explore
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

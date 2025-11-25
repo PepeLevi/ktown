@@ -212,17 +212,19 @@ function StructureDetailView({
 
   return (
     <div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          const entity = createSelectedEntity("structure", structure);
-          const x = e.clientX || window.innerWidth / 2;
-          const y = e.clientY || window.innerHeight / 2;
-          handleEntityClick(entity, { clientX: x, clientY: y });
-        }}
-      >
-        {structure.name}
-      </button>
+      {!isTopLevel && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            const entity = createSelectedEntity("structure", structure);
+            const x = e.clientX || window.innerWidth / 2;
+            const y = e.clientY || window.innerHeight / 2;
+            handleEntityClick(entity, { clientX: x, clientY: y });
+          }}
+        >
+          {structure.name}
+        </button>
+      )}
 
       {inhabitants.length > 0 && (
         <>
