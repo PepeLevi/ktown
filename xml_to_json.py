@@ -172,7 +172,6 @@ print("figures assigned by inhabitant: ", assigned_hf_1)
 print("figures assigned by site-link: ", assigned_hf_2)
 print("figures assigned by entity: ", assigned_hf_3)
 
-
 found_artifacts = 0
 found_holder_links = 0
 found_artifact_links = 0
@@ -180,7 +179,7 @@ found_author_links = 0
 
 print("total books: ", len(json_books['data']))
 
-for book in json_books['data']:
+for bookkey, book in json_books['data'].items():
     assigned_book = False
 
     # first try to locate by artifact because its the most true (ie the physical object of the book)
@@ -232,26 +231,66 @@ def translate_event_to_string(event):
     # GADEA STRING FILLING TREE GOES HERE
 
 
-
     # DAVID generic default return code
     if 'event_string' not in return_value:
         string = ""
         for (key, value) in event.items():
-            string += str(key) + ":" + str(value) + ", "
+            if key == "hfid":
+                string += '<a href="historical_figure_id/' + str(value) + '">hf hyperlink</a>'
+            else:
+                string += str(key) + ":" + str(value) + ", "
         return_value['event_string'] = string
 
-    return_value['hf_links'] = event.items()
-    return_value['site_links'] = event
+    if 'hf_links' not in return_value:
+        return_value['hf_links'] = list(filter(
+            lambda p: 'hfid' in p[0],
+            event.items())
+        )
+        
+    if 'site_links' not in return_value:
+        return_value['site_links'] = list(filter(
+            lambda p: 'site_id' in p[0],
+            event.items())
+        )
+    
     return return_value
 
-historical_events = []
-#start adding historical events to shit
+print("doing historical events now")
+event_counter = 0
+queen_json["historical_events"] = []
+# start adding historical events to shit
 # my proposal: -save them in an array as a single string with hyperlinks -give sites/figures a list of historical_event ids
 for event in json_legends.get('df_world').get('historical_events').get('historical_event'):
-    historical_events.append(translate_event_to_string(event))
-    # for related_objects:
-    #     add_event_link_to_object(event['id'])
+    if event_counter%1000 == 0:
+        print(event_counter, " historical events processed")
+    event_counter += 1
+    event_data = translate_event_to_string(event)
+    event_entry = {}
+    event_entry['id'] = event['id']
+    event_entry['string'] = event_data['event_string']
+    queen_json["historical_events"].append(event_entry)
 
+    for k, hf_id in event_data['hf_links']:
+        if isinstance(hf_id, list):
+            for id in hf_id:
+                hf = get_hf_by_id(id)
+                if not hf: continue
+                if 'historical_events' not in hf:
+                    hf['historical_events'] = []
+                hf['historical_events'].append(event['id'])
+            continue
+
+        hf = get_hf_by_id(hf_id)
+        if not hf: continue
+        if 'historical_events' not in hf:
+            hf['historical_events'] = []
+        hf['historical_events'].append(event['id'])
+    for k, site_id in event_data['site_links']:
+        site = queen_json['sites'][int(site_id)-1]
+        if 'historical_events' not in site:
+            site['historical_events'] = []
+        site['historical_events'].append(event['id'])
+    
 if not os.path.exists(JSON_PATH):
     os.mkdir(JSON_PATH)
 
