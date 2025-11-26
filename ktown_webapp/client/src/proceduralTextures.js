@@ -1063,45 +1063,45 @@ const drawAbstractCharacter = (ctx, size, color, seed) => {
 };
 
 // Load image from URL with timeout (shorter timeout for faster services)
-const loadImage = (url, timeout = 3000) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
+// const loadImage = (url, timeout = 3000) => {
+//   return new Promise((resolve, reject) => {
+//     const img = new Image();
+//     img.crossOrigin = "anonymous";
 
-    let timeoutId;
-    let resolved = false;
+//     let timeoutId;
+//     let resolved = false;
 
-    const cleanup = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      img.onload = null;
-      img.onerror = null;
-    };
+//     const cleanup = () => {
+//       if (timeoutId) clearTimeout(timeoutId);
+//       img.onload = null;
+//       img.onerror = null;
+//     };
 
-    img.onload = () => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      resolve(img);
-    };
+//     img.onload = () => {
+//       if (resolved) return;
+//       resolved = true;
+//       cleanup();
+//       resolve(img);
+//     };
 
-    img.onerror = () => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      reject(new Error(`Failed to load image from ${url}`));
-    };
+//     img.onerror = () => {
+//       if (resolved) return;
+//       resolved = true;
+//       cleanup();
+//       reject(new Error(`Failed to load image from ${url}`));
+//     };
 
-    // Set timeout (shorter for faster services)
-    timeoutId = setTimeout(() => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      reject(new Error(`Image load timeout for ${url}`));
-    }, timeout);
+//     // Set timeout (shorter for faster services)
+//     timeoutId = setTimeout(() => {
+//       if (resolved) return;
+//       resolved = true;
+//       cleanup();
+//       reject(new Error(`Image load timeout for ${url}`));
+//     }, timeout);
 
-    img.src = url;
-  });
-};
+//     img.src = url;
+//   });
+// };
 
 // Convert hex to RGB
 const hexToRgb = (hex) => {
@@ -1195,6 +1195,16 @@ const calculateCellContentAmount = (cellData) => {
 
   return contentCount;
 };
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous"; // important for remote URLs
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
 // Generate texture with 2 random letters - low quality, black background, black letters with white outline
 // Determine colors based on cell information
