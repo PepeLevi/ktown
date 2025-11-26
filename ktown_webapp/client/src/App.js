@@ -28,6 +28,7 @@ function createSelectedEntity(kind, payload) {
 
 function App() {
   const [worldData, setWorldData] = useState(null);
+  const [allHistoricalEvents, setAllHistoricalEvents] = useState(null)
   const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -167,7 +168,8 @@ function App() {
         throw new Error("Invalid worldData format from server");
       }
 
-      setWorldData(wd);
+      setWorldData({cells: wd.cells});
+      setAllHistoricalEvents(wd.historical_events);
 
       let temp_figures = {};
       let temp_books = {};
@@ -349,7 +351,6 @@ function App() {
   };
 
   const handleClosePopup = () => {
-    console.log("level " + level)
     setPopupData(null);
   };
 
@@ -362,7 +363,7 @@ function App() {
         <section className="map-panel">
           {worldData ? (
             <WorldMap
-              worldData={{cells: worldData.cells}}
+              worldData={worldData}
               onEntityClick={handleEntityClick}
               selectedCell={selectedCell}
               selectedEntity={selectedEntity}
@@ -380,7 +381,7 @@ function App() {
             onClose={handleClosePopup}
             figures={figures}
             books={books}
-            allHistoricalEvents={worldData.historical_events}
+            allHistoricalEvents={allHistoricalEvents}
             handleEntityClick={handleEntityClick}
             createSelectedEntity={createSelectedEntity}
           />

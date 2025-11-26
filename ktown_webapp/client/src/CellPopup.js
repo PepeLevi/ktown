@@ -18,7 +18,7 @@ function FigureDetailView({
   figures,
   isTopLevel,
   books,
-  allHistoricalEvents,
+  allHistoricalEvents = [],
   handleEntityClick,
   createSelectedEntity,
 }) {
@@ -99,7 +99,6 @@ function FigureDetailView({
                         isTopLevel={false}
                         figures={figures}
                         books={books}
-                        allHistoricalEvents={allHistoricalEvents}
                         handleEntityClick={handleEntityClick}
                         createSelectedEntity={createSelectedEntity}
                       />
@@ -133,7 +132,6 @@ function FigureDetailView({
                         isTopLevel={false}
                         figures={figures}
                         books={books}
-                        allHistoricalEvents={allHistoricalEvents}
                         handleEntityClick={handleEntityClick}
                         createSelectedEntity={createSelectedEntity}
                       />
@@ -153,11 +151,13 @@ function FigureDetailView({
           {figureEvents.map((event, i) => {
             const eventData = typeof event === 'object' ? event : { id: event };
             return (
-              <RichBookContent
-                text={event.string}
-                handleEntityClick={handleEntityClick}
-                createSelectedEntity={createSelectedEntity}
-              />
+              <div className="book-content">
+                <RichBookContent
+                  text={event.string}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                />
+              </div>
             );
           })}
         </>
@@ -223,7 +223,6 @@ function BookDetailView({
               isTopLevel={false}
               figures={figures}
               books={books}
-              allHistoricalEvents={allHistoricalEvents}
               handleEntityClick={handleEntityClick}
               createSelectedEntity={createSelectedEntity}
             />
@@ -239,7 +238,7 @@ function StructureDetailView({
   handleEntityClick,
   books,
   figures,
-  allHistoricalEvents, 
+  allHistoricalEvents = [], 
   createSelectedEntity,
   isTopLevel,
   structures, // New prop for structures lookup
@@ -290,7 +289,6 @@ function StructureDetailView({
                 figures={figures}
                 isTopLevel={false}
                 books={books}
-                allHistoricalEvents={allHistoricalEvents}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
@@ -308,11 +306,13 @@ function StructureDetailView({
             // For now, we'll display it as-is and assume the full event data will be passed
             const eventData = typeof event === 'object' ? event : { id: event };
             return (
-              <RichBookContent
-                text={event.string}
-                handleEntityClick={handleEntityClick}
-                createSelectedEntity={createSelectedEntity}
-              />
+              <div className="book-content">
+                <RichBookContent
+                  text={event.string}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                />
+              </div>
             );
           })}
         </>
@@ -326,7 +326,7 @@ function SiteDetailView({
   handleEntityClick,
   figures,
   books,
-  allHistoricalEvents,
+  allHistoricalEvents = [],
   createSelectedEntity,
 }) {
   const siteEvents = site.historical_events?.map(id => allHistoricalEvents.find(e => e.id == id)) || [];
@@ -349,7 +349,6 @@ function SiteDetailView({
                   handleEntityClick={handleEntityClick}
                   figures={figures}
                   books={books}
-                  allHistoricalEvents={allHistoricalEvents}
                   createSelectedEntity={createSelectedEntity}
                   structures={site.structures ? (Array.isArray(site.structures) ? site.structures : [site.structures]).reduce((acc, st) => {
                     if (st && st.id) acc[st.id] = st;
@@ -366,7 +365,6 @@ function SiteDetailView({
               isTopLevel={false}
               figures={figures}
               books={books}
-              allHistoricalEvents={allHistoricalEvents}
               createSelectedEntity={createSelectedEntity}
               structures={null}
               site={site}
@@ -382,11 +380,13 @@ function SiteDetailView({
           {siteEvents.map((event, i) => {
             const eventData = typeof event === 'object' ? event : { id: event };
             return (
-              <RichBookContent
-                text={event.string}
-                handleEntityClick={handleEntityClick}
-                createSelectedEntity={createSelectedEntity}
-              />
+              <div className="book-content">
+                <RichBookContent
+                  text={event.string}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                />
+              </div>
             );
           })}
         </>
@@ -431,7 +431,7 @@ function CellPopup({
     if (!position) {
       return {
         left: "50%",
-        top: "50%",
+        top: "40%",
         transform: "translate(-50%, -50%)",
       };
     }
@@ -440,7 +440,7 @@ function CellPopup({
     const y = position.y || window.innerHeight / 2;
 
     const offsetX = -50;
-    const offsetY = -20;
+    const offsetY = -50;
 
     let left = x + offsetX;
     let top = y + offsetY;
@@ -464,6 +464,7 @@ function CellPopup({
       left: `${left}px`,
       top: `${top}px`,
       transform: "none",
+      'max-height': `${window.innerHeight - top - 50}px` // prevents it from falling off the page
     };
   };
 
@@ -534,7 +535,7 @@ function CellPopup({
             {kind === "site" && (
               <SiteDetailView
                 site={site}
-                isTopLevel={true} //not being used rn
+                isTopLevel={true} //not being used rn. i think bc structure cant be non-top level yet
                 figures={figures}
                 books={books}
                 allHistoricalEvents={allHistoricalEvents}
