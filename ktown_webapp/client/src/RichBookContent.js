@@ -4,6 +4,9 @@ export default function RichBookContent({
   text,
   handleEntityClick,
   createSelectedEntity,
+  figures,
+  sites,
+  books
 }) {
   const content = useMemo(() => {
     if (!text) return null;
@@ -44,10 +47,12 @@ export default function RichBookContent({
 
           return (
             <InlineEntityButton
-              key={key}
               entityInfo={entityInfo}
               handleEntityClick={handleEntityClick}
               createSelectedEntity={createSelectedEntity}
+              figures={figures}
+              sites={sites}
+              books={books}
             />
           );
         }
@@ -102,7 +107,8 @@ function parseHrefToEntityInfo(href, label) {
   const kindMap = {
     historical_figure_id: "figure",
     civilization_id: "civilization",
-    location_id: "location",
+    site_id: "site",
+    written_work_id: "book"
   };
 
   const kind = kindMap[rawKind] || rawKind;
@@ -115,23 +121,43 @@ function parseHrefToEntityInfo(href, label) {
   };
 }
 
+function findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity){
+  console.log("finding entity")
+  console.log(kind, id)
+
+  // find actual entity
+  // debugger;
+  switch(kind){
+    case "figure":
+      handleEntityClick(createSelectedEntity("figure", figures[id]));
+      break;
+    case "site":
+      handleEntityClick(createSelectedEntity("site", sites[id]));
+      break;
+    case "book":
+      handleEntityClick(createSelectedEntity("book", books[id]));
+      break;
+  }  
+}
+
 function InlineEntityButton({
   entityInfo,
   handleEntityClick,
   createSelectedEntity,
+  figures,
+  sites,
+  books
 }) {
   if (!entityInfo) return null;
 
   const { kind, id, name } = entityInfo;
-
-  const payload = { id, name }; // stub payload; you can enrich this
 
   return (
     <button
       type="button"
       className="inline-entity-button"
       onClick={() => {
-        handleEntityClick(createSelectedEntity(kind, payload));
+        findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity)
       }}
     >
       {name}

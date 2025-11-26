@@ -34,6 +34,7 @@ function App() {
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [figures, setFigures] = useState([]);
   const [books, setBooks] = useState([]);
+  const [sites, setSites] = useState([]);
   const [level, setLevel] = React.useState(5);
 
   const [bookCells, setBookCells] = useState([]);
@@ -174,6 +175,7 @@ function App() {
       let temp_figures = {};
       let temp_books = {};
       let temp_bookCells = []; // NEW
+      let temp_sites = {};
 
       wd.cells.forEach((cell) => {
         let cellHasBooks = false; // NEW
@@ -181,6 +183,7 @@ function App() {
         if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
+            temp_sites[si] = site
 
             if (site.books) {
               for (let sbi = 0; sbi < site.books.length; sbi++) {
@@ -259,6 +262,7 @@ function App() {
       setFigures(temp_figures);
       setBooks(temp_books);
       setBookCells(temp_bookCells); // NEW
+      setSites(temp_sites)
       setCurrentBookCellIndex(-1); // NEW
 
       setSelectedCell(null);
@@ -381,6 +385,7 @@ function App() {
             onClose={handleClosePopup}
             figures={figures}
             books={books}
+            sites={sites}
             allHistoricalEvents={allHistoricalEvents}
             handleEntityClick={handleEntityClick}
             createSelectedEntity={createSelectedEntity}
@@ -423,6 +428,7 @@ function FigureDetailView({
   figures,
   isTopLevel,
   books,
+  sites,
   handleEntityClick,
 }) {
   if (!figure) {
@@ -465,6 +471,7 @@ function FigureDetailView({
                 isTopLevel={false}
                 figures={figures}
                 books={books}
+                sites={sites}
                 handleEntityClick={handleEntityClick}
               />
             </div>
@@ -495,6 +502,7 @@ function FigureDetailView({
                         isTopLevel={false}
                         figures={figures}
                         books={books}
+                        sites={sites}
                         handleEntityClick={handleEntityClick}
                       />
                     </button>
@@ -512,6 +520,7 @@ function BookDetailView({
   isTopLevel,
   figures,
   books,
+  sites,
   handleEntityClick,
 }) {
   if (!book) {
@@ -538,6 +547,9 @@ function BookDetailView({
           text={book?.raw?.text_content}
           handleEntityClick={handleEntityClick}
           createSelectedEntity={createSelectedEntity}
+          figures={figures}
+          sites={sites}
+          books={books}
         />
       </div>
 
@@ -549,6 +561,7 @@ function BookDetailView({
             isTopLevel={false}
             figures={figures}
             books={books}
+            sites={sites}
           />
         </>
       )}
@@ -593,6 +606,7 @@ function StructureDetailView({ structure, handleEntityClick, books, figures }) {
                 figures={figures}
                 isTopLevel={true}
                 books={books}
+                sites={sites}
                 handleEntityClick={handleEntityClick}
               />
             </button>
@@ -689,6 +703,7 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
             figures={figures}
             isTopLevel={true}
             books={books}
+            sites={sites}
             handleEntityClick={handleEntityClick}
           />
         )}
@@ -699,6 +714,7 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
             isTopLevel={true}
             figures={figures}
             books={books}
+            sites={sites}
             handleEntityClick={handleEntityClick}
           />
         )}
@@ -709,6 +725,7 @@ function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
             isTopLevel={true}
             figures={figures}
             books={books}
+            sites={sites}
             handleEntityClick={handleEntityClick}
           />
         )}

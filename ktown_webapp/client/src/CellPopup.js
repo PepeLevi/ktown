@@ -18,6 +18,7 @@ function FigureDetailView({
   figures,
   isTopLevel,
   books,
+  sites,
   allHistoricalEvents = [],
   handleEntityClick,
   createSelectedEntity,
@@ -64,6 +65,7 @@ function FigureDetailView({
                 isTopLevel={false}
                 figures={figures}
                 books={books}
+                sites={sites}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
@@ -99,6 +101,7 @@ function FigureDetailView({
                         isTopLevel={false}
                         figures={figures}
                         books={books}
+                        sites={sites}
                         handleEntityClick={handleEntityClick}
                         createSelectedEntity={createSelectedEntity}
                       />
@@ -132,6 +135,7 @@ function FigureDetailView({
                         isTopLevel={false}
                         figures={figures}
                         books={books}
+                        sites={sites}
                         handleEntityClick={handleEntityClick}
                         createSelectedEntity={createSelectedEntity}
                       />
@@ -156,6 +160,9 @@ function FigureDetailView({
                   text={event.string}
                   handleEntityClick={handleEntityClick}
                   createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
                 />
               </div>
             );
@@ -200,6 +207,9 @@ function BookDetailView({
           text={book?.text_content}
           handleEntityClick={handleEntityClick}
           createSelectedEntity={createSelectedEntity}
+          figures={figures}
+          sites={sites}
+          books={books}
         />
       </div>
 
@@ -223,6 +233,7 @@ function BookDetailView({
               isTopLevel={false}
               figures={figures}
               books={books}
+              sites={sites}
               handleEntityClick={handleEntityClick}
               createSelectedEntity={createSelectedEntity}
             />
@@ -238,6 +249,7 @@ function StructureDetailView({
   handleEntityClick,
   books,
   figures,
+  sites = [],
   allHistoricalEvents = [], 
   createSelectedEntity,
   isTopLevel,
@@ -289,6 +301,7 @@ function StructureDetailView({
                 figures={figures}
                 isTopLevel={false}
                 books={books}
+                sites={sites}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
@@ -311,6 +324,9 @@ function StructureDetailView({
                   text={event.string}
                   handleEntityClick={handleEntityClick}
                   createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
                 />
               </div>
             );
@@ -326,6 +342,7 @@ function SiteDetailView({
   handleEntityClick,
   figures,
   books,
+  sites,
   allHistoricalEvents = [],
   createSelectedEntity,
 }) {
@@ -385,6 +402,9 @@ function SiteDetailView({
                   text={event.string}
                   handleEntityClick={handleEntityClick}
                   createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
                 />
               </div>
             );
@@ -401,6 +421,7 @@ function CellPopup({
   onClose,
   figures,
   books,
+  sites,
   allHistoricalEvents,
   handleEntityClick,
   createSelectedEntity,
@@ -515,6 +536,7 @@ function CellPopup({
                 figures={figures}
                 isTopLevel={true}
                 books={books}
+                sites={sites}
                 allHistoricalEvents={allHistoricalEvents}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
@@ -527,6 +549,7 @@ function CellPopup({
                 isTopLevel={true}
                 figures={figures}
                 books={books}
+                sites={sites}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
@@ -538,6 +561,7 @@ function CellPopup({
                 isTopLevel={true} //not being used rn. i think bc structure cant be non-top level yet
                 figures={figures}
                 books={books}
+                sites={sites}
                 allHistoricalEvents={allHistoricalEvents}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
