@@ -336,7 +336,7 @@ function App() {
     });
 
     if (entity.kind === "cell") {
-      setLevel(0);
+      setLevel(5);
     }
     if (entity.kind === "site") {
       setLevel(4);
@@ -616,7 +616,7 @@ function StructureDetailView({ structure, handleEntityClick, books, figures }) {
     </div>
   );
 }
-function SiteDetailView({ site, handleEntityClick, figures, books }) {
+function SiteDetailView({ site, handleEntityClick, figures, books, sites }) {
   return (
     <div>
       <p>{site.fromFile2.name}</p>
@@ -649,7 +649,7 @@ function SiteDetailView({ site, handleEntityClick, figures, books }) {
   );
 }
 
-function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
+function EntityDetailsView({ entity, figures, books, sites, handleEntityClick }) {
   const {
     kind,
     name,
