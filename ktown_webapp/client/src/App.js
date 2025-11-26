@@ -4,6 +4,7 @@ import WorldMap from "./worldMap";
 import JourneyVerticalProgress from "./progressBar";
 import RichBookContent from "./RichBookContent";
 import CellPopup from "./CellPopup";
+
 import "./App.css";
 
 function createSelectedEntity(kind, payload) {
@@ -319,6 +320,8 @@ function App() {
             <p className="placeholder">Map will appear here once loaded.</p>
           )}
         </section>
+
+        <div className="overlay"></div>
       </main>
 
       {shouldShowLoader && (
@@ -489,39 +492,19 @@ function WelcomeScreen({ hasLoaded, onClose }) {
             <p>welcome to Ktown!</p>
 
             <p>
-              Ktown is all of these things at once: a phenomenon, an assemblage,
-              a cognitive system, a space of reasons, a duration, and a critique
-              of the given.
+              Ktown cannot be encapsulated into a single definition. Ktown acts as an experimental aesthetic exploration, a multiple body of assemblages, a cognitive system, a space of abstractions and reasons, a duration, a critical artifact. This world's intent is to generate new worlds through recursive dynamics and structures, as well as using language models to produce new narratives and stories.  
             </p>
 
             <p>
-              The world is visually text-based, with its elements and characters
-              represented by numbers, letters and symbols, all inserted into a
-              tile-based graphic. The map uses these symbols to represent
-              different data, once we have this raw information mediated by
-              artificial intelligence, we parse the data to integrate it into
-              the map interface. It uses a signifying layer based on characters
-              and layers. Using a fractal map with an interactive zoom.
+              The map is visually text-based, with its elements and characters represented by numbers, letters and symbols, all inserted into a tile-based graphic. These symbols are representations of the data which, in its raw state, has been mediated through artificial intelligence and then parsed and integrated into the map interface. It uses a signifying layer based on characters and layers. Using a fractal map with an interactive zoom. The map is a representation of the world's data, and the data is a representation of the world's structure and content.
             </p>
 
             <p>
-              The restructuring and semantic alteration of data is the
-              activation itself. The transformations applied to data here are
-              not only related to its activation (the transition from data to
-              information), but also to the production of practical and
-              linguistic content that operates in the function of information as
-              a process.
+              The restructuring and semantic alteration of data is the activation itself. The transformations applied to data here are not only related to its activation (the transition from data to information), but also to the production of practical and linguistic content that operates in the function of information as a process.
             </p>
 
             <p>
-              The general passive dynamics of the ordinary spectator, of
-              intelligibility and cognition (of differentiating and linking,
-              that is, understanding the world around them) become active, as
-              this is the central issue in KTOWN's gameplay dynamics. The player
-              must interact with a generated (artificial) environment, and
-              through this navigation and interactivity, they will be able to
-              build links and distinguish differences to experimentally
-              construct meaning through maps and text.
+              The general passive dynamics of the ordinary spectator, of intelligibility and cognition (of differentiating and linking, that is, understanding the world around them) become active, as this is the central issue in KTOWN's gameplay dynamics. The player must interact with a generated (artificial) environment, and through this navigation and interactivity, they will be able to build links and distinguish differences to experimentally construct meaning through maps and text
             </p>
           </div>
 
