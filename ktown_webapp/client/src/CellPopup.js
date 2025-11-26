@@ -579,8 +579,6 @@ export function getRandomRegionWithSameDepth(
 
     // return a random match if any were found
     if (matches.length > 0) {
-      console.log("has corresponding underground region", matches);
-
       return matches[Math.floor(Math.random() * matches.length)];
     } else {
       getRandomRegionWithSameDepth(targetRegion, allRegions, 5);
@@ -598,6 +596,7 @@ function getRandomSample(arr, n) {
   }
   return result;
 }
+
 
 function CellPopup({
   entity,
@@ -628,11 +627,13 @@ function CellPopup({
     undergroundRegion,
   } = entity;
 
-  if(kind == 'site' && !site){
-    console.log('fuck', entity)
-  }
+  // if (kind == "site" && !site) {
+  //   console.log("fuck", entity);
+  // }
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
+
+  console.log("in detailview", entity, undergroundRegion);
 
   // Calculate popup position
   const calculatePosition = () => {
