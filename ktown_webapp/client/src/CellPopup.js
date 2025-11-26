@@ -8,146 +8,6 @@ const normalizeToArray = (value) => {
   return Array.isArray(value) ? value : [value];
 };
 
-// Extract and display only links from historical events
-function extractEventLinks(eventString, figures, sites, books, undergroundRegions, handleEntityClick, createSelectedEntity) {
-  if (!eventString) return null;
-
-  const links = [];
-  
-  // Parse HTML <a> tags
-  const wrapperHtml = `<div>${eventString}</div>`;
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(wrapperHtml, "text/html");
-  const root = doc.body.firstChild;
-  
-  // Extract <a> tags
-  const anchorTags = root.querySelectorAll("a");
-  anchorTags.forEach((a) => {
-    const href = a.getAttribute("href") || "";
-    const match = href.match(/^([^/]+)\/(\d+)/);
-    if (match) {
-      const [, rawKind, idStr] = match;
-      const id = Number(idStr);
-      
-      const kindMap = {
-        historical_figure_id: "figure",
-        site_id: "site",
-        written_work_id: "book",
-        structure_id: "structure",
-      };
-      
-      const kind = kindMap[rawKind] || rawKind;
-      links.push({ kind, id, rawKind });
-    }
-  });
-  
-  // Extract direct references like "hist_figure_id:123", "artifact_id:133", etc.
-  const directRefPattern = /(\w+_id):(\d+)/g;
-  let match;
-  while ((match = directRefPattern.exec(eventString)) !== null) {
-    const [, rawKind, idStr] = match;
-    const id = Number(idStr);
-    
-    const kindMap = {
-      hist_figure_id: "figure",
-      historical_figure_id: "figure",
-      site_id: "site",
-      wc_id: "book",
-      written_work_id: "book",
-      artifact_id: "artifact",
-      structure_id: "structure",
-    };
-    
-    const kind = kindMap[rawKind] || rawKind;
-    // Avoid duplicates
-    if (!links.some(l => l.kind === kind && l.id === id)) {
-      links.push({ kind, id, rawKind });
-    }
-  }
-  
-  // Render links
-  return links.map((link, i) => {
-    let entity = null;
-    let displayName = null;
-    
-    switch (link.kind) {
-      case "figure":
-        entity = figures[link.id];
-        displayName = entity?.name || `Figure ${link.id}`;
-        break;
-      case "site":
-        entity = sites[link.id];
-        displayName = entity?.fromFile2?.name || entity?.fromFile1?.name || entity?.name || `Site ${link.id}`;
-        break;
-      case "book":
-        entity = books[link.id];
-        displayName = entity?.title || `Book ${link.id}`;
-        break;
-      case "structure":
-        // Structures are nested in sites, so we need to search
-        entity = Object.values(sites || {}).find(site => {
-          if (Array.isArray(site.structures)) {
-            return site.structures.some(s => s.id === link.id);
-          }
-          return site.structures?.id === link.id;
-        });
-        if (entity) {
-          const structure = Array.isArray(entity.structures) 
-            ? entity.structures.find(s => s.id === link.id)
-            : entity.structures;
-          displayName = structure?.name || `Structure ${link.id}`;
-        } else {
-          displayName = `Structure ${link.id}`;
-        }
-        break;
-      case "artifact":
-        displayName = `Artifact ${link.id}`;
-        break;
-      default:
-        displayName = `${link.kind} ${link.id}`;
-    }
-    
-    // Handle underground regions - show type instead of name
-    if (link.kind === "undergroundRegion" || (undergroundRegions && undergroundRegions[link.id])) {
-      const undergroundRegion = undergroundRegions[link.id];
-      entity = undergroundRegion;
-      displayName = undergroundRegion?.type || `Underground Region ${link.id}`;
-    }
-    
-    if (!entity && link.kind !== "artifact") {
-      return null;
-    }
-    
-    return (
-      <span
-        key={i}
-        className="inline-entity-link"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (entity) {
-            const selectedEntity = createSelectedEntity(link.kind, entity);
-            const x = e.clientX || window.innerWidth / 2;
-            const y = e.clientY || window.innerHeight / 2;
-            handleEntityClick(selectedEntity, { clientX: x, clientY: y });
-          }
-        }}
-        style={{
-          color: 'var(--primary-color)',
-          cursor: entity ? 'pointer' : 'default',
-          textDecoration: entity ? 'underline' : 'none'
-        }}
-      >
-        {displayName}
-      </span>
-    );
-  }).filter(Boolean);
-}
-
-function TexturePreview({ label, src }) {
-  if (!src) return null;
-  return <img src={src} alt={label} />;
-}
-
 function FigureDetailView({
   figure,
   figures,
@@ -280,19 +140,19 @@ function FigureDetailView({
       {figureEvents.length > 0 && isTopLevel && (
         <>
           {figureEvents.map((event, i) => {
-            const eventData = typeof event === "object" ? event : { id: event };
-            const links = extractEventLinks(
-              event.string,
-              figures,
-              sites,
-              books,
-              undergroundRegions,
-              handleEntityClick,
-              createSelectedEntity
+            if (!event || !event.string) return;
+            return (
+              <div className="book-content">
+                <RichBookContent
+                  text={event.string}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
+                />.
+              </div>
             );
-            return links && links.length > 0 ? (
-              <span key={i}>{links}</span>
-            ) : null;
           })}
         </>
       )}
@@ -448,19 +308,19 @@ function StructureDetailView({
       {structureEvents.length > 0 && (
         <>
           {structureEvents.map((event, i) => {
-            const eventData = typeof event === "object" ? event : { id: event };
-            const links = extractEventLinks(
-              event.string,
-              figures,
-              sites,
-              books,
-              undergroundRegions,
-              handleEntityClick,
-              createSelectedEntity
+            if (!event || !event.string) return;
+            return (
+              <div className="book-content">
+                <RichBookContent
+                  text={event.string}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
+                />.
+              </div>
             );
-            return links && links.length > 0 ? (
-              <span key={i}>{links}</span>
-            ) : null;
           })}
         </>
       )}
@@ -542,19 +402,19 @@ function SiteDetailView({
       {siteEvents.length > 0 && (
         <>
           {siteEvents.map((event, i) => {
-            const eventData = typeof event === "object" ? event : { id: event };
-            const links = extractEventLinks(
-              event.string,
-              figures,
-              sites,
-              books,
-              undergroundRegions,
-              handleEntityClick,
-              createSelectedEntity
+            if (!event || !event.string) return;
+            return (
+              <div className="book-content">
+                <RichBookContent
+                  text={event.string}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
+                />.
+              </div>
             );
-            return links && links.length > 0 ? (
-              <span key={i}>{links}</span>
-            ) : null;
           })}
         </>
       )}
@@ -627,9 +487,9 @@ function CellPopup({
     undergroundRegion,
   } = entity;
 
-  // if (kind == "site" && !site) {
-  //   console.log("fuck", entity);
-  // }
+  if (kind == "site" && !site) {
+    console.log("fuck", entity);
+  }
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
 

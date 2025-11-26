@@ -121,7 +121,7 @@ function parseHrefToEntityInfo(href, label) {
   };
 }
 
-function findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity){
+function findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity, spanGuid){
   console.log("finding entity")
   console.log(kind, id)
 
@@ -144,10 +144,17 @@ function findEntity(kind, id, figures, sites, books, handleEntityClick, createSe
       break;
   }  
 
-  if(!entity) return;
+  if(!entity) {
+    const span = document.getElementById(spanGuid)
+    span.style.color = "var(--cell-txt-color)";
+    span.style.textDecoration = null;
+    span.className = "someothershit"
+    return false;
+  }
 
   console.log("found entity: ", entity)
   handleEntityClick(createSelectedEntity(kind, entity));
+  return true
 }
 
 function InlineEntityButton({
@@ -162,11 +169,14 @@ function InlineEntityButton({
 
   const { kind, id, name } = entityInfo;
 
+  const spanGuid = crypto.randomUUID();
+
   return (
     <span
+      id={spanGuid}
       className="inline-entity-link"
       onClick={() => {
-        findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity)
+        findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity, spanGuid)
       }}
       style={{
         color: 'var(--primary-color)',
