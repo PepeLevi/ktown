@@ -2,7 +2,7 @@ import xmltodict
 import json
 import os
 import math
-import random
+import random 
         
 ### MAIN SCRIPT ### 
 
@@ -16,12 +16,12 @@ def process_structure(structure):
     if 'inhabitant' in structure:
         #check if its a list or array
         if isinstance(structure['inhabitant'], str):
-            inhabitant = json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(structure['inhabitant'])]
+            inhabitant = json_legends_clean.get('historical_figures').get('historical_figure')[int(structure['inhabitant'])]
             historical_figures.append(inhabitant)
             inhabitant["assigned"] = True
         else:
             for figure in structure['inhabitant']:
-                inhabitant = json_legends.get('df_world').get('historical_figures').get('historical_figure')[int(figure)]
+                inhabitant = json_legends_clean.get('historical_figures').get('historical_figure')[int(figure)]
                 historical_figures.append(inhabitant)
                 inhabitant["assigned"] = True
     structure["historical_figures"] = historical_figures
@@ -98,30 +98,33 @@ for entry in os.listdir(FILES_PATH):
         with open(full_path, encoding='UTF-8') as f:
             json_books = json.load(f)
 
-# this is gonna be our output json with all the shit in it.
-# this approach is different from the old one. were not removing stuff from the old files were selectively putting the shit we want into a new one.
+# this is gonna be our output json with all the s**t in it.
+# this approach is different from the old one. were not removing stuff from the old files were selectively putting the s**t we want into a new one.
 queen_json = {}
 
-queen_json["name"] = json_legends_plus.get('df_world').get('name')
-queen_json["altname"] = json_legends_plus.get('df_world').get('altname')
-queen_json["regions"] = json_legends.get('df_world').get('regions').get('region')
-queen_json["underground_regions"] = json_legends.get('df_world').get('underground_regions').get('underground_region')
-queen_json["sites"] = json_legends.get('df_world').get('sites').get('site')
+json_legends_plus_clean = json_legends_plus.get('df_world')
+json_legends_clean = json_legends.get('df_world')
+
+queen_json["name"] = json_legends_plus_clean.get('name')
+queen_json["altname"] = json_legends_plus_clean.get('altname')
+queen_json["regions"] = json_legends_clean.get('regions').get('region')
+queen_json["underground_regions"] = json_legends_clean.get('underground_regions').get('underground_region')
+queen_json["sites"] = json_legends_clean.get('sites').get('site')
 
 # get coords from legends plus
 for region in queen_json['regions']:
-    region_plus = json_legends_plus.get('df_world').get('regions').get('region')[int(region['id'])]
+    region_plus = json_legends_plus_clean.get('regions').get('region')[int(region['id'])]
     region['coords'] = region_plus['coords']
 for region in queen_json['underground_regions']:
-    region_plus = json_legends_plus.get('df_world').get('underground_regions').get('underground_region')[int(region['id'])]
+    region_plus = json_legends_plus_clean.get('underground_regions').get('underground_region')[int(region['id'])]
     region['coords'] = region_plus['coords']
 
-# so we fill the site object with all the other shit
-sites_plus_length = len(json_legends_plus.get('df_world').get('sites').get('site'))
+# so we fill the site object with all the other s**t
+sites_plus_length = len(json_legends_plus_clean.get('sites').get('site'))
 for site in queen_json['sites']:
-    # so right now we're only assining HFs to structures that have them as an inhabitant which is shitt
+    # so right now we're only assining HFs to structures that have them as an inhabitant which is s**tt
     if(int(site['id']) < sites_plus_length):
-        site_plus = json_legends_plus.get('df_world').get('sites').get('site')[int(site['id'])-1]
+        site_plus = json_legends_plus_clean.get('sites').get('site')[int(site['id'])-1]
         if 'civ_id' in site_plus:
             site['civ_id'] = site_plus['civ_id']
         if 'cur_owner_id' in site_plus:
@@ -134,12 +137,12 @@ for site in queen_json['sites']:
             else:
                 site["structures"].append(process_structure(site_plus['structures']['structure']))
 
-print("total hf", len(json_legends.get('df_world').get('historical_figures').get('historical_figure')))
+print("- total hf", len(json_legends_clean.get('historical_figures').get('historical_figure')))
 assigned_hf_1 = 0
 assigned_hf_2 = 0
 assigned_hf_3 = 0
 
-for historical_figure in json_legends.get('df_world').get('historical_figures').get('historical_figure'):
+for historical_figure in json_legends_clean.get('historical_figures').get('historical_figure'):
     if 'assigned' in historical_figure:
         assigned_hf_1 += 1
         continue
@@ -168,16 +171,16 @@ for historical_figure in json_legends.get('df_world').get('historical_figures').
         assigned_hf_3 += 1
         continue
 
-print("figures assigned by inhabitant: ", assigned_hf_1)
-print("figures assigned by site-link: ", assigned_hf_2)
-print("figures assigned by entity: ", assigned_hf_3)
+print("- figures assigned by inhabitant: ", assigned_hf_1)
+print("- figures assigned by site-link: ", assigned_hf_2)
+print("- figures assigned by entity: ", assigned_hf_3)
 
 found_artifacts = 0
 found_holder_links = 0
 found_artifact_links = 0
 found_author_links = 0
 
-print("total books: ", len(json_books['data']))
+print("- total books: ", len(json_books['data']))
 
 for bookkey, book in json_books['data'].items():
     assigned_book = False
@@ -185,7 +188,7 @@ for bookkey, book in json_books['data'].items():
     # first try to locate by artifact because its the most true (ie the physical object of the book)
     artifacts = list(filter(
         lambda a: artifact_has_written_content(a, book['written_content_id']), 
-        json_legends['df_world']['artifacts']['artifact']))
+        json_legends_clean['artifacts']['artifact']))
     if len(artifacts) != 0 and artifacts[0]:
         artifact = artifacts[0]
         if artifact:
@@ -221,54 +224,127 @@ for bookkey, book in json_books['data'].items():
         site["books"].append(book)
         assigned_book = True
     
-print("total found artifacts ", found_artifacts)
-print("artifact links ", found_artifact_links)
-print("holder links", found_holder_links)
-print("author links", found_author_links)
+print("- total found artifacts ", found_artifacts)
+print("- artifact links ", found_artifact_links)
+print("- holder links", found_holder_links)
+print("- author links", found_author_links)
 
 def translate_event_to_string(event):
     return_value = {}
-    # GADEA STRING FILLING TREE GOES HERE
+    
+    # bc hf ids are dynamic based on event type we need to store them in a dict and iterate through them
+    events_hf_id = {
+        'competition': ['winner_hfid', 'competitor_hfid'],
+        'hf wounded': ['woundee_hfid', 'wounder_hfid'],
+        'add hf hf link': ['hfid', 'hfid_target'],
+        'hf convicted': ['convicted_hfid', 'fooled_hfid', 'framer_hfid'],
+        'remove hf hf link': ['hfid', 'hfid_target'],
+        'hf learns secret': ['student_hfid', 'teacher_hfid'],
+        'hf relationship denied': ['seeker_hfid', 'target_hfid'],
+        'attacked site': ['attacker_general_hfid', 'defender_general_hfid'],
+        'hf abducted': ['target_hfid', 'snatcher_hfid'],
+        'changed creature type': ['changee_hfid', 'changer_hfid'],
+        'hfs formed intrigue relationship': ['target_hfid', 'corruptor_hfid', 'lure_hfid'],
+        'failed intrigue corruption': ['target_hfid', 'corruptor_hfid', 'lure_hfid'],
+        'hfs formed reputation relationship': ['hfid1', 'hfid2'],
+        'entity overthrown': ['overthrown_hfid', 'pos_taker_hfid', 'instigator_hfid', 'conspirator_hfid'],
+        'failed frame attempt': ['target_hfid', 'fooled_hfid', 'framer_hfid', 'plotter_hfid'],
+        'entity persecuted': ['persecutor_hfid', 'expelled_hfid', 'property_confiscated_from_hfid'],
+        'field battle': ['attacker_general_hfid', 'defender_general_hfid'],
+        'hf revived': ['hfid', 'actor_hfid']
+    }
+    
+    #GADEA TODO: find a more elegant way to do this rather than dumping all the connectors here, maybe a json?
+    # but all the files folder is on gitignore :( 
+    event_connectors = {
+    'competition': ['desiring against', 'mirroring inversely', 'cathecting toward', 'deterritorializing with', 'sublimating through', 'projecting upon', 'becoming-other to', 'jouissance versus', 'folding away from', 'rhizomatically opposing'],
+    'hf wounded': ['inscribing upon', 'castrating through', 'marking the Real of', 'intensifying into', 'wounding the symbolic of', 'cutting flows of', 'traumatizing', 'piercing the imaginary of', 'rupturing', 'severing lines-of-flight from'],
+    'add hf hf link': ['desiring-machines with', 'suturing to', 'assemblaging with', 'transference toward', 'deterritorializing alongside', 'folding into', 'rhizome-connecting', 'mirroring', 'symbiosis with', 'cathexis toward'],
+    'hf convicted': ['foreclosing with', 'paranoiac alongside', 'triangulating between', 'trapped in symbolic of', 'scapegoating through', 'Oedipalizing via', 'caught in Name-of-Father with', 'projection between', 'abjecting through', 'shadow-meeting'],
+    'remove hf hf link': ['decathecting from', 'deterritorializing away', 'severing assemblage with', 'foreclosing', 'repressing away from', 'unfolding from', 'cutting body-without-organs from', 'abjecting', 'splitting from objet petit a of', 'death-drive from'],
+    'hf learns secret': ['initiated beneath', 'unconscious-transfer from', 'gnosis through', 'hermetic with', 'unveiling via', 'psychopomp guided by', 'decoded by', 'hierophant under', 'unconscious revealed by', 'mystery-transmission from'],
+    'hf relationship denied': ['foreclosed by', 'negating the desire of', 'impossible Real rejected by', 'lack affirmed by', 'castrated by refusal of', 'void encountered with', 'abjected by', 'Tower-struck by', 'death card turned by', 'jouissance denied by'],
+    'attacked site': ['war-machine versus', 'striated confronting', 'molar opposing', 'death-drive clashing', 'Thanatos engaging', 'aggressive-cathexis toward', 'Mars ascending against', 'Tower-moment with', 'smooth-space colliding', 'chariot reversed to'],
+    'hf abducted': ['captured by desiring-machine of', 'stolen into assemblage of', 'reterritorialized by', 'possessed by libidinal economy of', 'seized into Symbolic of', 'Devil-bound to', 'enchained by', 'consumed by body-without-organs of', 'incorporated into', 'subsumed by flows of'],
+    'changed creature type': ['becoming-animal through', 'metamorphosis via sorcery of', 'molecular-transformed by', 'transmuted by alchemy of', 'death-and-rebirth under', 'pharmakonic shift by', 'deterritorialized absolutely by', 'magician-worked by', 'threshold-crossed through', 'schizoid-flow altered by'],
+    'hfs formed intrigue relationship': ['libidinal conspiracy with', 'unconscious pact between', 'Moon-card weaving', 'shadow-alliance entwining', 'paranoid-machine linking', 'occult geometry binding', 'secret-society formed with', 'hermetic knot between', 'spectral-bond to', 'conspiratorial assemblage'],
+    'failed intrigue corruption': ['resisting libidinal capture by', 'foreclosing seduction of', 'refusing reterritorialization by', 'rejecting Devil-pact with', 'escaping desiring-production of', 'negating sublimation by', 'deterritorializing away from trap of', 'severing manipulation of', 'breaking enchantment of', 'line-of-flight from'],
+    'hfs formed reputation relationship': ['semiotically entangled with', 'signifier-chained to', 'imaginary-construct alongside', 'reputation-assemblage with', 'symbolic-network connected to', 'collective-unconscious linked', 'fame-rhizome touching', 'archetypal resonance with', 'judgment-card reflected by', 'renown-machine producing with'],
+    'entity overthrown': ['supplanted in Name-of-Father by', 'dethroned through death-drive of', 'castration enacted by', 'molar-structure collapsed by', 'Emperor-toppled by', 'sovereign-power seized by', 'Oedipal displacement via', 'smooth-space opened by', 'striated-order broken by', 'regime-change through'],
+    'failed frame attempt': ['projection-failure toward', 'paranoid-delusion targeting', 'failed-signification against', 'collapsed-narrative toward', 'Moon-reversed scheming', 'thwarted-semiotics against', 'unsuccessful-encoding of', 'shadow-projection failing on', 'symbolic-trap avoided by', 'misrecognition attempting'],
+    'entity persecuted': ['scapegoat-mechanism upon', 'abjection-process targeting', 'paranoid-aggression toward', 'expelled from body-without-organs by', 'purified through sacrifice of', 'Devil-projection onto', 'othering-drive against', 'violent-reterritorialization of', 'casting-out performed by', 'pharmakos-making by'],
+    'field battle': ['war-machine collision with', 'Thanatos-expression meeting', 'violent-assemblage engaging', 'death-drive manifesting against', 'Mars-conjunct opposing', 'striated-warfare with', 'aggressive-flows clashing', 'Tower-energy confronting', 'molar-conflict between', 'combat-intensity versus'],
+    'hf revived': ['resurrected through sorcery of', 'recalled from death-space by', 'reanimated via necromantic', 'Judgment-reversed through', 'death-and-rebirth cycle by', 'returned from Real by', 'spectral-recall via', 'undead-becoming through', 'life-flow restored by', 'boundary-crossed back through']
+    }
+    
+    return_value = {}
+    
+    event_type = event.get('type')
+    
+    # check the key 'type' and see if the value is in our events_hf_id dict, two birds one stone
+    if event_type and event_type in events_hf_id:
+        hf_id_keys = events_hf_id[event_type]
+        # store the connectors for that event type
+        connectors_event = event_connectors.get(event_type, [])
+        
+        # we store the hf id keys for that event type just in case there are multiple to iterate over them yk
+        hf_id_values = [event.get(key) for key in hf_id_keys]
 
-
-    # DAVID generic default return code
-    if 'event_string' not in return_value:
         string = ""
-        for (key, value) in event.items():
-            if key == "hfid":
-                string += '<a href="historical_figure_id/' + str(value) + '">hf hyperlink</a>'
+        
+        counter = 0
+        total_hf_keys = len(hf_id_keys)
+        # i know i could simply do a for k,v in dict.items() but this way i can better see keys and values separately
+        for hf_key, hf_value in zip(hf_id_keys, hf_id_values):
+            if hf_value is None:
+                continue  # skip non-interesting hf ids               
+            if isinstance(hf_value, list):
+                # use the value position (i) as a counter to add connectors between multiple hfs
+                for i, v in enumerate(hf_value):
+                    string += f'<a href="historical_figure_id/{v}">hf hyperlink</a>'
+                    # to connect multiple hf with some coherence, i add 'and' before and after the last one :D. nice touch?
+                    if i < len(hf_value)-1:
+                        string += f' and {random.choice(connectors_event)} ' 
             else:
-                string += str(key) + ":" + str(value) + ", "
-        return_value['event_string'] = string
-
+                string += f'<a href="historical_figure_id/{hf_value}">hf hyperlink</a>'
+                
+            counter += 1
+            if counter < total_hf_keys:
+                string += f' {random.choice(connectors_event)} '
+          
+        if string:
+            return_value['event_string'] = string
+            
+    
+    #TODO: consult with David not so sure about this part
     if 'hf_links' not in return_value:
         return_value['hf_links'] = list(filter(
             lambda p: 'hfid' in p[0],
             event.items())
         )
-        
+    
     if 'site_links' not in return_value:
         return_value['site_links'] = list(filter(
             lambda p: 'site_id' in p[0],
             event.items())
         )
-    
+        
     return return_value
 
-print("doing historical events now")
 event_counter = 0
 queen_json["historical_events"] = []
-# start adding historical events to shit
-# my proposal: -save them in an array as a single string with hyperlinks -give sites/figures a list of historical_event ids
-for event in json_legends.get('df_world').get('historical_events').get('historical_event'):
+# start adding historical events to s**t
+for event in json_legends_clean.get('historical_events').get('historical_event'):
     if event_counter%1000 == 0:
         print(event_counter, " historical events processed")
     event_counter += 1
     event_data = translate_event_to_string(event)
-    event_entry = {}
-    event_entry['id'] = event['id']
-    event_entry['string'] = event_data['event_string']
-    queen_json["historical_events"].append(event_entry)
+    
+    if 'event_string' in event_data:
+        event_entry = {}
+        event_entry['string'] = event_data['event_string']
+        event_entry['id'] = event['id']
+        queen_json["historical_events"].append(event_entry)
 
     for k, hf_id in event_data['hf_links']:
         if isinstance(hf_id, list):
@@ -297,8 +373,6 @@ if not os.path.exists(JSON_PATH):
 with open(f'{JSON_PATH}/queen.json', 'w', encoding='utf-8') as f:
     json.dump(queen_json, f, ensure_ascii=False, indent=4)
 
-print("replacing double strings")
-
 with open(f'{JSON_PATH}/queen.json', encoding="utf-8") as f:
     s = f.read()
 
@@ -308,5 +382,4 @@ with open(f'{JSON_PATH}/queen.json', 'w', encoding="utf-8") as f:
     s = s.replace("The the", "The")
     s = s.replace("The The", "The")
     f.write(s)
-
-print("finito")
+print("done, queen! .json <3")
