@@ -303,6 +303,11 @@ function WorldMap({
   const siteTypesRef = useRef([]);
   const figureKindsRef = useRef(["default"]);
 
+  // Animation state for living map effect
+  const animationTimeRef = useRef(0);
+  const visibleCellsRef = useRef(new Map()); // Track visible cells for animation
+  const animationFrameRef = useRef(null);
+
   // Track drag state for cells - allow panning even when clicking on cells
   const cellDragStateRef = useRef({
     isDragging: false,
@@ -1234,6 +1239,18 @@ function WorldMap({
               const pid = getOrCreatePattern(defs, patternKey, texUrl);
               if (pid) {
                 rect.style("fill", `url(#${pid})`).style("opacity", 1);
+                
+                // Track visible cells for animation (only level 0 cells)
+                if (level === 0 && d.region?.type !== "Ocean") {
+                  const cellKey = cellKeyForTexture;
+                  visibleCellsRef.current.set(cellKey, {
+                    cell: d,
+                    rect: rect,
+                    x: d.x || 0,
+                    y: d.y || 0,
+                  });
+                }
+                
                 return;
               }
             }
@@ -2140,9 +2157,120 @@ function WorldMap({
 
     // Note: All rendering is now done through renderRecursiveCell - optimized, no labels
 
-    // Cleanup resize listener
+    // Start living map animation loop - more dynamic texture flow
+    const startAnimation = () => {
+      let lastUpdateTime = 0;
+      const updateInterval = 800; // Update every 0.8 seconds for more frequent changes
+      
+      const animate = (currentTime) => {
+        animationFrameRef.current = requestAnimationFrame(animate);
+        
+        // Throttle updates to every 0.8 seconds for more dynamic animation
+        if (currentTime - lastUpdateTime < updateInterval) {
+          return;
+        }
+        lastUpdateTime = currentTime;
+        
+        animationTimeRef.current += 0.2; // Faster progression for more noticeable changes
+        
+        // Update individual cells in an organic, scattered pattern
+        const defs = svg.select("defs");
+        if (!defs.empty() && visibleCellsRef.current.size > 0) {
+          const cellsArray = Array.from(visibleCellsRef.current.entries());
+          
+          // Select cells organically - scattered, not in rows or blocks
+          // Use a hash-based selection to ensure organic distribution
+          const batchSize = Math.min(15, Math.floor(cellsArray.length * 0.15)); // Update 15% or max 15
+          const selectedCells = new Set();
+          const maxAttempts = batchSize * 10; // Try many times to find scattered cells
+          
+          // Select cells with minimum distance between them for organic feel
+          for (let i = 0; i < maxAttempts && selectedCells.size < batchSize; i++) {
+            const randomIdx = Math.floor(Math.random() * cellsArray.length);
+            const [cellKey, cellInfo] = cellsArray[randomIdx];
+            
+            // Check if this cell is far enough from already selected cells
+            let tooClose = false;
+            if (selectedCells.size > 0) {
+              for (const selectedKey of selectedCells) {
+                const selectedInfo = visibleCellsRef.current.get(selectedKey);
+                if (selectedInfo) {
+                  const dx = Math.abs(selectedInfo.x - cellInfo.x);
+                  const dy = Math.abs(selectedInfo.y - cellInfo.y);
+                  const distance = Math.sqrt(dx * dx + dy * dy);
+                  // Minimum distance of 3 cells for organic scattered feel
+                  if (distance < 3) {
+                    tooClose = true;
+                    break;
+                  }
+                }
+              }
+            }
+            
+            if (!tooClose) {
+              selectedCells.add(cellKey);
+            }
+          }
+          
+          // If we didn't get enough scattered cells, fill with random ones
+          while (selectedCells.size < batchSize && selectedCells.size < cellsArray.length) {
+            const randomIdx = Math.floor(Math.random() * cellsArray.length);
+            const [cellKey] = cellsArray[randomIdx];
+            if (!selectedCells.has(cellKey)) {
+              selectedCells.add(cellKey);
+            }
+          }
+          
+          // Update each selected cell individually
+          selectedCells.forEach((cellKey) => {
+            const cellInfo = visibleCellsRef.current.get(cellKey);
+            if (!cellInfo) return;
+            
+            const { cell, rect, x, y } = cellInfo;
+            
+            // Skip if rect is no longer in DOM
+            if (!rect.node() || !rect.node().parentNode) {
+              visibleCellsRef.current.delete(cellKey);
+              return;
+            }
+            
+            // Create organic wave pattern - each cell has unique timing
+            // Use cell position and a random phase for natural variation
+            const cellPhase = (x * 7 + y * 11) % 100; // Unique phase per cell
+            const wave1 = Math.sin((x + y) * 0.4 + animationTimeRef.current * 2 + cellPhase) * 0.4;
+            const wave2 = Math.cos((x - y) * 0.3 + animationTimeRef.current * 1.5 + cellPhase * 0.7) * 0.3;
+            const waveOffset = wave1 + wave2;
+            const timeOffset = animationTimeRef.current * 0.8 + waveOffset;
+            
+            // Regenerate texture with time offset
+            const cellKeyForTexture = cell.key || `${cell.x}-${cell.y}`;
+            const regionType = cell.region?.type;
+            const regionData = cell.region;
+            
+            const newTexUrl = getRegionTex(regionType, cellKeyForTexture, regionData, cell, timeOffset);
+            const patternKey = `region-${sanitizeForSelector(cellKeyForTexture)}-anim-${Math.floor(timeOffset * 10)}`;
+            
+            // Update pattern
+            const pid = getOrCreatePattern(defs, patternKey, newTexUrl);
+            if (pid && rect.node()) {
+              rect.style("fill", `url(#${pid})`);
+            }
+          });
+        }
+      };
+      
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+    
+    startAnimation();
+
+    // Cleanup resize listener and animation
     return () => {
       window.removeEventListener("resize", updateViewBox);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      visibleCellsRef.current.clear();
     };
   }, [worldData]);
 

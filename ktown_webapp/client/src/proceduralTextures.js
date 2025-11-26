@@ -1084,9 +1084,11 @@ const getColorLogic = (regionType = null, cellData = null, cellKey = null) => {
   return { letterColor, outlineColor, backgroundColor };
 };
 
-const generateTextureFromText = (cellKey, size = 128, regionType = null, textData = null, cellData = null) => {
+const generateTextureFromText = (cellKey, size = 128, regionType = null, textData = null, cellData = null, timeOffset = 0) => {
   // Create a unique seed from the cell key
-  const seed = hashString(cellKey);
+  // Add optional time offset for animation (subtle living map effect)
+  const baseSeed = hashString(cellKey);
+  const seed = baseSeed + timeOffset;
   
   // Use seed for deterministic randomness
   const rng = (n) => {
@@ -1188,27 +1190,32 @@ const textureCache = new Map();
 const imageCache = new Map(); // Cache for loaded images
 
 // Get texture with caching (synchronous - generates text-based textures locally)
-export const getProceduralTexture = (cellKey, size = 128, regionType = null, textData = null, cellData = null) => {
-  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}-${textData?.name || 'no-text'}`;
-  if (textureCache.has(cacheKey)) {
+export const getProceduralTexture = (cellKey, size = 128, regionType = null, textData = null, cellData = null, timeOffset = 0) => {
+  // Include timeOffset in cache key for animated textures
+  const cacheKey = `${cellKey}-${size}-${regionType || 'default'}-${textData?.name || 'no-text'}-${timeOffset.toFixed(2)}`;
+  if (textureCache.has(cacheKey) && timeOffset === 0) {
+    // Only use cache for static textures (timeOffset === 0)
     return textureCache.get(cacheKey);
   }
   
   // Generate text-based texture synchronously (fast, local generation)
-  const textureUrl = generateTextureFromText(cellKey, size, regionType, textData, cellData);
-  textureCache.set(cacheKey, textureUrl);
+  const textureUrl = generateTextureFromText(cellKey, size, regionType, textData, cellData, timeOffset);
+  if (timeOffset === 0) {
+    // Only cache static textures
+    textureCache.set(cacheKey, textureUrl);
+  }
   return textureUrl;
 };
 
 // Get region texture - uses region type for color palette and region name for text
-export const getRegionTex = (type, cellKey, regionData = null, cellData = null) => {
+export const getRegionTex = (type, cellKey, regionData = null, cellData = null, timeOffset = 0) => {
   // Generate texture based on cell key, region type, region name/text, and cell data for content calculation
   const textData = regionData ? (typeof regionData === 'string' ? { name: regionData } : regionData) : null;
   if (cellKey) {
-    return getProceduralTexture(cellKey, 128, type, textData, cellData);
+    return getProceduralTexture(cellKey, 128, type, textData, cellData, timeOffset);
   }
   // Fallback for cells without key
-  return getProceduralTexture(`region-${type || 'default'}`, 128, type, textData, cellData);
+  return getProceduralTexture(`region-${type || 'default'}`, 128, type, textData, cellData, timeOffset);
 };
 
 // Get site texture - sites use their own type for color palette and site name for text
