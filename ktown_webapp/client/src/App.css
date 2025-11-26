@@ -36,3 +36,324 @@
     transform: rotate(360deg);
   }
 }
+
+/* Welcome Screen Styles */
+.welcome-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.welcome-overlay-loading {
+  background-image: url('loading-back.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: transparent;
+}
+
+.welcome-popup {
+  position: relative;
+  background: #000000;
+  border: 1px solid #ffffff;
+  border-radius: 0;
+  padding: 1.5rem;
+  min-width: 800px;
+  max-width: 1000px;
+  max-height: 50vh;
+  overflow-y: auto;
+  box-shadow: 0 0 0 1px #ffffff;
+  z-index: 10001;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff transparent;
+}
+
+.welcome-popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+.welcome-popup::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.welcome-popup::-webkit-scrollbar-thumb {
+  background-color: #ffffff;
+  border-radius: 0;
+}
+
+.welcome-close {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+}
+
+.welcome-close:hover {
+  opacity: 0.7;
+}
+
+.welcome-content {
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.welcome-text {
+  margin-bottom: 1.5rem;
+}
+
+.welcome-text p {
+  margin: 0 0 1.2rem 0;
+  color: #ffffff;
+}
+
+.welcome-loading {
+  margin-top: 2rem;
+}
+
+.welcome-progress-bar {
+  width: 100%;
+  height: 2px;
+  background: #333333;
+  border: 1px solid #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-progress-fill {
+  height: 100%;
+  background: #ffffff;
+  width: 0%;
+  animation: welcome-progress 2s ease-in-out infinite;
+}
+
+@keyframes welcome-progress {
+  0% {
+    width: 0%;
+    margin-left: 0%;
+  }
+  50% {
+    width: 70%;
+    margin-left: 0%;
+  }
+  100% {
+    width: 100%;
+    margin-left: 0%;
+  }
+}
+
+/* Library Window Styles */
+.library-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+.library-window {
+  position: relative;
+  background: #000000;
+  border: 1px solid #ffffff;
+  border-radius: 0;
+  padding: 2rem;
+  min-width: 600px;
+  max-width: 900px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 0 0 1px #ffffff;
+  z-index: 10001;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff transparent;
+}
+
+.library-window::-webkit-scrollbar {
+  width: 6px;
+}
+
+.library-window::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.library-window::-webkit-scrollbar-thumb {
+  background-color: #ffffff;
+  border-radius: 0;
+}
+
+.library-close {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+}
+
+.library-close:hover {
+  opacity: 0.7;
+}
+
+.library-content {
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.library-welcome {
+  color: #ffffff;
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem 0;
+}
+
+.library-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+
+/* Custom scrollbar for library list */
+.library-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.library-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.library-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.library-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Firefox scrollbar */
+.library-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.library-item {
+  padding: 0.25rem 0;
+  cursor: pointer;
+  color: var(--primary-color);
+  transition: opacity 0.2s;
+}
+
+.library-item:hover {
+  opacity: 0.7;
+}
+
+.library-item-selected {
+  opacity: 1;
+}
+
+
+.library-book-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.library-back {
+  background: transparent !important;
+  border: none;
+  color: #ffffff;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 0.75rem;
+  width: auto;
+  min-width: auto;
+}
+
+.library-back:hover {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--primary-color);
+}
+
+.library-book-title {
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: normal;
+  margin: 0;
+}
+
+.library-book-content {
+  color: #ffffff;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Custom scrollbar for book content */
+.library-book-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.library-book-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.library-book-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.library-book-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Firefox scrollbar */
+.library-book-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+/* Ensure RichBookContent links use primary color */
+.library-book-content a,
+.library-book-content .cell-popup-link {
+  color: var(--primary-color) !important;
+}

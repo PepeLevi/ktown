@@ -28,8 +28,8 @@
 
 :root {
   --primary-bg-color: black;
-  --primary-color: white;
-  --label-color: white;
+  --primary-color: #ffcc01;
+  --label-color: #ffcc01;
   --regPad: 0.2px;
 }
 
@@ -46,6 +46,45 @@ body {
 body {
   background: var(--primary-bg-color);
   color: var(--primary-color);
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='2' x2='12' y2='10' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='12' y1='14' x2='12' y2='22' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='10' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='14' y1='12' x2='22' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3C/svg%3E")
+      12 12,
+    crosshair;
+}
+
+/* Cursor for clickable elements - primary color crosshair */
+* {
+  cursor: inherit;
+}
+
+button,
+a,
+[onClick],
+.cell-popup-link,
+.inline-entity-link,
+.library-item,
+.library-logo {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='2' x2='12' y2='10' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='12' y1='14' x2='12' y2='22' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='10' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='14' y1='12' x2='22' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3C/svg%3E")
+      12 12,
+    crosshair !important;
+}
+
+/* Cursor for draggable elements (map) - primary color crosshair */
+.world-map-svg,
+.map-wrapper,
+.world-map-svg * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='2' x2='12' y2='10' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='12' y1='14' x2='12' y2='22' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='10' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='14' y1='12' x2='22' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3C/svg%3E")
+      12 12,
+    crosshair !important;
+}
+
+/* Cursor when actively dragging - primary color crosshair */
+body.dragging,
+body.dragging .world-map-svg,
+body.dragging .map-wrapper,
+body.dragging .world-map-svg * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cline x1='12' y1='2' x2='12' y2='10' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='12' y1='14' x2='12' y2='22' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='2' y1='12' x2='10' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3Cline x1='14' y1='12' x2='22' y2='12' stroke='%23ffcc01' stroke-width='2'/%3E%3C/svg%3E")
+      12 12,
+    crosshair !important;
 }
 
 #root {
@@ -274,6 +313,47 @@ button:hover p {
   top: 0;
   bottom: 0;
   z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1rem;
+  background: transparent;
+  background-color: transparent;
+}
+
+.library-logo-container {
+  position: fixed;
+  right: 2rem;
+  top: 15rem;
+  margin-top: 0;
+  margin-bottom: 2rem;
+  background: transparent !important;
+  background-color: transparent !important;
+  padding: 0;
+  border: none;
+  opacity: 0.5;
+}
+
+.library-logo-disabled {
+  pointer-events: none;
+}
+
+.library-logo {
+  width: 70px;
+  height: auto;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 1px solid var(--primary-color);
+  display: block;
+  image-rendering: pixelated;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+.library-logo:hover {
+  opacity: 0.7;
 }
 
 .cat_headline {
@@ -291,10 +371,10 @@ g.hover {
   background-color: green;
 }
 
-svg,
+/* svg,
 rect.cell {
   mix-blend-mode: difference;
-}
+} */
 
 rect.cell-type-region {
   fill: green;
@@ -340,25 +420,6 @@ rect.cell-type-ocean {
 }
 .book-content button {
   width: auto;
-}
-.book-tour-button {
-  position: fixed;
-  left: var(--regPad);
-  bottom: var(--regPad);
-  width: auto;
-  z-index: 999;
-  padding: 0.75rem 1.25rem;
-  border-radius: 999px;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
-  background-color: var(--primary-bg-color);
-  color: var(--primary-color);
-}
-
-.book-tour-button:hover {
-  color: var(--primary-bg-color);
-  background-color: var(--primary-color);
 }
 
 .loader {

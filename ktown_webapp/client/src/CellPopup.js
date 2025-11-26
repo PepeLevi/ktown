@@ -356,6 +356,10 @@ function SiteDetailView({
   allHistoricalEvents = [],
   createSelectedEntity,
 }) {
+  if (!site) {
+    return null;
+  }
+
   const siteEvents =
     site?.historical_events?.map((id) =>
       allHistoricalEvents.find((e) => e.id == id)
@@ -501,6 +505,10 @@ function CellPopup({
     undergroundRegion,
   } = entity;
 
+  if(kind == 'site' && !site){
+    console.log('fuck', entity)
+  }
+
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
 
   // Calculate popup position
@@ -574,18 +582,6 @@ function CellPopup({
             {type && <p>**{type}</p>}
             {kind && <p>{kind}**</p>}
           </div>
-
-          {/* {mainTexture && (
-            <div className="texture-previews">
-              <TexturePreview label="Entity texture" src={mainTexture} />
-              {siteTextureUrl && siteTextureUrl !== mainTexture && (
-                <TexturePreview label="Site texture" src={siteTextureUrl} />
-              )}
-              {regionTextureUrl && regionTextureUrl !== mainTexture && (
-                <TexturePreview label="Region texture" src={regionTextureUrl} />
-              )}
-            </div>
-          )} */}
 
           <div className="flex-row-full"></div>
           <div className="specs">

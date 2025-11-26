@@ -1069,7 +1069,6 @@ function WorldMap({
       .attr("y", cellY)
       .attr("width", cellWidth)
       .attr("height", cellHeight)
-      .style("cursor", "pointer")
       .style("pointer-events", "auto") // Ensure cells are clickable
       .style("z-index", 10); // Ensure cells are above other elements
 
@@ -1097,7 +1096,6 @@ function WorldMap({
         // keep your old classes + new type class
         return `cell cell-level-${level} cell-${uniqueKey} ${typeClass}`;
       })
-      .style("cursor", "pointer")
       .style("pointer-events", "auto") // Ensure cells are clickable
       .each(function (d) {
         const rect = d3.select(this);
@@ -2176,6 +2174,14 @@ function WorldMap({
         }
         return false;
       })
+      .on("start", () => {
+        // Add dragging class when drag starts
+        document.body.classList.add("dragging");
+      })
+      .on("end", () => {
+        // Remove dragging class when drag ends
+        document.body.classList.remove("dragging");
+      })
       .on("zoom", (event) => {
         const { x, y, k } = event.transform;
 
@@ -2405,6 +2411,7 @@ function WorldMap({
         const cellCoords =
           entity.cellCoords ||
           (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
+          (entity[kind] && entity[kind].cellCoords && { x: entity[kind].cellCoords.x, y: entity[kind].cellCoords.y }) ||
           null;
 
         let id = null;
@@ -2497,7 +2504,7 @@ function WorldMap({
       });
 
       // 🔥 No rect found (likely offscreen) → zoom directly to cell center
-      if (autoZoom && !foundMatch && selected.kind === "cell" && cellCoords) {
+      if (autoZoom && !foundMatch && cellCoords) {
         zoomToCellCoords(cellCoords); // this will trigger re-render via zoom handler
       }
 
@@ -2546,7 +2553,7 @@ function WorldMap({
       className="map-wrapper"
       style={{ position: "relative", width: "100%", height: "100%" }}
     >
-      <svg ref={svgRef} />
+      <svg ref={svgRef} className="world-map-svg" />
       {worldData &&
         worldData.cells &&
         xScaleRef.current &&

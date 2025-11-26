@@ -126,18 +126,28 @@ function findEntity(kind, id, figures, sites, books, handleEntityClick, createSe
   console.log(kind, id)
 
   // find actual entity
-  // debugger;
+  let entity;
   switch(kind){
     case "figure":
-      handleEntityClick(createSelectedEntity("figure", figures[id]));
+    entity = figures[id];
       break;
     case "site":
-      handleEntityClick(createSelectedEntity("site", sites[id]));
+      entity = sites[id];
+      break;
+    case "civilization":
+      // finding civilizations is a bit more complicated -> actually find a site which is inhabited by this civ
+      kind = "site";
+      entity = Object.values(sites).find(s => s['cur_owner_id'] == id || s['civ_id'] == id);
       break;
     case "book":
-      handleEntityClick(createSelectedEntity("book", books[id]));
+      entity =  books[id];
       break;
   }  
+
+  if(!entity) return;
+
+  console.log("found entity: ", entity)
+  handleEntityClick(createSelectedEntity(kind, entity));
 }
 
 function InlineEntityButton({
@@ -153,14 +163,18 @@ function InlineEntityButton({
   const { kind, id, name } = entityInfo;
 
   return (
-    <button
-      type="button"
-      className="inline-entity-button"
+    <span
+      className="inline-entity-link"
       onClick={() => {
         findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity)
       }}
+      style={{
+        color: 'var(--primary-color)',
+        cursor: 'pointer',
+        textDecoration: 'underline'
+      }}
     >
       {name}
-    </button>
+    </span>
   );
 }
