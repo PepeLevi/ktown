@@ -29,8 +29,8 @@
 }
 
 rect {
-    stroke-width: 1px; 
-    vector-effect: non-scaling-stroke; 
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
 }
 
 @keyframes App-logo-spin {
@@ -58,7 +58,7 @@ rect {
 }
 
 .welcome-overlay-loading {
-  background-image: url('loading-back.png');
+  background-image: url("loading-back.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -71,9 +71,10 @@ rect {
   border: 1px solid #ffffff;
   border-radius: 0;
   padding: 1.5rem;
-  min-width: 800px;
-  max-width: 1000px;
-  max-height: 50vh;
+  width: 800px;
+  /* max-width: 1000px; */
+  max-height: 80vh;
+  max-width: 90%;
   overflow-y: auto;
   box-shadow: 0 0 0 1px #ffffff;
   z-index: 10001;
@@ -293,7 +294,6 @@ rect {
 .library-item-selected {
   opacity: 1;
 }
-
 
 .library-book-header {
   display: flex;
