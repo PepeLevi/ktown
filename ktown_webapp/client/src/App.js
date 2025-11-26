@@ -183,13 +183,15 @@ function App() {
         if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
-            temp_sites[si] = site
+            site['cellCoords'] = { x: cell.x, y: cell.y };
+            temp_sites[parseInt(site['id'])] = site
 
             if (site.books) {
               for (let sbi = 0; sbi < site.books.length; sbi++) {
                 const book = site.books[sbi];
 
                 if (book && book.author_hfid) {
+                  book['cellCoords'] = { x: cell.x, y: cell.y };
                   temp_books[book.author_hfid] = book;
                   cellHasBooks = true; // NEW
                 }
@@ -200,6 +202,7 @@ function App() {
               for (let hfi = 0; hfi < site.historical_figures.length; hfi++) {
                 const hf = site.historical_figures[hfi];
                 if (hf && hf.id) {
+                  hf['cellCoords'] = { x: cell.x, y: cell.y };
                   temp_figures[hf.id] = hf;
 
                   // historical figure may have books
@@ -208,6 +211,7 @@ function App() {
                     for (let bi = 0; bi < hfBooks.length; bi++) {
                       const book = hfBooks[bi];
                       if (book && book.author_hfid) {
+                        book['cellCoords'] = { x: cell.x, y: cell.y };
                         temp_books[book.author_hfid] = book;
                         cellHasBooks = true; // NEW
                       }
@@ -232,6 +236,7 @@ function App() {
                     const figure = inhabitants[ii];
 
                     if (figure && figure.id) {
+                      figure['cellCoords'] = { x: cell.x, y: cell.y };
                       temp_figures[figure.id] = figure;
 
                       if (figure.books) {
@@ -239,6 +244,7 @@ function App() {
                         for (let bi = 0; bi < books.length; bi++) {
                           const book = books[bi];
                           if (book && book.author_hfid) {
+                            book['cellCoords'] = { x: cell.x, y: cell.y };
                             temp_books[book.author_hfid] = book;
                             cellHasBooks = true; // NEW
                           }
@@ -416,332 +422,10 @@ function App() {
   );
 }
 
-/* ------- small details helpers ------- */
-
-function TexturePreview({ label, src }) {
-  if (!src) return null;
-  return <img src={src} alt={label} />;
-}
-
-function FigureDetailView({
-  figure,
-  figures,
-  isTopLevel,
-  books,
-  sites,
-  handleEntityClick,
-}) {
-  if (!figure) {
-    return;
-  }
-
-  return (
-    <div className="figure-detail-view">
-      <div className="flex-row-full">
-        <p>{figure.name}</p>{" "}
-        <p
-          style={{
-            transform: figure.sex === "-1" ? "rotate(90deg)" : "none",
-          }}
-        >
-          {figure.id}
-        </p>
-      </div>
-
-      <p>{figure.race}</p>
-      <p>{figure.associated_type}</p>
-
-      {figure.sphere && (
-        <>
-          <p className="cat_headline">figure sphere</p>
-          <div className="flex-row-full">
-            {Array.isArray(figure.sphere) &&
-              figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
-          </div>
-        </>
-      )}
-
-      {figure.books && isTopLevel && (
-        <>
-          <p className="cat_headline">books</p>
-          {normalizeToArray(figure.books).map((b, i) => (
-            <div key={i}>
-              <BookDetailView
-                book={b}
-                isTopLevel={false}
-                figures={figures}
-                books={books}
-                sites={sites}
-                handleEntityClick={handleEntityClick}
-              />
-            </div>
-          ))}
-        </>
-      )}
-
-      {figure.hf_link && isTopLevel && (
-        <>
-          <p className="cat_headline">connections</p>
-          <div className="flex-column subFigures">
-            {normalizeToArray(figure.hf_link).length > 0 &&
-              normalizeToArray(figure.hf_link).map((s, i) => (
-                <>
-                  {figures[s.hfid] ? (
-                    <button
-                      onClick={() => {
-                        handleEntityClick(
-                          createSelectedEntity("figure", figures[s.hfid])
-                        );
-                      }}
-                      key={i}
-                      className={s.link_type + " subFigure"}
-                    >
-                      <p>{s.link_type}</p>
-                      <FigureDetailView
-                        figure={figures[s.hfid]}
-                        isTopLevel={false}
-                        figures={figures}
-                        books={books}
-                        sites={sites}
-                        handleEntityClick={handleEntityClick}
-                      />
-                    </button>
-                  ) : null}
-                </>
-              ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-function BookDetailView({
-  book,
-  isTopLevel,
-  figures,
-  books,
-  sites,
-  handleEntityClick,
-}) {
-  if (!book) {
-    return null;
-  }
-
-  return (
-    <div className="book">
-      <button
-        className="flex-row-full"
-        onClick={() => {
-          handleEntityClick(createSelectedEntity("book", book));
-        }}
-      >
-        <p>{book.title}</p>
-        <p>is a book</p>
-      </button>
-
-      {/* <p className="cat_headline">book content:</p> */}
-
-      {/* ⬇️ Use rich renderer instead of plain <p> */}
-      <div className="book-content">
-        <RichBookContent
-          text={book?.raw?.text_content}
-          handleEntityClick={handleEntityClick}
-          createSelectedEntity={createSelectedEntity}
-          figures={figures}
-          sites={sites}
-          books={books}
-        />
-      </div>
-
-      {figures[book.author_hfid] && isTopLevel && (
-        <>
-          {/* <p className="cat_headline">book author:</p> */}
-          <FigureDetailView
-            figure={figures[book.author_hfid]}
-            isTopLevel={false}
-            figures={figures}
-            books={books}
-            sites={sites}
-          />
-        </>
-      )}
-    </div>
-  );
-}
-
 // Helper function to normalize values to arrays
 const normalizeToArray = (value) => {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 };
-
-function StructureDetailView({ structure, handleEntityClick, books, figures }) {
-  // Normalize inhabitant to array (can be single object or array)
-  const inhabitants = normalizeToArray(
-    structure.inhabitant || structure.inhabitants
-  );
-
-  return (
-    <div>
-      <button
-        onClick={() => {
-          handleEntityClick(createSelectedEntity("structure", structure));
-        }}
-      >
-        {structure.name}
-      </button>
-
-      {inhabitants.length > 0 && (
-        <>
-          <p className="cat_headline">structure inhabitant:</p>
-          {inhabitants.map((si, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                handleEntityClick(createSelectedEntity("figure", si));
-              }}
-            >
-              <FigureDetailView
-                figure={si}
-                figures={figures}
-                isTopLevel={true}
-                books={books}
-                sites={sites}
-                handleEntityClick={handleEntityClick}
-              />
-            </button>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-function SiteDetailView({ site, handleEntityClick, figures, books, sites }) {
-  return (
-    <div>
-      <p>{site.fromFile2.name}</p>
-      {site.structures && (
-        <>
-          {Array.isArray(site.structures) ? (
-            site.structures.map((s, i) => (
-              <div key={i}>
-                <StructureDetailView
-                  structure={s}
-                  isTopLevel={false}
-                  handleEntityClick={handleEntityClick}
-                  figures={figures}
-                  books={books}
-                />
-              </div>
-            ))
-          ) : (
-            <StructureDetailView
-              handleEntityClick={handleEntityClick}
-              structure={site.structures}
-              isTopLevel={false}
-              figures={figures}
-              books={books}
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function EntityDetailsView({ entity, figures, books, sites, handleEntityClick }) {
-  const {
-    kind,
-    name,
-    type,
-    textureUrl,
-    regionTextureUrl,
-    siteTextureUrl,
-    cellCoords,
-    site,
-    structure,
-    figure,
-    book,
-  } = entity;
-
-  const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
-
-  console.log("clicked on entity", entity);
-
-  return (
-    <div className="details-content">
-      <div className="flex-row-full">
-        <p>{name || "Unknown"}</p>
-        {cellCoords && (
-          <p>
-            [{cellCoords.x}, {cellCoords.y}]
-          </p>
-        )}
-      </div>
-      <div className="flex-row-full">
-        {type && <p>**{type}</p>}
-        {kind && <p>{kind}**</p>}
-      </div>
-
-      {mainTexture && (
-        <div className="texture-previews">
-          <TexturePreview label="Entity texture" src={mainTexture} />
-          {siteTextureUrl && siteTextureUrl !== mainTexture && (
-            <TexturePreview label="Site texture" src={siteTextureUrl} />
-          )}
-          {regionTextureUrl && regionTextureUrl !== mainTexture && (
-            <TexturePreview label="Region texture" src={regionTextureUrl} />
-          )}
-        </div>
-      )}
-
-      <div className="flex-row-full"></div>
-      <div className="specs">
-        {kind === "figure" && (
-          <FigureDetailView
-            figure={figure}
-            figures={figures}
-            isTopLevel={true}
-            books={books}
-            sites={sites}
-            handleEntityClick={handleEntityClick}
-          />
-        )}
-
-        {kind === "book" && (
-          <BookDetailView
-            book={book}
-            isTopLevel={true}
-            figures={figures}
-            books={books}
-            sites={sites}
-            handleEntityClick={handleEntityClick}
-          />
-        )}
-
-        {kind === "site" && (
-          <SiteDetailView
-            site={site}
-            isTopLevel={true}
-            figures={figures}
-            books={books}
-            sites={sites}
-            handleEntityClick={handleEntityClick}
-          />
-        )}
-
-        {kind === "structure" && (
-          <StructureDetailView
-            structure={structure}
-            isTopLevel={true}
-            figures={figures}
-            books={books}
-            handleEntityClick={handleEntityClick}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default App;

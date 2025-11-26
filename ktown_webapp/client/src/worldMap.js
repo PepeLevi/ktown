@@ -2520,6 +2520,7 @@ function WorldMap({
         const cellCoords =
           entity.cellCoords ||
           (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
+          (entity[kind] && entity[kind].cellCoords && { x: entity[kind].cellCoords.x, y: entity[kind].cellCoords.y }) ||
           null;
 
         let id = null;
@@ -2612,7 +2613,7 @@ function WorldMap({
       });
 
       // 🔥 No rect found (likely offscreen) → zoom directly to cell center
-      if (autoZoom && !foundMatch && selected.kind === "cell" && cellCoords) {
+      if (autoZoom && !foundMatch && cellCoords) {
         zoomToCellCoords(cellCoords); // this will trigger re-render via zoom handler
       }
     };
