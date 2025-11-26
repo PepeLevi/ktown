@@ -29,7 +29,7 @@ function createSelectedEntity(kind, payload) {
 
 function App() {
   const [worldData, setWorldData] = useState(null);
-  const [allHistoricalEvents, setAllHistoricalEvents] = useState(null)
+  const [allHistoricalEvents, setAllHistoricalEvents] = useState(null);
   const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -48,107 +48,6 @@ function App() {
   // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
 
-  // const fetchWorldData = async () => {
-  //   try {
-  //     setStatus("Requesting world data from server...");
-
-  //     const res = await fetch(`${backendUrl}/api/world-data`, {
-  //       method: "POST",
-  //       headers: { "Content-Type": "application/json" },
-  //     });
-
-  //     if (!res.ok) {
-  //       const err = await res.json().catch(() => ({}));
-  //       throw new Error(err.error || "Request failed");
-  //     }
-
-  //     const data = await res.json();
-
-  //     // Support both { worldData: {...} } and direct worldData payloads
-  //     const wd = data.worldData || data;
-
-  //     if (!wd || !wd.cells) {
-  //       throw new Error("Invalid worldData format from server");
-  //     }
-
-  //     setWorldData(wd);
-
-  //     // Build figures and books as objects indexed by ID (for links like figures[s.hfid])
-  //     let temp_figures = {};
-  //     let temp_books = {};
-  //     wd.cells.forEach((cell) => {
-  //       // console.log("looks at cell directly from json", cell);
-
-  //       if (cell.sites && cell.sites.length > 0) {
-  //         for (let si = 0; si < cell.sites.length; si++) {
-  //           const site = cell.sites[si];
-
-  //           if (site.books) {
-  //             for (let sbi = 0; sbi < site.books.length; sbi++) {
-  //               const book = site.books[sbi];
-  //               if (book && book.id) {
-  //                 temp_books[book.id] = book;
-  //               }
-  //             }
-  //           }
-
-  //           if (site.historical_figures) {
-  //             for (let hfi = 0; hfi < site.historical_figures.length; hfi++) {
-  //               const hf = site.historical_figures[hfi];
-  //               if (hf && hf.id) {
-  //                 temp_figures[hf.id] = hf;
-  //               }
-  //             }
-  //           }
-  //           if (site.structures) {
-  //             const structures = Array.isArray(site.structures)
-  //               ? site.structures
-  //               : [site.structures];
-  //             for (let sti = 0; sti < structures.length; sti++) {
-  //               const structure = structures[sti];
-  //               const inhabitants = normalizeToArray(
-  //                 structure.historical_figures || structure.inhabitants
-  //               );
-
-  //               if (inhabitants.length > 0) {
-  //                 for (let ii = 0; ii < inhabitants.length; ii++) {
-  //                   const figure = inhabitants[ii];
-
-  //                   if (figure && figure.id) {
-  //                     temp_figures[figure.id] = figure;
-
-  //                     if (figure.books) {
-  //                       // console.log("has figure with book", figure);
-
-  //                       const books = normalizeToArray(figure.books);
-  //                       for (let bi = 0; bi < books.length; bi++) {
-  //                         const book = books[bi];
-  //                         if (book && book.id) {
-  //                           temp_books[book.id] = book;
-  //                         }
-  //                       }
-  //                     }
-  //                   }
-  //                 }
-  //               }
-  //             }
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     setFigures(temp_figures);
-  //     setBooks(temp_books);
-
-  //     setSelectedCell(null);
-  //     setSelectedEntity(null);
-  //     setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
-  //   } catch (err) {
-  //     console.error(err);
-  //     setStatus("Error loading world data.");
-  //     alert("Error: " + err.message);
-  //   }
-  // };
   const fetchWorldData = async () => {
     setShouldShowLoader(true);
     try {
@@ -171,7 +70,7 @@ function App() {
         throw new Error("Invalid worldData format from server");
       }
 
-      setWorldData({cells: wd.cells});
+      setWorldData({ cells: wd.cells });
       setAllHistoricalEvents(wd.historical_events);
 
       let temp_figures = {};
@@ -185,7 +84,7 @@ function App() {
         if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
-            temp_sites[si] = site
+            temp_sites[si] = site;
 
             if (site.books) {
               const siteBooks = normalizeToArray(site.books);
@@ -271,12 +170,14 @@ function App() {
       setFigures(temp_figures);
       setBooks(temp_books);
       setBookCells(temp_bookCells); // NEW
-      setSites(temp_sites)
+      setSites(temp_sites);
       setCurrentBookCellIndex(-1); // NEW
 
       setSelectedCell(null);
       setSelectedEntity(null);
       setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
+
+      console.log("has sites", sites);
 
       setHasLoaded(true);
     } catch (err) {
@@ -347,7 +248,7 @@ function App() {
     });
 
     if (entity.kind === "cell") {
-      setLevel(0);
+      setLevel(5);
     }
     if (entity.kind === "site") {
       setLevel(4);
@@ -356,7 +257,7 @@ function App() {
       setLevel(3);
     }
     if (entity.kind === "figure") {
-      setLevel(0);
+      setLevel(2);
     }
     if (entity.kind === "book") {
       setLevel(0);
@@ -787,7 +688,7 @@ function StructureDetailView({ structure, handleEntityClick, books, figures }) {
     </div>
   );
 }
-function SiteDetailView({ site, handleEntityClick, figures, books }) {
+function SiteDetailView({ site, handleEntityClick, figures, books, sites }) {
   return (
     <div>
       <p>{site.fromFile2.name}</p>
@@ -820,7 +721,7 @@ function SiteDetailView({ site, handleEntityClick, figures, books }) {
   );
 }
 
-function EntityDetailsView({ entity, figures, books, handleEntityClick }) {
+function EntityDetailsView({ entity, figures, books, sites, handleEntityClick }) {
   const {
     kind,
     name,
