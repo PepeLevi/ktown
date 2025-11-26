@@ -181,6 +181,7 @@ function BookDetailView({
   isTopLevel,
   figures,
   books,
+  sites,
   handleEntityClick,
   createSelectedEntity,
   sites,
