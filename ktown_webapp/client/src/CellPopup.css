@@ -40,9 +40,9 @@
 }
 
 .cell-popup-close {
-  background: transparent;
+  background: transparent !important;
   border: none;
-  color: #ffffff;
+  color: var(--cell-txt-color);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -58,13 +58,70 @@
 }
 
 .cell-popup-close:hover {
-  opacity: 0.7;
+  background: transparent !important;
+  color: var(--primary-color);
 }
 
 .cell-popup-content {
-  color: #ffffff;
+  color: var(--cell-txt-color);
   font-size: 0.9rem;
   line-height: 1.6;
+}
+
+.cell-popup-content p {
+  color: var(--cell-txt-color);
+  display: inline;
+  margin: 0;
+  margin-right: 0.5em;
+}
+
+.cell-popup-content p.cell-coords {
+  display: block;
+  margin-bottom: 0.5em;
+  margin-right: 0;
+}
+
+.cell-popup-content p:last-child {
+  margin-right: 0;
+}
+
+.cell-popup-content .book-content {
+  display: inline;
+  margin-right: 0.5em;
+}
+
+.cell-popup-content .figure-detail-view,
+.cell-popup-content .figure-detail-view > p,
+.cell-popup-content .figure-detail-view > span,
+.cell-popup-content > div,
+.cell-popup-content > span {
+  display: inline;
+  margin-right: 0.5em;
+}
+
+.cell-popup-content .specs {
+  display: inline;
+}
+
+.cell-popup-content .specs > * {
+  display: inline;
+}
+
+.cell-popup-content .book {
+  display: inline;
+}
+
+.cell-popup-content .book > * {
+  display: inline;
+}
+
+.cell-popup-content .underground-region-link {
+  display: block;
+  margin-top: 0.5em;
+}
+
+.cell-popup-content .cat_headline {
+  color: var(--cell-txt-color);
 }
 
 .cell-popup-text {
@@ -72,10 +129,12 @@
   overflow-wrap: break-word;
 }
 
-.cell-popup-link {
+.cell-popup-link,
+.cell-popup-content a,
+.cell-popup-content .inline-entity-link {
   background: none;
   border: none;
-  color: #ffffff;
+  color: var(--primary-color) !important;
   text-decoration: underline;
   cursor: pointer;
   padding: 0;
@@ -86,17 +145,21 @@
   display: inline;
 }
 
-.cell-popup-link:hover {
-  color: #cccccc;
+.cell-popup-link:hover,
+.cell-popup-content a:hover,
+.cell-popup-content .inline-entity-link:hover {
+  color: var(--primary-color);
   text-decoration: underline;
 }
 
-.cell-popup-link:active {
-  color: #aaaaaa;
+.cell-popup-link:active,
+.cell-popup-content a:active,
+.cell-popup-content .inline-entity-link:active {
+  color: var(--primary-color);
 }
 
 .cell-popup-separator {
-  color: #ffffff;
+  color: var(--cell-txt-color);
   margin: 0 0.25rem;
 }
 
@@ -130,4 +193,25 @@
 
 .cell-popup-link:focus-visible {
   outline: none;
+}
+
+/* Buttons should use cell text color */
+.cell-popup-content button {
+  color: var(--cell-txt-color);
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+/* Links in RichBookContent should use primary color */
+.cell-popup-content .rich-book-content a,
+.cell-popup-content .rich-book-content .inline-entity-link,
+.cell-popup-content .inline-entity-link {
+  color: var(--primary-color) !important;
+  text-decoration: underline;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
 }

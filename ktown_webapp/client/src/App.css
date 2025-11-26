@@ -91,9 +91,9 @@
 }
 
 .welcome-close {
-  background: transparent;
+  background: transparent !important;
   border: none;
-  color: #ffffff;
+  color: var(--cell-txt-color);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -109,7 +109,8 @@
 }
 
 .welcome-close:hover {
-  opacity: 0.7;
+  background: transparent !important;
+  color: var(--primary-color);
 }
 
 .welcome-content {
@@ -209,9 +210,9 @@
 }
 
 .library-close {
-  background: transparent;
+  background: transparent !important;
   border: none;
-  color: #ffffff;
+  color: var(--cell-txt-color);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -227,7 +228,8 @@
 }
 
 .library-close:hover {
-  opacity: 0.7;
+  background: transparent !important;
+  color: var(--primary-color);
 }
 
 .library-content {
