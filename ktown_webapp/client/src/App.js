@@ -4,6 +4,7 @@ import WorldMap from "./worldMap";
 import JourneyVerticalProgress from "./progressBar";
 import RichBookContent from "./RichBookContent";
 import CellPopup from "./CellPopup";
+import "./App.css";
 
 function createSelectedEntity(kind, payload) {
   const base = {
@@ -28,7 +29,7 @@ function createSelectedEntity(kind, payload) {
 
 function App() {
   const [worldData, setWorldData] = useState(null);
-  const [allHistoricalEvents, setAllHistoricalEvents] = useState(null)
+  const [allHistoricalEvents, setAllHistoricalEvents] = useState(null);
   const [status, setStatus] = useState("Requesting world data from server...");
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -36,117 +37,17 @@ function App() {
   const [books, setBooks] = useState([]);
   const [sites, setSites] = useState([]);
   const [level, setLevel] = React.useState(5);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   const [bookCells, setBookCells] = useState([]);
   const [currentBookCellIndex, setCurrentBookCellIndex] = useState(-1);
 
-  const [shouldShowLoader, setShouldShowLoader] = useState(false);
+  const [shouldShowLoader, setShouldShowLoader] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
 
   // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
   const backendUrl = "";
 
-  // const fetchWorldData = async () => {
-  //   try {
-  //     setStatus("Requesting world data from server...");
-
-  //     const res = await fetch(`${backendUrl}/api/world-data`, {
-  //       method: "POST",
-  //       headers: { "Content-Type": "application/json" },
-  //     });
-
-  //     if (!res.ok) {
-  //       const err = await res.json().catch(() => ({}));
-  //       throw new Error(err.error || "Request failed");
-  //     }
-
-  //     const data = await res.json();
-
-  //     // Support both { worldData: {...} } and direct worldData payloads
-  //     const wd = data.worldData || data;
-
-  //     if (!wd || !wd.cells) {
-  //       throw new Error("Invalid worldData format from server");
-  //     }
-
-  //     setWorldData(wd);
-
-  //     // Build figures and books as objects indexed by ID (for links like figures[s.hfid])
-  //     let temp_figures = {};
-  //     let temp_books = {};
-  //     wd.cells.forEach((cell) => {
-  //       // console.log("looks at cell directly from json", cell);
-
-  //       if (cell.sites && cell.sites.length > 0) {
-  //         for (let si = 0; si < cell.sites.length; si++) {
-  //           const site = cell.sites[si];
-
-  //           if (site.books) {
-  //             for (let sbi = 0; sbi < site.books.length; sbi++) {
-  //               const book = site.books[sbi];
-  //               if (book && book.id) {
-  //                 temp_books[book.id] = book;
-  //               }
-  //             }
-  //           }
-
-  //           if (site.historical_figures) {
-  //             for (let hfi = 0; hfi < site.historical_figures.length; hfi++) {
-  //               const hf = site.historical_figures[hfi];
-  //               if (hf && hf.id) {
-  //                 temp_figures[hf.id] = hf;
-  //               }
-  //             }
-  //           }
-  //           if (site.structures) {
-  //             const structures = Array.isArray(site.structures)
-  //               ? site.structures
-  //               : [site.structures];
-  //             for (let sti = 0; sti < structures.length; sti++) {
-  //               const structure = structures[sti];
-  //               const inhabitants = normalizeToArray(
-  //                 structure.historical_figures || structure.inhabitants
-  //               );
-
-  //               if (inhabitants.length > 0) {
-  //                 for (let ii = 0; ii < inhabitants.length; ii++) {
-  //                   const figure = inhabitants[ii];
-
-  //                   if (figure && figure.id) {
-  //                     temp_figures[figure.id] = figure;
-
-  //                     if (figure.books) {
-  //                       // console.log("has figure with book", figure);
-
-  //                       const books = normalizeToArray(figure.books);
-  //                       for (let bi = 0; bi < books.length; bi++) {
-  //                         const book = books[bi];
-  //                         if (book && book.id) {
-  //                           temp_books[book.id] = book;
-  //                         }
-  //                       }
-  //                     }
-  //                   }
-  //                 }
-  //               }
-  //             }
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     setFigures(temp_figures);
-  //     setBooks(temp_books);
-
-  //     setSelectedCell(null);
-  //     setSelectedEntity(null);
-  //     setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
-  //   } catch (err) {
-  //     console.error(err);
-  //     setStatus("Error loading world data.");
-  //     alert("Error: " + err.message);
-  //   }
-  // };
   const fetchWorldData = async () => {
     setShouldShowLoader(true);
     try {
@@ -169,7 +70,7 @@ function App() {
         throw new Error("Invalid worldData format from server");
       }
 
-      setWorldData({cells: wd.cells});
+      setWorldData({ cells: wd.cells });
       setAllHistoricalEvents(wd.historical_events);
 
       let temp_figures = {};
@@ -184,11 +85,12 @@ function App() {
           for (let si = 0; si < cell.sites.length; si++) {
             const site = cell.sites[si];
             site['cellCoords'] = { x: cell.x, y: cell.y };
-            temp_sites[parseInt(site['id'])] = site
+            temp_sites[parseInt(site['id'])] = site;
 
             if (site.books) {
-              for (let sbi = 0; sbi < site.books.length; sbi++) {
-                const book = site.books[sbi];
+              const siteBooks = normalizeToArray(site.books);
+              for (let sbi = 0; sbi < siteBooks.length; sbi++) {
+                const book = siteBooks[sbi];
 
                 if (book && book.author_hfid) {
                   book['cellCoords'] = { x: cell.x, y: cell.y };
@@ -268,18 +170,22 @@ function App() {
       setFigures(temp_figures);
       setBooks(temp_books);
       setBookCells(temp_bookCells); // NEW
-      setSites(temp_sites)
+      setSites(temp_sites);
       setCurrentBookCellIndex(-1); // NEW
 
       setSelectedCell(null);
       setSelectedEntity(null);
       setStatus(`World data loaded: ${wd.cells.length} cell(s).`);
 
+      console.log("has sites", sites);
+
       setHasLoaded(true);
     } catch (err) {
       console.error(err);
       setStatus("Error loading world data.");
       alert("Error: " + err.message);
+      // Keep loader visible even on error so user can see the welcome message
+      setHasLoaded(true);
     }
   };
 
@@ -351,7 +257,7 @@ function App() {
       setLevel(3);
     }
     if (entity.kind === "figure") {
-      setLevel(0);
+      setLevel(2);
     }
     if (entity.kind === "book") {
       setLevel(0);
@@ -368,6 +274,20 @@ function App() {
     <div className="app">
       <div className="progressBar">
         <JourneyVerticalProgress level={level} />
+        <div className={`library-logo-container ${shouldShowLoader ? 'library-logo-disabled' : ''}`}>
+          <img 
+            src={require("./library-logo.png")} 
+            alt="Library" 
+            className="library-logo"
+            onClick={() => !shouldShowLoader && setShowLibrary(true)}
+            style={{ 
+              cursor: shouldShowLoader ? 'not-allowed' : 'pointer',
+              background: 'transparent',
+              backgroundColor: 'transparent',
+              opacity: shouldShowLoader ? 0.3 : 1
+            }}
+          />
+        </div>
       </div>
       <main className="layout">
         <section className="map-panel">
@@ -383,41 +303,334 @@ function App() {
           )}
         </section>
 
-        {/* Popup instead of details panel */}
-        {popupData && (
-          <CellPopup
-            entity={popupData.cellData}
-            position={popupData.position}
-            onClose={handleClosePopup}
-            figures={figures}
-            books={books}
-            sites={sites}
-            allHistoricalEvents={allHistoricalEvents}
-            handleEntityClick={handleEntityClick}
-            createSelectedEntity={createSelectedEntity}
-          />
-        )}
-
-        {bookCells.length > 0 && (
-          <button className="book-tour-button" onClick={goToNextBookCell}>
-            -xx-
-          </button>
-        )}
       </main>
 
       {shouldShowLoader && (
-        <div className="loader">
-          {hasLoaded && (
-            <button
-              onClick={() => {
-                setShouldShowLoader(false);
-              }}
-            >
-              explore
-            </button>
+        <WelcomeScreen
+          hasLoaded={hasLoaded}
+          onClose={() => setShouldShowLoader(false)}
+        />
+      )}
+
+      {showLibrary && (
+        <LibraryWindow
+          books={Object.values(books)}
+          figures={figures}
+          sites={sites}
+          onClose={() => setShowLibrary(false)}
+          handleEntityClick={handleEntityClick}
+          createSelectedEntity={createSelectedEntity}
+        />
+      )}
+
+      {/* Popup instead of details panel - rendered after library to ensure it's on top */}
+      {popupData && (
+        <CellPopup
+          entity={popupData.cellData}
+          position={popupData.position}
+          onClose={handleClosePopup}
+          figures={figures}
+          books={books}
+          sites={sites}
+          allHistoricalEvents={allHistoricalEvents}
+          handleEntityClick={handleEntityClick}
+          createSelectedEntity={createSelectedEntity}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------- Library Window Component ------- */
+
+function LibraryWindow({ books, figures, sites, onClose, handleEntityClick, createSelectedEntity }) {
+  const [selectedIndex, setSelectedIndex] = React.useState(0);
+  const [viewingBook, setViewingBook] = React.useState(null);
+
+  // Handle keyboard navigation
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (viewingBook) {
+        // When viewing book content, only Escape to go back
+        if (e.key === 'Escape') {
+          setViewingBook(null);
+        }
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedIndex(prev => Math.max(0, prev - 1));
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedIndex(prev => Math.min(books.length - 1, prev + 1));
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (books[selectedIndex]) {
+            setViewingBook(books[selectedIndex]);
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          onClose();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIndex, books, viewingBook, onClose]);
+
+  return (
+    <div className="library-overlay" onClick={onClose}>
+      <div className="library-window" onClick={(e) => e.stopPropagation()}>
+        <button className="library-close" onClick={onClose}>
+          ×
+        </button>
+
+        <div className="library-content">
+          {!viewingBook ? (
+            <>
+              <p className="library-welcome">welcome to Ktown library!</p>
+              <div className="library-list">
+                {books.length > 0 ? (
+                  books.map((book, index) => (
+                    <div
+                      key={book.id || index}
+                      className={`library-item ${index === selectedIndex ? 'library-item-selected' : ''}`}
+                      onClick={() => setViewingBook(book)}
+                    >
+                      {book.title || `Book ${book.id || index}`}
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: '#666' }}>No books found</p>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="library-book-header">
+                <button 
+                  className="library-back"
+                  onClick={() => setViewingBook(null)}
+                >
+                  ← Back
+                </button>
+                <h3 className="library-book-title">{viewingBook.title || `Book ${viewingBook.id}`}</h3>
+              </div>
+              <div className="library-book-content">
+                <RichBookContent
+                  text={viewingBook.text_content}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
+                />
+              </div>
+            </>
           )}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+/* ------- Welcome Screen Component ------- */
+
+function WelcomeScreen({ hasLoaded, onClose }) {
+  return (
+    <div className={`welcome-overlay ${!hasLoaded ? 'welcome-overlay-loading' : ''}`}>
+      <div className="welcome-popup">
+        {hasLoaded && (
+          <button className="welcome-close" onClick={onClose}>
+            ×
+          </button>
+        )}
+        
+        <div className="welcome-content">
+          <div className="welcome-text">
+            <p>
+              welcome to Ktown!
+            </p>
+            
+            <p>
+              Ktown is all of these things at once: a phenomenon, an assemblage, a cognitive system, a space of reasons, a duration, and a critique of the given.
+            </p>
+            
+            <p>
+              The world is visually text-based, with its elements and characters represented by numbers, letters and symbols, all inserted into a tile-based graphic. The map uses these symbols to represent different data, once we have this raw information mediated by artificial intelligence, we parse the data to integrate it into the map interface. It uses a signifying layer based on characters and layers. Using a fractal map with an interactive zoom.
+            </p>
+            
+            <p>
+              The restructuring and semantic alteration of data is the activation itself. The transformations applied to data here are not only related to its activation (the transition from data to information), but also to the production of practical and linguistic content that operates in the function of information as a process.
+            </p>
+            
+            <p>
+              The general passive dynamics of the ordinary spectator, of intelligibility and cognition (of differentiating and linking, that is, understanding the world around them) become active, as this is the central issue in KTOWN's gameplay dynamics. The player must interact with a generated (artificial) environment, and through this navigation and interactivity, they will be able to build links and distinguish differences to experimentally construct meaning through maps and text.
+            </p>
+          </div>
+          
+          {!hasLoaded && (
+            <div className="welcome-loading">
+              <div className="welcome-progress-bar">
+                <div className="welcome-progress-fill"></div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------- Library Window Component ------- */
+
+function LibraryWindow({ books, figures, sites, onClose, handleEntityClick, createSelectedEntity }) {
+  const [selectedIndex, setSelectedIndex] = React.useState(0);
+  const [viewingBook, setViewingBook] = React.useState(null);
+
+  // Handle keyboard navigation
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (viewingBook) {
+        // When viewing book content, only Escape to go back
+        if (e.key === 'Escape') {
+          setViewingBook(null);
+        }
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedIndex(prev => Math.max(0, prev - 1));
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedIndex(prev => Math.min(books.length - 1, prev + 1));
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (books[selectedIndex]) {
+            setViewingBook(books[selectedIndex]);
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          onClose();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIndex, books, viewingBook, onClose]);
+
+  return (
+    <div className="library-overlay" onClick={onClose}>
+      <div className="library-window" onClick={(e) => e.stopPropagation()}>
+        <button className="library-close" onClick={onClose}>
+          ×
+        </button>
+
+        <div className="library-content">
+          {!viewingBook ? (
+            <>
+              <p className="library-welcome">welcome to Ktown library!</p>
+              <div className="library-list">
+                {books.length > 0 ? (
+                  books.map((book, index) => (
+                    <div
+                      key={book.id || index}
+                      className={`library-item ${index === selectedIndex ? 'library-item-selected' : ''}`}
+                      onClick={() => setViewingBook(book)}
+                    >
+                      {book.title || `Book ${book.id || index}`}
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: '#666' }}>No books found</p>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="library-book-header">
+                <button 
+                  className="library-back"
+                  onClick={() => setViewingBook(null)}
+                >
+                  ← Back
+                </button>
+                <h3 className="library-book-title">{viewingBook.title || `Book ${viewingBook.id}`}</h3>
+              </div>
+              <div className="library-book-content">
+                <RichBookContent
+                  text={viewingBook.text_content}
+                  handleEntityClick={handleEntityClick}
+                  createSelectedEntity={createSelectedEntity}
+                  figures={figures}
+                  sites={sites}
+                  books={books}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------- Welcome Screen Component ------- */
+
+function WelcomeScreen({ hasLoaded, onClose }) {
+  return (
+    <div className={`welcome-overlay ${!hasLoaded ? 'welcome-overlay-loading' : ''}`}>
+      <div className="welcome-popup">
+        {hasLoaded && (
+          <button className="welcome-close" onClick={onClose}>
+            ×
+          </button>
+        )}
+        
+        <div className="welcome-content">
+          <div className="welcome-text">
+            <p>
+              welcome to Ktown!
+            </p>
+            
+            <p>
+              Ktown is all of these things at once: a phenomenon, an assemblage, a cognitive system, a space of reasons, a duration, and a critique of the given.
+            </p>
+            
+            <p>
+              The world is visually text-based, with its elements and characters represented by numbers, letters and symbols, all inserted into a tile-based graphic. The map uses these symbols to represent different data, once we have this raw information mediated by artificial intelligence, we parse the data to integrate it into the map interface. It uses a signifying layer based on characters and layers. Using a fractal map with an interactive zoom.
+            </p>
+            
+            <p>
+              The restructuring and semantic alteration of data is the activation itself. The transformations applied to data here are not only related to its activation (the transition from data to information), but also to the production of practical and linguistic content that operates in the function of information as a process.
+            </p>
+            
+            <p>
+              The general passive dynamics of the ordinary spectator, of intelligibility and cognition (of differentiating and linking, that is, understanding the world around them) become active, as this is the central issue in KTOWN's gameplay dynamics. The player must interact with a generated (artificial) environment, and through this navigation and interactivity, they will be able to build links and distinguish differences to experimentally construct meaning through maps and text.
+            </p>
+          </div>
+          
+          {!hasLoaded && (
+            <div className="welcome-loading">
+              <div className="welcome-progress-bar">
+                <div className="welcome-progress-fill"></div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
