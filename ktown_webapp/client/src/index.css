@@ -31,7 +31,16 @@
   --primary-color: #ffcc01;
   --label-color: #ffcc01;
   --regPad: 0.2px;
+  --map-outline-color: white;
 }
+
+/* :root {
+  --primary-bg-color: black;
+  --primary-color: #39ff14;
+  --label-color: #39ff14;
+  --regPad: 0.2px;
+  --map-outline-color: white;
+} */
 
 html,
 body {
@@ -152,7 +161,7 @@ p {
   left: 0;
   right: 0;
   width: 100%;
-  background-color: var(--primary-color);
+  /* background-color: var(--primary-color); */
 }
 
 .map-wrapper {
@@ -163,7 +172,7 @@ p {
 .map-wrapper svg {
   width: 100%;
   height: calc(100% - 0px);
-  background-color: var(--primary-bg-color);
+  /* background-color: var(--primary-bg-color); */
 }
 
 .legend {
@@ -370,9 +379,9 @@ g.hover {
   background-color: green;
 }
 
-/* svg {
+svg {
   mix-blend-mode: difference;
-} */
+}
 
 rect.cell-type-region {
   fill: green;
@@ -380,7 +389,7 @@ rect.cell-type-region {
 
 rect.cell-type-site {
   fill: blue;
-  /* mix-blend-mode: difference; */
+  mix-blend-mode: difference;
 }
 
 rect.cell-type-structure {
@@ -400,7 +409,7 @@ rect.cell-type-writtenContent {
 
 rect.cell-type-undergroundRegion {
   fill: brown;
-  /* mix-blend-mode: screen; */
+  mix-blend-mode: screen;
 }
 
 rect.cell-type-ocean {
@@ -437,4 +446,19 @@ rect.cell-type-ocean {
   color: var(--label-color);
   width: auto;
   align-self: right;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  pointer-events: none;
+  background-image: url("https://i.gifer.com/embedded/download/CgYm.gif");
+  mix-blend-mode: screen;
+  background-repeat: no-repeat;
+  opacity: 0.1;
+  background-attachment: fixed;
+  background-size: 100% 100%;
 }

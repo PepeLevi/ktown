@@ -307,6 +307,7 @@ function App() {
         </div>
       </div>
       <main className="layout">
+        <div className="overlay"></div>
         <section className="map-panel">
           {worldData ? (
             <WorldMap
