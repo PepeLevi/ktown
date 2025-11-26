@@ -1283,7 +1283,9 @@ function WorldMap({
         const labelText = getCellLabel(d, level);
         const isDefaultLabel = !labelText; // default case returns ""
         const zoom = currentZoomRef.current || 1;
-        const strokeWidth = 2 / Math.sqrt(zoom * 100);
+        const factor = 4; // how drastic you want it
+        const strokeWidth =
+          (2 * factor) / Math.sqrt(zoom * 100 * factor * factor);
 
         if (!isDefaultLabel) {
           rect
@@ -1366,10 +1368,10 @@ function WorldMap({
         // Original cell - show cell information
         // Use region name if available, otherwise use coordinates
         const regionName = originalCell.region?.name;
-        const cellName = regionName 
-          ? regionName 
+        const cellName = regionName
+          ? regionName
           : `Cell (${originalCell.x}, ${originalCell.y})`;
-        
+
         composed = {
           kind: "cell",
           name: cellName,
@@ -2361,7 +2363,7 @@ function WorldMap({
       cellRects.style("stroke", null).style("stroke-width", 0);
       return;
     }
-    const zoomToCellCoords = (cellCoords, targetK = 8, duration = 750) => {
+    const zoomToCellCoords = (cellCoords, targetK = 40, duration = 750) => {
       const svgNode = svgRef.current;
       const zoomBehavior = zoomBehaviorRef.current;
       const xScale = xScaleRef.current;
@@ -2379,123 +2381,6 @@ function WorldMap({
       zoomToPoint(cx, cy, targetK, duration);
     };
 
-    // --- zoom helper: compute zoom from rect size ---
-    // const zoomOnRect = (rectSelection) => {
-    //   if (!rectSelection || rectSelection.empty()) return;
-    //   const zoomBehavior = zoomBehaviorRef.current;
-    //   if (!zoomBehavior) return;
-
-    //   const viewBox = svgNode.viewBox.baseVal;
-    //   const vw = viewBox.width || 1;
-    //   const vh = viewBox.height || 1;
-
-    //   const x = parseFloat(rectSelection.attr("x")) || 0;
-    //   const y = parseFloat(rectSelection.attr("y")) || 0;
-    //   const w = parseFloat(rectSelection.attr("width")) || CELL_SIZE;
-    //   const h = parseFloat(rectSelection.attr("height")) || CELL_SIZE;
-
-    //   const cx = x + w / 2;
-    //   const cy = y + h / 2;
-
-    //   // How much of the viewport should the rect occupy?
-    //   // paddingFactor = 2 → ~50% of viewport
-    //   // paddingFactor = 3 → ~33% of viewport
-    //   const paddingFactor = 3;
-
-    //   const kx = vw / (w * paddingFactor);
-    //   const ky = vh / (h * paddingFactor);
-    //   let targetK = Math.min(kx, ky);
-
-    //   // Clamp to your zoom limits
-    //   targetK = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetK));
-
-    //   zoomToPoint(cx, cy, targetK, 750);
-    // };
-
-    // // Helper: describe what we’re selecting
-    // const getSelectedDescriptor = (entity) => {
-    //   const kind = entity.kind;
-
-    //   const cellCoords =
-    //     entity.cellCoords ||
-    //     (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
-    //     null;
-
-    //   let id = null;
-
-    //   if (kind === "site" && entity.site) {
-    //     id = entity.site.id;
-    //   } else if (kind === "structure" && entity.structure) {
-    //     id = entity.structure.id ?? entity.structure.local_id;
-    //   } else if (kind === "figure" && entity.figure) {
-    //     id = entity.figure.id;
-    //   } else if (kind === "writtenContent" && entity.writtenContent) {
-    //     id = entity.writtenContent.id ?? entity.writtenContent.title;
-    //   } else if (kind === "undergroundRegion" && entity.undergroundRegion) {
-    //     id = entity.undergroundRegion.id;
-    //   } else if (entity.childData && entity.childData.id) {
-    //     id = entity.childData.id;
-    //   }
-
-    //   return {
-    //     kind,
-    //     id: id != null ? String(id) : null,
-    //     cellCoords,
-    //   };
-    // };
-
-    // const {
-    //   kind: selectedKind,
-    //   id: selectedId,
-    //   cellCoords,
-    // } = getSelectedDescriptor(selectedEntity);
-
-    // let didZoom = false;
-
-    // cellRects.each(function (d) {
-    //   const rect = d3.select(this);
-
-    //   const baseCell = d.originalCell || d;
-
-    //   let isSelected = false;
-
-    //   // 1) Cell selection – match by base cell coords
-    //   if (selectedEntity.kind === "cell" && cellCoords) {
-    //     if (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y) {
-    //       isSelected = true;
-
-    //       console.log("should move to cell", cellCoords);
-    //     }
-    //   } else if (selectedId && selectedKind) {
-    //     // 2) Child selection – match by kind + id + base cell
-    //     const child = d.childData || d;
-
-    //     const childIdRaw = child?.id ?? child?.local_id ?? null;
-    //     const childId = childIdRaw != null ? String(childIdRaw) : null;
-
-    //     const sameKind = d.childType === selectedKind;
-    //     const sameId = childId && childId === selectedId;
-
-    //     const sameBaseCell =
-    //       !cellCoords ||
-    //       (baseCell.x === cellCoords.x && baseCell.y === cellCoords.y);
-
-    //     if (sameKind && sameId && sameBaseCell) {
-    //       isSelected = true;
-    //     }
-    //   }
-
-    //   if (isSelected) {
-    //     rect.style("stroke", "var(--primary-color)").style("stroke-width", 2);
-
-    //     if (!didZoom) {
-    //       didZoom = true;
-    //       zoomOnRect(rect);
-    //     }
-    //   } else {
-    //     rect.style("stroke", null).style("stroke-width", 0);
-    //   }
-    // });
     const highlightSelection = (autoZoom = true) => {
       const svgNode = svgRef.current;
       if (!svgNode) return;

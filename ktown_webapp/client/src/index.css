@@ -96,7 +96,7 @@ p {
 .map-wrapper svg {
   width: 100%;
   height: calc(100% - 0px);
-  background: #020617;
+  background: var(--primary-bg-color);
 }
 
 .legend {

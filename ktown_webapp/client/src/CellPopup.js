@@ -27,7 +27,10 @@ function FigureDetailView({
     return null;
   }
 
-  const figureEvents = figure.historical_events?.map(id => allHistoricalEvents.find(e => e.id == id)) || [];
+  const figureEvents =
+    figure.historical_events?.map((id) =>
+      allHistoricalEvents.find((e) => e.id == id)
+    ) || [];
 
   return (
     <div className="figure-detail-view">
@@ -153,7 +156,7 @@ function FigureDetailView({
         <>
           <p className="cat_headline">historical events:</p>
           {figureEvents.map((event, i) => {
-            const eventData = typeof event === 'object' ? event : { id: event };
+            const eventData = typeof event === "object" ? event : { id: event };
             return (
               <div className="book-content">
                 <RichBookContent
@@ -180,6 +183,7 @@ function BookDetailView({
   books,
   handleEntityClick,
   createSelectedEntity,
+  sites,
 }) {
   if (!book) {
     return null;
@@ -250,7 +254,7 @@ function StructureDetailView({
   books,
   figures,
   sites = [],
-  allHistoricalEvents = [], 
+  allHistoricalEvents = [],
   createSelectedEntity,
   isTopLevel,
   structures, // New prop for structures lookup
@@ -261,8 +265,11 @@ function StructureDetailView({
     structure.historical_figures || structure.inhabitants
   );
 
-  const structureEvents = structure.historical_events?.map(id => allHistoricalEvents.find(e => e.id == id)) || [];
-  
+  const structureEvents =
+    structure.historical_events?.map((id) =>
+      allHistoricalEvents.find((e) => e.id == id)
+    ) || [];
+
   // Create sites lookup if site is available
   const sitesLookup = site && site.id ? { [site.id]: site } : {};
 
@@ -311,26 +318,29 @@ function StructureDetailView({
       )}
 
       {/* Display historical events */}
-      {(structureEvents.length > 0) && (
+      {structureEvents.length > 0 && (
         <>
           <p className="cat_headline">historical events:</p>
-          {(structureEvents.map(id => ({ id }))).map((event, i) => {
-            // If event is just an ID, we need to look it up
-            // For now, we'll display it as-is and assume the full event data will be passed
-            const eventData = typeof event === 'object' ? event : { id: event };
-            return (
-              <div className="book-content">
-                <RichBookContent
-                  text={event.string}
-                  handleEntityClick={handleEntityClick}
-                  createSelectedEntity={createSelectedEntity}
-                  figures={figures}
-                  sites={sites}
-                  books={books}
-                />
-              </div>
-            );
-          })}
+          {structureEvents
+            .map((id) => ({ id }))
+            .map((event, i) => {
+              // If event is just an ID, we need to look it up
+              // For now, we'll display it as-is and assume the full event data will be passed
+              const eventData =
+                typeof event === "object" ? event : { id: event };
+              return (
+                <div className="book-content">
+                  <RichBookContent
+                    text={event.string}
+                    handleEntityClick={handleEntityClick}
+                    createSelectedEntity={createSelectedEntity}
+                    figures={figures}
+                    sites={sites}
+                    books={books}
+                  />
+                </div>
+              );
+            })}
         </>
       )}
     </div>
@@ -346,8 +356,11 @@ function SiteDetailView({
   allHistoricalEvents = [],
   createSelectedEntity,
 }) {
-  const siteEvents = site.historical_events?.map(id => allHistoricalEvents.find(e => e.id == id)) || [];
-  
+  const siteEvents =
+    site?.historical_events?.map((id) =>
+      allHistoricalEvents.find((e) => e.id == id)
+    ) || [];
+
   // Create sites lookup object with current site
   const sitesLookup = site && site.id ? { [site.id]: site } : {};
 
@@ -355,7 +368,7 @@ function SiteDetailView({
     <div>
       <p>{site.fromFile2?.name || site.fromFile1?.name || site.name}</p>
 
-       {site.structures && (
+      {site.structures && (
         <>
           {Array.isArray(site.structures) ? (
             site.structures.map((s, i) => (
@@ -367,10 +380,17 @@ function SiteDetailView({
                   figures={figures}
                   books={books}
                   createSelectedEntity={createSelectedEntity}
-                  structures={site.structures ? (Array.isArray(site.structures) ? site.structures : [site.structures]).reduce((acc, st) => {
-                    if (st && st.id) acc[st.id] = st;
-                    return acc;
-                  }, {}) : null}
+                  structures={
+                    site.structures
+                      ? (Array.isArray(site.structures)
+                          ? site.structures
+                          : [site.structures]
+                        ).reduce((acc, st) => {
+                          if (st && st.id) acc[st.id] = st;
+                          return acc;
+                        }, {})
+                      : null
+                  }
                   site={site}
                 />
               </div>
@@ -389,13 +409,13 @@ function SiteDetailView({
           )}
         </>
       )}
-      
+
       {/* Display historical events for the site itself */}
       {siteEvents.length > 0 && (
         <>
           <p className="cat_headline">site historical events:</p>
           {siteEvents.map((event, i) => {
-            const eventData = typeof event === 'object' ? event : { id: event };
+            const eventData = typeof event === "object" ? event : { id: event };
             return (
               <div className="book-content">
                 <RichBookContent
@@ -485,7 +505,7 @@ function CellPopup({
       left: `${left}px`,
       top: `${top}px`,
       transform: "none",
-      'max-height': `${window.innerHeight - top - 50}px` // prevents it from falling off the page
+      "max-height": `${window.innerHeight - top - 50}px`, // prevents it from falling off the page
     };
   };
 
