@@ -1,16 +1,16 @@
 .cell-popup-overlay {
-  position: fixed;
+  position: fixed !important;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10000;
+  z-index: 999999 !important;
   background: transparent;
   pointer-events: auto;
 }
 
 .cell-popup {
-  position: fixed;
+  position: fixed !important;
   background: #000000;
   border: 1px solid #ffffff;
   border-radius: 0;
@@ -20,7 +20,7 @@
   max-height: 70vh;
   overflow-y: auto;
   box-shadow: 0 0 0 1px #ffffff;
-  z-index: 10001;
+  z-index: 999999 !important;
   pointer-events: auto;
   scrollbar-width: thin;
   scrollbar-color: #ffffff transparent;

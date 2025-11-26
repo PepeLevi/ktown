@@ -153,14 +153,18 @@ function InlineEntityButton({
   const { kind, id, name } = entityInfo;
 
   return (
-    <button
-      type="button"
-      className="inline-entity-button"
+    <span
+      className="inline-entity-link"
       onClick={() => {
         findEntity(kind, id, figures, sites, books, handleEntityClick, createSelectedEntity)
       }}
+      style={{
+        color: 'var(--primary-color)',
+        cursor: 'pointer',
+        textDecoration: 'underline'
+      }}
     >
       {name}
-    </button>
+    </span>
   );
 }

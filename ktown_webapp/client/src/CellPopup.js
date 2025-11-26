@@ -178,6 +178,7 @@ function BookDetailView({
   isTopLevel,
   figures,
   books,
+  sites,
   handleEntityClick,
   createSelectedEntity,
 }) {
@@ -346,6 +347,10 @@ function SiteDetailView({
   allHistoricalEvents = [],
   createSelectedEntity,
 }) {
+  if (!site) {
+    return null;
+  }
+
   const siteEvents = site.historical_events?.map(id => allHistoricalEvents.find(e => e.id == id)) || [];
   
   // Create sites lookup object with current site
