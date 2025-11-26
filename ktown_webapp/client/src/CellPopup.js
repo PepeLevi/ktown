@@ -8,6 +8,141 @@ const normalizeToArray = (value) => {
   return Array.isArray(value) ? value : [value];
 };
 
+// Extract and display only links from historical events
+function extractEventLinks(eventString, figures, sites, books, undergroundRegions, handleEntityClick, createSelectedEntity) {
+  if (!eventString) return null;
+
+  const links = [];
+  
+  // Parse HTML <a> tags
+  const wrapperHtml = `<div>${eventString}</div>`;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(wrapperHtml, "text/html");
+  const root = doc.body.firstChild;
+  
+  // Extract <a> tags
+  const anchorTags = root.querySelectorAll("a");
+  anchorTags.forEach((a) => {
+    const href = a.getAttribute("href") || "";
+    const match = href.match(/^([^/]+)\/(\d+)/);
+    if (match) {
+      const [, rawKind, idStr] = match;
+      const id = Number(idStr);
+      
+      const kindMap = {
+        historical_figure_id: "figure",
+        site_id: "site",
+        written_work_id: "book",
+        structure_id: "structure",
+      };
+      
+      const kind = kindMap[rawKind] || rawKind;
+      links.push({ kind, id, rawKind });
+    }
+  });
+  
+  // Extract direct references like "hist_figure_id:123", "artifact_id:133", etc.
+  const directRefPattern = /(\w+_id):(\d+)/g;
+  let match;
+  while ((match = directRefPattern.exec(eventString)) !== null) {
+    const [, rawKind, idStr] = match;
+    const id = Number(idStr);
+    
+    const kindMap = {
+      hist_figure_id: "figure",
+      historical_figure_id: "figure",
+      site_id: "site",
+      wc_id: "book",
+      written_work_id: "book",
+      artifact_id: "artifact",
+      structure_id: "structure",
+    };
+    
+    const kind = kindMap[rawKind] || rawKind;
+    // Avoid duplicates
+    if (!links.some(l => l.kind === kind && l.id === id)) {
+      links.push({ kind, id, rawKind });
+    }
+  }
+  
+  // Render links
+  return links.map((link, i) => {
+    let entity = null;
+    let displayName = null;
+    
+    switch (link.kind) {
+      case "figure":
+        entity = figures[link.id];
+        displayName = entity?.name || `Figure ${link.id}`;
+        break;
+      case "site":
+        entity = sites[link.id];
+        displayName = entity?.fromFile2?.name || entity?.fromFile1?.name || entity?.name || `Site ${link.id}`;
+        break;
+      case "book":
+        entity = books[link.id];
+        displayName = entity?.title || `Book ${link.id}`;
+        break;
+      case "structure":
+        // Structures are nested in sites, so we need to search
+        entity = Object.values(sites || {}).find(site => {
+          if (Array.isArray(site.structures)) {
+            return site.structures.some(s => s.id === link.id);
+          }
+          return site.structures?.id === link.id;
+        });
+        if (entity) {
+          const structure = Array.isArray(entity.structures) 
+            ? entity.structures.find(s => s.id === link.id)
+            : entity.structures;
+          displayName = structure?.name || `Structure ${link.id}`;
+        } else {
+          displayName = `Structure ${link.id}`;
+        }
+        break;
+      case "artifact":
+        displayName = `Artifact ${link.id}`;
+        break;
+      default:
+        displayName = `${link.kind} ${link.id}`;
+    }
+    
+    // Handle underground regions - show type instead of name
+    if (link.kind === "undergroundRegion" || (undergroundRegions && undergroundRegions[link.id])) {
+      const undergroundRegion = undergroundRegions[link.id];
+      entity = undergroundRegion;
+      displayName = undergroundRegion?.type || `Underground Region ${link.id}`;
+    }
+    
+    if (!entity && link.kind !== "artifact") {
+      return null;
+    }
+    
+    return (
+      <span
+        key={i}
+        className="inline-entity-link"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (entity) {
+            const selectedEntity = createSelectedEntity(link.kind, entity);
+            const x = e.clientX || window.innerWidth / 2;
+            const y = e.clientY || window.innerHeight / 2;
+            handleEntityClick(selectedEntity, { clientX: x, clientY: y });
+          }
+        }}
+        style={{
+          color: 'var(--primary-color)',
+          cursor: entity ? 'pointer' : 'default',
+          textDecoration: entity ? 'underline' : 'none'
+        }}
+      >
+        {displayName}
+      </span>
+    );
+  }).filter(Boolean);
+}
+
 function TexturePreview({ label, src }) {
   if (!src) return null;
   return <img src={src} alt={label} />;
@@ -22,6 +157,7 @@ function FigureDetailView({
   allHistoricalEvents = [],
   handleEntityClick,
   createSelectedEntity,
+  undergroundRegions = [],
 }) {
   if (!figure) {
     return null;
@@ -34,35 +170,18 @@ function FigureDetailView({
 
   return (
     <div className="figure-detail-view">
-      <div className="flex-row-full">
-        <p>{figure.name}</p>{" "}
-        <p
-          style={{
-            transform: figure.sex === "-1" ? "rotate(90deg)" : "none",
-          }}
-        >
-          {figure.id}
-        </p>
-      </div>
-
-      <p>{figure.race}</p>
-      <p>{figure.associated_type}</p>
-
+      {isTopLevel && <p>{figure.name}</p>}
       {figure.sphere && (
         <>
-          <p className="cat_headline">figure sphere</p>
-          <div className="flex-row-full">
-            {Array.isArray(figure.sphere) &&
-              figure.sphere.map((s, i) => <p key={i}>{s}</p>)}
-          </div>
+          {Array.isArray(figure.sphere) &&
+            figure.sphere.map((s, i) => <span key={i}> {s}</span>)}
         </>
       )}
 
       {figure.books && isTopLevel && (
         <>
-          <p className="cat_headline">books</p>
           {normalizeToArray(figure.books).map((b, i) => (
-            <div key={i}>
+            <span key={i}>
               <BookDetailView
                 book={b}
                 isTopLevel={false}
@@ -72,20 +191,20 @@ function FigureDetailView({
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
-            </div>
+            </span>
           ))}
         </>
       )}
 
       {figure.hf_link && isTopLevel && (
         <>
-          <p className="cat_headline">connections</p>
-          <div className="flex-column subFigures">
-            {normalizeToArray(figure.hf_link).length > 0 ? (
-              normalizeToArray(figure.hf_link).map((s, i) => (
-                <React.Fragment key={i}>
-                  {figures[s.hfid] ? (
-                    <button
+          {normalizeToArray(figure.hf_link).length > 0 ? (
+            normalizeToArray(figure.hf_link).map((s, i) => (
+              <React.Fragment key={i}>
+                {figures[s.hfid] ? (
+                  <>
+                    <span
+                      className="inline-entity-link"
                       onClick={(e) => {
                         e.stopPropagation();
                         const entity = createSelectedEntity(
@@ -96,79 +215,84 @@ function FigureDetailView({
                         const y = e.clientY || window.innerHeight / 2;
                         handleEntityClick(entity, { clientX: x, clientY: y });
                       }}
-                      className={s.link_type + " subFigure"}
-                    >
-                      <p>{s.link_type}</p>
-                      <FigureDetailView
-                        figure={figures[s.hfid]}
-                        isTopLevel={false}
-                        figures={figures}
-                        books={books}
-                        sites={sites}
-                        handleEntityClick={handleEntityClick}
-                        createSelectedEntity={createSelectedEntity}
-                      />
-                    </button>
-                  ) : (
-                    <p>hej {s.hfid}</p>
-                  )}
-                </React.Fragment>
-              ))
-            ) : (
-              <>
-                <p>hej {figure.hf_link.hfid}</p>
-                <React.Fragment>
-                  {figures[figure.hf_link.hfid] ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const entity = createSelectedEntity(
-                          "figure",
-                          figures[figure.hf_link.hfid]
-                        );
-                        const x = e.clientX || window.innerWidth / 2;
-                        const y = e.clientY || window.innerHeight / 2;
-                        handleEntityClick(entity, { clientX: x, clientY: y });
+                      style={{
+                        color: 'var(--primary-color)',
+                        cursor: 'pointer',
+                        textDecoration: 'underline'
                       }}
-                      className={s.link_type + " subFigure"}
                     >
-                      <p>{s.link_type}</p>
-                      <FigureDetailView
-                        figure={figures[figure.hf_link.hfid]}
-                        isTopLevel={false}
-                        figures={figures}
-                        books={books}
-                        sites={sites}
-                        handleEntityClick={handleEntityClick}
-                        createSelectedEntity={createSelectedEntity}
-                      />
-                    </button>
-                  ) : null}
-                </React.Fragment>
-              </>
-            )}
-          </div>
+                      {figures[s.hfid].name || `Figure ${s.hfid}`}
+                    </span>
+                    <FigureDetailView
+                      figure={figures[s.hfid]}
+                      isTopLevel={false}
+                      figures={figures}
+                      books={books}
+                      sites={sites}
+                      handleEntityClick={handleEntityClick}
+                      createSelectedEntity={createSelectedEntity}
+                    />
+                  </>
+                ) : null}
+              </React.Fragment>
+            ))
+          ) : (
+            <>
+              {figures[figure.hf_link.hfid] ? (
+                <>
+                  <span
+                    className="inline-entity-link"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const entity = createSelectedEntity(
+                        "figure",
+                        figures[figure.hf_link.hfid]
+                      );
+                      const x = e.clientX || window.innerWidth / 2;
+                      const y = e.clientY || window.innerHeight / 2;
+                      handleEntityClick(entity, { clientX: x, clientY: y });
+                    }}
+                    style={{
+                      color: 'var(--primary-color)',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    {figures[figure.hf_link.hfid].name || `Figure ${figure.hf_link.hfid}`}
+                  </span>
+                  <FigureDetailView
+                    figure={figures[figure.hf_link.hfid]}
+                    isTopLevel={false}
+                    figures={figures}
+                    books={books}
+                    sites={sites}
+                    handleEntityClick={handleEntityClick}
+                    createSelectedEntity={createSelectedEntity}
+                  />
+                </>
+              ) : null}
+            </>
+          )}
         </>
       )}
 
       {/* Display historical events for the figure */}
       {figureEvents.length > 0 && isTopLevel && (
         <>
-          <p className="cat_headline">historical events:</p>
           {figureEvents.map((event, i) => {
             const eventData = typeof event === "object" ? event : { id: event };
-            return (
-              <div className="book-content">
-                <RichBookContent
-                  text={event.string}
-                  handleEntityClick={handleEntityClick}
-                  createSelectedEntity={createSelectedEntity}
-                  figures={figures}
-                  sites={sites}
-                  books={books}
-                />
-              </div>
+            const links = extractEventLinks(
+              event.string,
+              figures,
+              sites,
+              books,
+              undergroundRegions,
+              handleEntityClick,
+              createSelectedEntity
             );
+            return links && links.length > 0 ? (
+              <span key={i}>{links}</span>
+            ) : null;
           })}
         </>
       )}
@@ -192,8 +316,8 @@ function BookDetailView({
   return (
     <div className="book">
       {!isTopLevel && (
-        <button
-          className="flex-row-full"
+        <span
+          className="inline-entity-link"
           onClick={(e) => {
             e.stopPropagation();
             const entity = createSelectedEntity("book", book);
@@ -201,9 +325,14 @@ function BookDetailView({
             const y = e.clientY || window.innerHeight / 2;
             handleEntityClick(entity, { clientX: x, clientY: y });
           }}
+          style={{
+            color: 'var(--primary-color)',
+            cursor: 'pointer',
+            textDecoration: 'underline'
+          }}
         >
-          <p>{book.title}</p>
-        </button>
+          {book.title}
+        </span>
       )}
 
       <div className="book-content">
@@ -218,31 +347,15 @@ function BookDetailView({
       </div>
 
       {figures[book.author_hfid] && isTopLevel && (
-        <>
-          <div className="flex-row-full"></div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const entity = createSelectedEntity(
-                "figure",
-                figures[book.author_hfid]
-              );
-              const x = e.clientX || window.innerWidth / 2;
-              const y = e.clientY || window.innerHeight / 2;
-              handleEntityClick(entity, { clientX: x, clientY: y });
-            }}
-          >
-            <FigureDetailView
-              figure={figures[book.author_hfid]}
-              isTopLevel={false}
-              figures={figures}
-              books={books}
-              sites={sites}
-              handleEntityClick={handleEntityClick}
-              createSelectedEntity={createSelectedEntity}
-            />
-          </button>
-        </>
+        <FigureDetailView
+          figure={figures[book.author_hfid]}
+          isTopLevel={false}
+          figures={figures}
+          books={books}
+          sites={sites}
+          handleEntityClick={handleEntityClick}
+          createSelectedEntity={createSelectedEntity}
+        />
       )}
     </div>
   );
@@ -259,6 +372,7 @@ function StructureDetailView({
   isTopLevel,
   structures, // New prop for structures lookup
   site, // Optional site context for sites lookup
+  undergroundRegions = [],
 }) {
   // Normalize inhabitant to array (can be single object or array)
   const inhabitants = normalizeToArray(
@@ -276,7 +390,8 @@ function StructureDetailView({
   return (
     <div>
       {!isTopLevel && (
-        <button
+        <span
+          className="inline-entity-link"
           onClick={(e) => {
             e.stopPropagation();
             const entity = createSelectedEntity("structure", structure);
@@ -284,25 +399,37 @@ function StructureDetailView({
             const y = e.clientY || window.innerHeight / 2;
             handleEntityClick(entity, { clientX: x, clientY: y });
           }}
+          style={{
+            color: 'var(--primary-color)',
+            cursor: 'pointer',
+            textDecoration: 'underline'
+          }}
         >
           {structure.name}
-        </button>
+        </span>
       )}
 
       {inhabitants.length > 0 && (
         <>
-          <p className="cat_headline">structure inhabitant:</p>
           {inhabitants.map((si, i) => (
-            <button
-              key={i}
-              onClick={(e) => {
-                e.stopPropagation();
-                const entity = createSelectedEntity("figure", si);
-                const x = e.clientX || window.innerWidth / 2;
-                const y = e.clientY || window.innerHeight / 2;
-                handleEntityClick(entity, { clientX: x, clientY: y });
-              }}
-            >
+            <span key={i}>
+              <span
+                className="inline-entity-link"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const entity = createSelectedEntity("figure", si);
+                  const x = e.clientX || window.innerWidth / 2;
+                  const y = e.clientY || window.innerHeight / 2;
+                  handleEntityClick(entity, { clientX: x, clientY: y });
+                }}
+                style={{
+                  color: 'var(--primary-color)',
+                  cursor: 'pointer',
+                  textDecoration: 'underline'
+                }}
+              >
+                {si.name || `Figure ${si.id}`}
+              </span>
               <FigureDetailView
                 figure={si}
                 figures={figures}
@@ -312,7 +439,7 @@ function StructureDetailView({
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
-            </button>
+            </span>
           ))}
         </>
       )}
@@ -320,27 +447,21 @@ function StructureDetailView({
       {/* Display historical events */}
       {structureEvents.length > 0 && (
         <>
-          <p className="cat_headline">historical events:</p>
-          {structureEvents
-            .map((id) => ({ id }))
-            .map((event, i) => {
-              // If event is just an ID, we need to look it up
-              // For now, we'll display it as-is and assume the full event data will be passed
-              const eventData =
-                typeof event === "object" ? event : { id: event };
-              return (
-                <div className="book-content">
-                  <RichBookContent
-                    text={event.string}
-                    handleEntityClick={handleEntityClick}
-                    createSelectedEntity={createSelectedEntity}
-                    figures={figures}
-                    sites={sites}
-                    books={books}
-                  />
-                </div>
-              );
-            })}
+          {structureEvents.map((event, i) => {
+            const eventData = typeof event === "object" ? event : { id: event };
+            const links = extractEventLinks(
+              event.string,
+              figures,
+              sites,
+              books,
+              undergroundRegions,
+              handleEntityClick,
+              createSelectedEntity
+            );
+            return links && links.length > 0 ? (
+              <span key={i}>{links}</span>
+            ) : null;
+          })}
         </>
       )}
     </div>
@@ -355,6 +476,7 @@ function SiteDetailView({
   sites,
   allHistoricalEvents = [],
   createSelectedEntity,
+  undergroundRegions = [],
 }) {
   if (!site) {
     return null;
@@ -370,13 +492,13 @@ function SiteDetailView({
 
   return (
     <div>
-      <p>{site.fromFile2?.name || site.fromFile1?.name || site.name}</p>
+      <span>{site.fromFile2?.name || site.fromFile1?.name || site.name}</span>
 
       {site.structures && (
         <>
           {Array.isArray(site.structures) ? (
             site.structures.map((s, i) => (
-              <div key={i}>
+              <span key={i}>
                 <StructureDetailView
                   structure={s}
                   isTopLevel={false}
@@ -396,8 +518,9 @@ function SiteDetailView({
                       : null
                   }
                   site={site}
+                  undergroundRegions={undergroundRegions}
                 />
-              </div>
+              </span>
             ))
           ) : (
             <StructureDetailView
@@ -409,6 +532,7 @@ function SiteDetailView({
               createSelectedEntity={createSelectedEntity}
               structures={null}
               site={site}
+              undergroundRegions={undergroundRegions}
             />
           )}
         </>
@@ -417,21 +541,20 @@ function SiteDetailView({
       {/* Display historical events for the site itself */}
       {siteEvents.length > 0 && (
         <>
-          <p className="cat_headline">site historical events:</p>
           {siteEvents.map((event, i) => {
             const eventData = typeof event === "object" ? event : { id: event };
-            return (
-              <div className="book-content">
-                <RichBookContent
-                  text={event.string}
-                  handleEntityClick={handleEntityClick}
-                  createSelectedEntity={createSelectedEntity}
-                  figures={figures}
-                  sites={sites}
-                  books={books}
-                />
-              </div>
+            const links = extractEventLinks(
+              event.string,
+              figures,
+              sites,
+              books,
+              undergroundRegions,
+              handleEntityClick,
+              createSelectedEntity
             );
+            return links && links.length > 0 ? (
+              <span key={i}>{links}</span>
+            ) : null;
           })}
         </>
       )}
@@ -474,51 +597,6 @@ function getRandomSample(arr, n) {
   return result;
 }
 
-function UndergroundRegionDetailView({
-  undergroundRegion,
-  undergroundRegions,
-  handleEntityClick,
-  figures,
-  books,
-  sites,
-  allHistoricalEvents = [],
-  createSelectedEntity,
-}) {
-  if (!undergroundRegion || !undergroundRegions) {
-    return null;
-  }
-
-  const connectedDepthRegion = getRandomRegionWithSameDepth(
-    undergroundRegion,
-    undergroundRegions,
-    5
-  );
-
-  console.log("underground region", undergroundRegion);
-
-  return (
-    <div>
-      <div className="flex-row-full">
-        {undergroundRegion.type && <p>{undergroundRegion.type}</p>}
-      </div>
-      <button
-        className="underground-region-forward"
-        onClick={(e) => {
-          e.stopPropagation();
-          const entity = createSelectedEntity(
-            "undergroundRegion",
-            connectedDepthRegion
-          );
-          const x = e.clientX || window.innerWidth / 2;
-          const y = e.clientY || window.innerHeight / 2;
-          handleEntityClick(entity, { clientX: x, clientY: y });
-        }}
-      >
-        →
-      </button>
-    </div>
-  );
-}
 
 function CellPopup({
   entity,
@@ -616,20 +694,16 @@ function CellPopup({
         </button>
 
         <div className="cell-popup-content">
-          <div className="flex-row-full">
+          {cellCoords && (
+            <p className="cell-coords">
+              [{cellCoords.x}, {cellCoords.y}]
+            </p>
+          )}
+          {kind === "undergroundRegion" ? (
+            <p>{undergroundRegion?.type || type || "Underground Region"}</p>
+          ) : (
             <p>{name || "Unknown"}</p>
-            {cellCoords && (
-              <p>
-                [{cellCoords.x}, {cellCoords.y}]
-              </p>
-            )}
-          </div>
-          {/* <div className="flex-row-full">
-            {type && <p>**{type}</p>}
-            {kind && <p>{kind}**</p>}
-          </div> */}
-
-          <div className="flex-row-full"></div>
+          )}
           <div className="specs">
             {kind === "figure" && (
               <FigureDetailView
@@ -641,6 +715,7 @@ function CellPopup({
                 allHistoricalEvents={allHistoricalEvents}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
+                undergroundRegions={undergroundRegions}
               />
             )}
 
@@ -656,18 +731,60 @@ function CellPopup({
               />
             )}
 
-            {undergroundRegion && (
-              <UndergroundRegionDetailView
-                undergroundRegion={undergroundRegion}
-                isTopLevel={true} //not being used rn. i think bc structure cant be non-top level yet
-                figures={figures}
-                books={books}
-                sites={sites}
-                allHistoricalEvents={allHistoricalEvents}
-                handleEntityClick={handleEntityClick}
-                createSelectedEntity={createSelectedEntity}
-                undergroundRegions={undergroundRegions}
-              />
+            {kind === "undergroundRegion" && (
+              <div className="underground-region-link">
+                <span
+                  className="inline-entity-link"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const entity = createSelectedEntity(
+                      "undergroundRegion",
+                      getRandomRegionWithSameDepth(
+                        undergroundRegion,
+                        undergroundRegions,
+                        5
+                      )
+                    );
+                    const x = e.clientX || window.innerWidth / 2;
+                    const y = e.clientY || window.innerHeight / 2;
+                    handleEntityClick(entity, { clientX: x, clientY: y });
+                  }}
+                  style={{
+                    color: 'var(--primary-color)',
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      color: "var(--cell-txt-color)",
+                      transition: "color 0.15s"
+                    }}
+                    onMouseEnter={e =>
+                      (e.currentTarget.style.color = "var(--primary-color)")
+                    }
+                    onMouseLeave={e =>
+                      (e.currentTarget.style.color = "var(--cell-txt-color)")
+                    }
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 16 16"
+                      width="1em"
+                      height="1em"
+                      style={{ marginRight: "0.4em", color: "inherit" }}
+                      fill="currentColor"
+                    >
+                      <path
+                        d="M5.5 3.5a.5.5 0 0 1 .5.5v6.793l3.146-3.147a.5.5 0 0 1 .708.708l-4 4a.5.5 0 0 1-.708 0l-4-4a.5.5 0 1 1 .708-.708L5 10.293V4a.5.5 0 0 1 .5-.5z"
+                      />
+                    </svg>
+                     
+                  </span>
+                </span>
+              </div>
             )}
 
             {kind === "site" && (
@@ -680,6 +797,7 @@ function CellPopup({
                 allHistoricalEvents={allHistoricalEvents}
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
+                undergroundRegions={undergroundRegions}
               />
             )}
 
@@ -693,6 +811,7 @@ function CellPopup({
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
                 structures={entity.structures}
+                undergroundRegions={undergroundRegions}
               />
             )}
           </div>
