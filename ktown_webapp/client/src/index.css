@@ -31,6 +31,7 @@
   --primary-color: #ffcc01;
   --label-color: #ffcc01;
   --regPad: 0.2px;
+  --cell-txt-color: #ffffff;
 }
 
 html,
@@ -40,7 +41,6 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-image: url("https://i.pinimg.com/originals/5a/93/4e/5a934e84f67d2a61a118ec95b1d6cb74.gif");
 }
 
 body {
@@ -164,7 +164,7 @@ p {
 .map-wrapper svg {
   width: 100%;
   height: calc(100% - 0px);
-  background: var(--primary-bg-color);
+  background-color: var(--primary-bg-color);
 }
 
 .legend {
@@ -371,8 +371,7 @@ g.hover {
   background-color: green;
 }
 
-/* svg,
-rect.cell {
+/* svg {
   mix-blend-mode: difference;
 } */
 
@@ -433,4 +432,10 @@ rect.cell-type-ocean {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+}
+
+.underground-region-forward {
+  color: var(--label-color);
+  width: auto;
+  align-self: right;
 }

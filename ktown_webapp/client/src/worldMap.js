@@ -2420,7 +2420,11 @@ function WorldMap({
         const cellCoords =
           entity.cellCoords ||
           (entity.cell && { x: entity.cell.x, y: entity.cell.y }) ||
-          (entity[kind] && entity[kind].cellCoords && { x: entity[kind].cellCoords.x, y: entity[kind].cellCoords.y }) ||
+          (entity[kind] &&
+            entity[kind].cellCoords && {
+              x: entity[kind].cellCoords.x,
+              y: entity[kind].cellCoords.y,
+            }) ||
           null;
 
         let id = null;
