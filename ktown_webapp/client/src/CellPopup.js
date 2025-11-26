@@ -184,7 +184,6 @@ function BookDetailView({
   sites,
   handleEntityClick,
   createSelectedEntity,
-  sites,
 }) {
   if (!book) {
     return null;
@@ -436,6 +435,43 @@ function SiteDetailView({
   );
 }
 
+export function getRandomRegionWithSameDepth(
+  targetRegion,
+  allRegions,
+  sampleSize = 5
+) {
+  const targetDepth = targetRegion.depth;
+
+  // infinite loop until we find a match
+  while (true) {
+    // randomly pick N regions
+    const sample = getRandomSample(allRegions, sampleSize);
+
+    // filter by depth
+    const matches = sample.filter((r) => r.depth === targetDepth);
+
+    // return a random match if any were found
+    if (matches.length > 0) {
+      console.log("has corresponding underground region", matches);
+
+      return matches[Math.floor(Math.random() * matches.length)];
+    } else {
+      getRandomRegionWithSameDepth(targetRegion, allRegions, 5);
+    }
+  }
+}
+
+function getRandomSample(arr, n) {
+  const result = [];
+  const length = arr.length;
+
+  for (let i = 0; i < n; i++) {
+    const randomIndex = Math.floor(Math.random() * length);
+    result.push(arr[randomIndex]);
+  }
+  return result;
+}
+
 function CellPopup({
   entity,
   position,
@@ -443,6 +479,7 @@ function CellPopup({
   figures,
   books,
   sites,
+  undergroundRegions,
   allHistoricalEvents,
   handleEntityClick,
   createSelectedEntity,
@@ -461,6 +498,7 @@ function CellPopup({
     structure,
     figure,
     writtenContent,
+    undergroundRegion,
   } = entity;
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
@@ -506,7 +544,7 @@ function CellPopup({
       left: `${left}px`,
       top: `${top}px`,
       transform: "none",
-      "max-height": `${window.innerHeight - top - 50}px`, // prevents it from falling off the page
+      maxHeight: `${window.innerHeight - top - 50}px`, // prevents it from falling off the page
     };
   };
 
@@ -574,6 +612,29 @@ function CellPopup({
                 handleEntityClick={handleEntityClick}
                 createSelectedEntity={createSelectedEntity}
               />
+            )}
+
+            {kind === "undergroundRegion" && (
+              <div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const entity = createSelectedEntity(
+                      "undergroundRegion",
+                      getRandomRegionWithSameDepth(
+                        undergroundRegion,
+                        undergroundRegions,
+                        5
+                      )
+                    );
+                    const x = e.clientX || window.innerWidth / 2;
+                    const y = e.clientY || window.innerHeight / 2;
+                    handleEntityClick(entity, { clientX: x, clientY: y });
+                  }}
+                >
+                  click to dig to cave
+                </button>
+              </div>
             )}
 
             {kind === "site" && (

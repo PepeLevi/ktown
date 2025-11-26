@@ -2500,6 +2500,15 @@ function WorldMap({
       if (autoZoom && !foundMatch && selected.kind === "cell" && cellCoords) {
         zoomToCellCoords(cellCoords); // this will trigger re-render via zoom handler
       }
+
+      if (
+        autoZoom &&
+        !foundMatch &&
+        selected.kind === "undergroundRegion" &&
+        cellCoords
+      ) {
+        zoomToCellCoords(cellCoords); // this will trigger re-render via zoom handler
+      }
     };
 
     selectedEntityRef.current = selectedEntity;

@@ -40,6 +40,8 @@ function App() {
   const [bookCells, setBookCells] = useState([]);
   const [currentBookCellIndex, setCurrentBookCellIndex] = useState(-1);
 
+  const [undergroundRegions, setUndergroundRegions] = useState([]);
+
   const [shouldShowLoader, setShouldShowLoader] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
 
@@ -75,9 +77,19 @@ function App() {
       let temp_books = {};
       let temp_bookCells = []; // NEW
       let temp_sites = {};
+      let temp_undergroundRegions = [];
 
       wd.cells.forEach((cell) => {
-        let cellHasBooks = false; // NEW
+        let cellHasBooks = false;
+
+        if (cell.undergroundRegions && cell.undergroundRegions.length > 0) {
+          for (let cu = 0; cu < cell.undergroundRegions.length; cu++) {
+            const undergroundRegion = cell.undergroundRegions[cu];
+
+            undergroundRegion.cellCoords = { x: cell.x, y: cell.y };
+            temp_undergroundRegions.push(undergroundRegion);
+          }
+        }
 
         if (cell.sites && cell.sites.length > 0) {
           for (let si = 0; si < cell.sites.length; si++) {
@@ -158,6 +170,7 @@ function App() {
         }
       });
 
+      setUndergroundRegions(temp_undergroundRegions);
       setFigures(temp_figures);
       setBooks(temp_books);
       setBookCells(temp_bookCells); // NEW
@@ -287,6 +300,7 @@ function App() {
             figures={figures}
             books={books}
             sites={sites}
+            undergroundRegions={undergroundRegions}
             allHistoricalEvents={allHistoricalEvents}
             handleEntityClick={handleEntityClick}
             createSelectedEntity={createSelectedEntity}
@@ -550,7 +564,13 @@ function SiteDetailView({ site, handleEntityClick, figures, books, sites }) {
   );
 }
 
-function EntityDetailsView({ entity, figures, books, sites, handleEntityClick }) {
+function EntityDetailsView({
+  entity,
+  figures,
+  books,
+  sites,
+  handleEntityClick,
+}) {
   const {
     kind,
     name,
