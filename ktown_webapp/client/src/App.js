@@ -163,7 +163,7 @@ function App() {
       const data = await res.json();
       const wd = data.worldData || data;
 
-      if (!wd || !wd.cells) {
+      if (!wd || !wd.cells || !wd.historical_events) {
         throw new Error("Invalid worldData format from server");
       }
 
@@ -330,7 +330,7 @@ function App() {
     });
 
     if (entity.kind === "cell") {
-      setLevel(5);
+      setLevel(0);
     }
     if (entity.kind === "site") {
       setLevel(4);
@@ -349,6 +349,7 @@ function App() {
   };
 
   const handleClosePopup = () => {
+    console.log("level " + level)
     setPopupData(null);
   };
 
@@ -361,7 +362,7 @@ function App() {
         <section className="map-panel">
           {worldData ? (
             <WorldMap
-              worldData={worldData}
+              worldData={{cells: worldData.cells}}
               onEntityClick={handleEntityClick}
               selectedCell={selectedCell}
               selectedEntity={selectedEntity}
@@ -379,6 +380,7 @@ function App() {
             onClose={handleClosePopup}
             figures={figures}
             books={books}
+            allHistoricalEvents={worldData.historical_events}
             handleEntityClick={handleEntityClick}
             createSelectedEntity={createSelectedEntity}
           />

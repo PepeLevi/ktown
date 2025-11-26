@@ -166,6 +166,7 @@ function buildWorldData(world) {
   const regions = normalizeToArray(world?.regions);
   const ugr = normalizeToArray( world?.underground_regions);
   const sites = normalizeToArray(world?.sites);
+  const historical_events = normalizeToArray(world?.historical_events)
 
   // Cells: key "x,y" -> cell object
   const cellsMap = new Map();
@@ -239,7 +240,7 @@ function buildWorldData(world) {
     });
   });
 
-  return { cells };
+  return { cells, historical_events };
 }
 
 // ---------- NEW: GET / -> worldData from default files ----------
