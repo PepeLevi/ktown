@@ -277,9 +277,14 @@ def translate_event_to_string(event):
     'hf revived': ['resurrected through sorcery of', 'recalled from death-space by', 'reanimated via necromantic', 'Judgment-reversed through', 'death-and-rebirth cycle by', 'returned from Real by', 'spectral-recall via', 'undead-becoming through', 'life-flow restored by', 'boundary-crossed back through']
     }
     
+    # TODO: add relationships between sites and hfs. add written relational = historical figures , historical figures + sites, historical figures + books, sites + books
+    
     return_value = {}
     
     event_type = event.get('type')
+    historical_figures_list = json_legends_clean.get('historical_figures').get('historical_figure')
+    # we store the ids and names of all hfs ids to look them up
+    hf_name_ids = {hf['id']: hf.get('name', 'Nameless One') for hf in historical_figures_list}
     
     # check the key 'type' and see if the value is in our events_hf_id dict, two birds one stone
     if event_type and event_type in events_hf_id:
@@ -297,17 +302,25 @@ def translate_event_to_string(event):
         # i know i could simply do a for k,v in dict.items() but this way i can better see keys and values separately
         for hf_key, hf_value in zip(hf_id_keys, hf_id_values):
             if hf_value is None:
-                continue  # skip non-interesting hf ids               
+                continue  # skip non-interesting hf ids
+              # create a dictionary w hf ids as keys and names as values for easy lookup
+            hf_name_ids = {hf['id']: hf.get('name', 'Nameless One') for hf in historical_figures_list}
+        
             if isinstance(hf_value, list):
                 # use the value position (i) as a counter to add connectors between multiple hfs
                 for i, v in enumerate(hf_value):
-                    string += f'<a href="historical_figure_id/{v}">hf hyperlink</a>'
-                    # to connect multiple hf with some coherence, i add 'and' before and after the last one :D. nice touch?
+                    hf_name = hf_name_ids.get(str(v), "Nameless One")
+                    # i'm looking for the hf name directly on the json
+                    string += f'<a href="historical_figure_id/{v}">{hf_name}</a>'
                     if i < len(hf_value)-1:
-                        string += f' and {random.choice(connectors_event)} ' 
+                        # add the connector with an and for it to make some sense
+                        string += ' and ' + f'{random.choice(connectors_event)} '
+
             else:
-                string += f'<a href="historical_figure_id/{hf_value}">hf hyperlink</a>'
-                
+                hf_name = hf_name_ids.get(str(hf_value), "Nameless One")
+                string += f'<a href="historical_figure_id/{hf_value}">{hf_name}</a>'
+            
+            # the counter crucial to not add a connector after the last hf
             counter += 1
             if counter < total_hf_keys:
                 string += f' {random.choice(connectors_event)} '
