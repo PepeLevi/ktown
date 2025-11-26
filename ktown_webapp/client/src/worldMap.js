@@ -20,6 +20,8 @@ const bookColor = "white";
 const CELL_SIZE = 30;
 const CELL_GAP = 0;
 
+const STROKE_ALL_CELLS = false; //also stroke cells that are not in the middle of the screen (for testing purposes)
+
 // zoom limits
 // MIN_ZOOM will be calculated dynamically based on manageable cell count
 let MIN_ZOOM = 1; // Will be calculated
@@ -755,11 +757,12 @@ function WorldMap({
         rect.style("opacity", opacity);
         rect
           .style("stroke", "rgba(255,255,255,0.5)")
-          .style("stroke-width", 0.5);
+          // .style("stroke-width", 0.5);
       } else {
         // No visible children - show full cell
         rect.style("opacity", 1);
-        rect.style("stroke", null).style("stroke-width", 0);
+        rect.style("stroke", null)
+        // .style("stroke-width", 0);
       }
     });
 
@@ -778,7 +781,8 @@ function WorldMap({
       if (shouldShowStructures) {
         // Structures are visible - make site semi-transparent so structures show through
         rect.style("opacity", 0.4);
-        rect.style("stroke", "rgba(0,255,0,0.6)").style("stroke-width", 0.4);
+        rect.style("stroke", "rgba(0,255,0,0.6)")
+          // .style("stroke-width", 0.4);
       } else {
         // No structures visible - show full site
         rect.style("opacity", 1);
@@ -800,7 +804,7 @@ function WorldMap({
         rect.style("opacity", 0.4);
         rect
           .style("stroke", "rgba(255,192,203,0.6)")
-          .style("stroke-width", 0.4);
+          // .style("stroke-width", 0.4);
       } else {
         // No figures visible - show full structure
         rect.style("opacity", 1);
@@ -1299,15 +1303,18 @@ function WorldMap({
         const isDefaultLabel = !labelText; // default case returns ""
         const zoom = currentZoomRef.current || 1;
         const factor = 4; // how drastic you want it
-        const strokeWidth =
-          (2 * factor) / Math.sqrt(zoom * 100 * factor * factor);
+        // const strokeWidth =
+        //   (2 * factor) / Math.sqrt(zoom * 100 * factor * factor);
 
         if (!isDefaultLabel) {
           rect
             .style("stroke", "var(--label-color)")
-            .style("stroke-width", strokeWidth);
-        } else {
-          rect.style("stroke", "none").style("stroke-width", 0);
+            // .style("stroke-width", 1);
+        } else if (STROKE_ALL_CELLS) {
+          rect
+            .style("stroke", "var(--label-color)")
+          // rect.style("stroke", "none")
+          // .style("stroke-width", 0);
         }
       });
 
@@ -2494,7 +2501,8 @@ function WorldMap({
 
     // Nothing selected: clear highlight & bail
     if (!selectedEntity) {
-      cellRects.style("stroke", null).style("stroke-width", 0);
+      cellRects.style("stroke", null)
+        // .style("stroke-width", 0);
       return;
     }
     const zoomToCellCoords = (cellCoords, targetK = 40, duration = 750) => {
@@ -2526,7 +2534,8 @@ function WorldMap({
       const cellRects = svg.selectAll("rect.cell");
 
       if (!selected) {
-        cellRects.style("stroke", null).style("stroke-width", 0);
+        cellRects.style("stroke", null)
+        // .style("stroke-width", 0);
         return;
       }
 
@@ -2624,14 +2633,16 @@ function WorldMap({
         if (isSelected) {
           foundMatch = true;
 
-          rect.style("stroke", "var(--primary-color)").style("stroke-width", 2);
+          rect.style("stroke", "var(--primary-color)")
+          .style("stroke-width", 2);
 
           if (!didZoomFromRect) {
             didZoomFromRect = true;
             zoomOnRect(rect);
           }
         } else {
-          rect.style("stroke", null).style("stroke-width", 0);
+          rect.style("stroke", null)
+          // .style("stroke-width", 0);
         }
       });
 
