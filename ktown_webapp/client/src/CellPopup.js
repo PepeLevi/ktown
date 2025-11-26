@@ -184,7 +184,6 @@ function BookDetailView({
   sites,
   handleEntityClick,
   createSelectedEntity,
-  sites,
 }) {
   if (!book) {
     return null;
