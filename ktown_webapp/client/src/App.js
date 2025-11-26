@@ -4,6 +4,7 @@ import WorldMap from "./worldMap";
 import JourneyVerticalProgress from "./progressBar";
 import RichBookContent from "./RichBookContent";
 import CellPopup from "./CellPopup";
+
 import "./App.css";
 
 function createSelectedEntity(kind, payload) {
@@ -307,7 +308,6 @@ function App() {
         </div>
       </div>
       <main className="layout">
-        {/* <div className="overlay"></div> */}
         <section className="map-panel">
           {worldData ? (
             <WorldMap
@@ -320,6 +320,8 @@ function App() {
             <p className="placeholder">Map will appear here once loaded.</p>
           )}
         </section>
+
+        <div className="overlay"></div>
       </main>
 
       {shouldShowLoader && (

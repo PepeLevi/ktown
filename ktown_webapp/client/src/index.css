@@ -1,25 +1,18 @@
-/* :root {
-  --primary-bg-color: grey;
-  --primary-color: #ffcc01;
-  --label-color: #ffcc01;
-  --regPad: 0.2px;
-} */
-
-/* :root {
-  --primary-bg-color: #3a2c2f;
-  --primary-color: #ffb7a5;
-  --label-color: #ffb7a5;
+:root {
+  --primary-bg-color: #00ff11;
+  --primary-color: #0d00ff;
+  --label-color: #5900ff;
   --regPad: 0.2px;
 }
 
-:root {
+/* :root {
   --primary-bg-color: #0b0f1a;
   --primary-color: #00eaff;
   --label-color: #00eaff;
   --regPad: 0.2px;
-}
+} */
 
-:root {
+/* :root {
   --primary-bg-color: #2a0000;
   --primary-color: #ff4d4d;
   --label-color: #ff4d4d;
@@ -28,11 +21,26 @@
 
 :root {
   --primary-bg-color: black;
-  --primary-color: #ffcc01;
-  --label-color: #ffcc01;
+  --primary-color: white;
+  --label-color: white;
   --regPad: 0.2px;
   --cell-txt-color: #ffffff;
 }
+
+:root {
+  --primary-bg-color: rgb(31, 31, 31);
+  --primary-color: #ffe100;
+  --label-color: #ffe100;
+  --regPad: 0.2px;
+  --cell-txt-color: #ffffff;
+}
+
+/* :root {
+  --primary-bg-color: grey;
+  --primary-color: #ff31e0;
+  --label-color: #ff35e7;
+  --regPad: 0.2px;
+} */
 
 html,
 body {
@@ -371,17 +379,18 @@ g.hover {
   background-color: green;
 }
 
-svg {
+/* svg {
   mix-blend-mode: difference;
-}
+} */
 
 rect.cell-type-region {
   fill: green;
+  /* mix-blend-mode: darken; */
 }
 
 rect.cell-type-site {
   fill: blue;
-  mix-blend-mode: difference;
+  /* mix-blend-mode: difference; */
 }
 
 rect.cell-type-structure {
@@ -401,7 +410,7 @@ rect.cell-type-writtenContent {
 
 rect.cell-type-undergroundRegion {
   fill: brown;
-  mix-blend-mode: screen;
+  /* mix-blend-mode: screen; */
 }
 
 rect.cell-type-ocean {
@@ -440,17 +449,21 @@ rect.cell-type-ocean {
   align-self: right;
 }
 
-.overlay {
+/* .overlay {
   position: fixed;
   top: 0;
   bottom: 0;
   right: 0;
   left: 0;
   pointer-events: none;
-  background-image: url("https://i.gifer.com/embedded/download/CgYm.gif");
-  mix-blend-mode: screen;
+  background-image: url("https://art.pixilart.com/4c48ff9fe9fcce9.gif");
+  mix-blend-mode: difference;
   background-repeat: no-repeat;
-  opacity: 0.1;
+  opacity: 1;
   background-attachment: fixed;
   background-size: 100% 100%;
-}
+} */
+
+/* .map-panel {
+  mix-blend-mode: screen;
+} */
