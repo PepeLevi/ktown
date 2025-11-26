@@ -456,8 +456,6 @@ export function getRandomRegionWithSameDepth(
 
     // return a random match if any were found
     if (matches.length > 0) {
-      console.log("has corresponding underground region", matches);
-
       return matches[Math.floor(Math.random() * matches.length)];
     } else {
       getRandomRegionWithSameDepth(targetRegion, allRegions, 5);
@@ -474,6 +472,52 @@ function getRandomSample(arr, n) {
     result.push(arr[randomIndex]);
   }
   return result;
+}
+
+function UndergroundRegionDetailView({
+  undergroundRegion,
+  undergroundRegions,
+  handleEntityClick,
+  figures,
+  books,
+  sites,
+  allHistoricalEvents = [],
+  createSelectedEntity,
+}) {
+  if (!undergroundRegion || !undergroundRegions) {
+    return null;
+  }
+
+  const connectedDepthRegion = getRandomRegionWithSameDepth(
+    undergroundRegion,
+    undergroundRegions,
+    5
+  );
+
+  console.log("underground region", undergroundRegion);
+
+  return (
+    <div>
+      <div className="flex-row-full">
+        {undergroundRegion.type && <p>{undergroundRegion.type}</p>}
+      </div>
+      <button
+        className="underground-region-forward"
+        onClick={(e) => {
+          e.stopPropagation();
+          const entity = createSelectedEntity(
+            "undergroundRegion",
+            connectedDepthRegion
+          );
+          const x = e.clientX || window.innerWidth / 2;
+          const y = e.clientY || window.innerHeight / 2;
+          handleEntityClick(entity, { clientX: x, clientY: y });
+        }}
+      >
+        →
+      </button>
+    </div>
+  );
 }
 
 function CellPopup({
@@ -505,11 +549,13 @@ function CellPopup({
     undergroundRegion,
   } = entity;
 
-  if(kind == 'site' && !site){
-    console.log('fuck', entity)
-  }
+  // if (kind == "site" && !site) {
+  //   console.log("fuck", entity);
+  // }
 
   const mainTexture = textureUrl || siteTextureUrl || regionTextureUrl || null;
+
+  console.log("in detailview", entity, undergroundRegion);
 
   // Calculate popup position
   const calculatePosition = () => {
@@ -578,10 +624,10 @@ function CellPopup({
               </p>
             )}
           </div>
-          <div className="flex-row-full">
+          {/* <div className="flex-row-full">
             {type && <p>**{type}</p>}
             {kind && <p>{kind}**</p>}
-          </div>
+          </div> */}
 
           <div className="flex-row-full"></div>
           <div className="specs">
@@ -610,27 +656,18 @@ function CellPopup({
               />
             )}
 
-            {kind === "undergroundRegion" && (
-              <div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const entity = createSelectedEntity(
-                      "undergroundRegion",
-                      getRandomRegionWithSameDepth(
-                        undergroundRegion,
-                        undergroundRegions,
-                        5
-                      )
-                    );
-                    const x = e.clientX || window.innerWidth / 2;
-                    const y = e.clientY || window.innerHeight / 2;
-                    handleEntityClick(entity, { clientX: x, clientY: y });
-                  }}
-                >
-                  click to dig to cave
-                </button>
-              </div>
+            {undergroundRegion && (
+              <UndergroundRegionDetailView
+                undergroundRegion={undergroundRegion}
+                isTopLevel={true} //not being used rn. i think bc structure cant be non-top level yet
+                figures={figures}
+                books={books}
+                sites={sites}
+                allHistoricalEvents={allHistoricalEvents}
+                handleEntityClick={handleEntityClick}
+                createSelectedEntity={createSelectedEntity}
+                undergroundRegions={undergroundRegions}
+              />
             )}
 
             {kind === "site" && (
