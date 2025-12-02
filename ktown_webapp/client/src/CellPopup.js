@@ -62,51 +62,13 @@ function FigureDetailView({
             normalizeToArray(figure.hf_link).map((s, i) => (
               <React.Fragment key={i}>
                 {figures[s.hfid] ? (
-                  <>
-                    <span
-                      className="inline-entity-link"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const entity = createSelectedEntity(
-                          "figure",
-                          figures[s.hfid]
-                        );
-                        const x = e.clientX || window.innerWidth / 2;
-                        const y = e.clientY || window.innerHeight / 2;
-                        handleEntityClick(entity, { clientX: x, clientY: y });
-                      }}
-                      style={{
-                        color: 'var(--primary-color)',
-                        cursor: 'pointer',
-                        textDecoration: 'underline'
-                      }}
-                    >
-                      {figures[s.hfid].name || `Figure ${s.hfid}`}
-                    </span>
-                    <FigureDetailView
-                      figure={figures[s.hfid]}
-                      isTopLevel={false}
-                      figures={figures}
-                      books={books}
-                      sites={sites}
-                      handleEntityClick={handleEntityClick}
-                      createSelectedEntity={createSelectedEntity}
-                    />
-                  </>
-                ) : null}
-              </React.Fragment>
-            ))
-          ) : (
-            <>
-              {figures[figure.hf_link.hfid] ? (
-                <>
                   <span
                     className="inline-entity-link"
                     onClick={(e) => {
                       e.stopPropagation();
                       const entity = createSelectedEntity(
                         "figure",
-                        figures[figure.hf_link.hfid]
+                        figures[s.hfid]
                       );
                       const x = e.clientX || window.innerWidth / 2;
                       const y = e.clientY || window.innerHeight / 2;
@@ -118,18 +80,34 @@ function FigureDetailView({
                       textDecoration: 'underline'
                     }}
                   >
-                    {figures[figure.hf_link.hfid].name || `Figure ${figure.hf_link.hfid}`}
+                    {figures[s.hfid].name || `Figure ${s.hfid}`}
                   </span>
-                  <FigureDetailView
-                    figure={figures[figure.hf_link.hfid]}
-                    isTopLevel={false}
-                    figures={figures}
-                    books={books}
-                    sites={sites}
-                    handleEntityClick={handleEntityClick}
-                    createSelectedEntity={createSelectedEntity}
-                  />
-                </>
+                ) : null}
+              </React.Fragment>
+            ))
+          ) : (
+            <>
+              {figures[figure.hf_link.hfid] ? (
+                <span
+                  className="inline-entity-link"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const entity = createSelectedEntity(
+                      "figure",
+                      figures[figure.hf_link.hfid]
+                    );
+                    const x = e.clientX || window.innerWidth / 2;
+                    const y = e.clientY || window.innerHeight / 2;
+                    handleEntityClick(entity, { clientX: x, clientY: y });
+                  }}
+                  style={{
+                    color: 'var(--primary-color)',
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  {figures[figure.hf_link.hfid].name || `Figure ${figure.hf_link.hfid}`}
+                </span>
               ) : null}
             </>
           )}
