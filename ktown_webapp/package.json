@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "canvas": "^3.2.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "stream-chain": "^3.4.0",

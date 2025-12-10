@@ -2,14 +2,61 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
+const compression = require("compression");
 const { chain } = require("stream-chain");
 const { parser } = require("stream-json");
 const { streamValues } = require("stream-json/streamers/StreamValues");
 
+// ---------- Global Error Handlers ----------
+// Catch uncaught exceptions
+process.on("uncaughtException", (err) => {
+  console.error("❌ UNCAUGHT EXCEPTION - Server will crash:", err);
+  console.error("Stack:", err.stack);
+  // Give time to log before exit
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
+});
+
+// Catch unhandled promise rejections
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ UNHANDLED REJECTION at:", promise);
+  console.error("Reason:", reason);
+  // Log stack if available
+  if (reason && reason.stack) {
+    console.error("Stack:", reason.stack);
+  }
+});
+
+// Log process events
+process.on("exit", (code) => {
+  console.log(`Process exiting with code ${code}`);
+});
+
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down gracefully");
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("SIGINT received, shutting down gracefully");
+  process.exit(0);
+});
+
 const app = express();
+
+// Enable compression for all responses
+app.use(compression({ level: 6, threshold: 1024 }));
 
 app.use(cors());
 app.use(express.json({ limit: "500mb" })); // Increased limit for large JSON files
+
+// Increase timeout for large requests
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  next();
+});
 
 const world_data_location = "big/queen.json";
 
@@ -102,6 +149,16 @@ async function loadDefaultFiles() {
     throw new Error(`Failed to load JSON files: ${err.message}`);
   }
 }
+
+// ---------- Health check endpoint ----------
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+  });
+});
 
 // ---------- Existing endpoint to check default files ----------
 app.get("/api/default-files", (req, res) => {
@@ -281,7 +338,10 @@ app.get("/", async (req, res) => {
 
 // ---------- Existing POST /api/world-data (uses default files or body) ----------
 app.post("/api/world-data", async (req, res) => {
+  const startTime = Date.now();
   try {
+    console.log("📥 Received request for /api/world-data");
+    
     let file;
 
     // If body has files, use them; otherwise use default files
@@ -289,6 +349,7 @@ app.post("/api/world-data", async (req, res) => {
       file = req.body.file;
     } else {
       // Use default files from /public directory
+      console.log("📂 Loading default files...");
       file = await loadDefaultFiles();
     }
 
@@ -299,12 +360,26 @@ app.post("/api/world-data", async (req, res) => {
       });
     }
 
+    console.log("🔨 Building world data...");
     const worldData = buildWorldData(file);
+    
+    const buildTime = Date.now() - startTime;
+    console.log(`✅ World data built in ${(buildTime / 1000).toFixed(2)}s, sending response...`);
 
     res.json({ worldData });
-    // console.log("WORLD DATA (from request body)", worldData);
+    
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ Response sent in ${(totalTime / 1000).toFixed(2)}s total`);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error in /api/world-data:", err);
+    console.error("Stack:", err.stack);
+    
+    // Don't send error if request was aborted
+    if (err.code === "ECONNRESET" || err.message.includes("aborted")) {
+      console.log("⚠️  Request was aborted by client");
+      return;
+    }
+    
     res.status(500).json({
       error: "Failed to build worldData",
       details: err.message,
@@ -312,8 +387,37 @@ app.post("/api/world-data", async (req, res) => {
   }
 });
 
+// ---------- Error handling middleware ----------
+app.use((err, req, res, next) => {
+  console.error("❌ Express Error:", err);
+  console.error("Stack:", err.stack);
+  res.status(500).json({
+    error: "Internal server error",
+    message: err.message,
+  });
+});
+
 // Start server
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0"; // Listen on all interfaces
+const server = app.listen(PORT, HOST, () => {
+  console.log(`✅ Server running at http://${HOST}:${PORT}`);
+  console.log(`📊 Memory: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`);
+});
+
+// Handle server errors
+server.on("error", (err) => {
+  console.error("❌ Server error:", err);
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use`);
+  }
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, closing server...");
+  server.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
 });

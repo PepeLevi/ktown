@@ -48,8 +48,13 @@ function App() {
 
   const [undergroundRegions, setUndergroundRegions] = useState([]);
 
-  // Set this to your backend base URL if needed (e.g. "http://localhost:3000")
-  const backendUrl = "";
+  // Set this to your backend base URL
+  // Always use the backend subdomain in production (when running on kt0wn.com)
+  // Check if we're running on localhost to determine if it's dev or production
+  const isProduction = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+  const backendUrl = isProduction 
+    ? "https://back.kt0wn.com" 
+    : "http://localhost:3001";
 
   const fetchWorldData = async () => {
     setShouldShowLoader(true);
